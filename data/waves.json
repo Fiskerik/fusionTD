@@ -17,6 +17,7 @@
   "adjustments": {
     "48": {"pattern": "raiders", "hp_scale": 0.78, "count_scale": 0.92}
   },
+  "health_boost": {"from": 10, "multiplier": 1.20},
   "pressure": {
     "after": 10,
     "hp_per_wave": 0.026,

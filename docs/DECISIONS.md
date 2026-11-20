@@ -2,7 +2,7 @@
 
 - Elemental TD uses an original Greenmarch Gate battlefield and original vector-style art drawn in Godot. The elemental progression and Survival pacing take inspiration from classic custom-map tower defense.
 - Arrow and Cannon reach level 6. Their infusion tier is capped by level and by the selected element’s unlocked tier. Tier I starts at level 2, Tier II at 4, and Tier III at 6. Existing infusions scale as both requirements are met. Pricing uses the tier available at purchase.
-- Pure elemental towers require Tier I for levels 1–3, Tier II for levels 4–5, and Tier III for level 6. Dual towers retain their three levels and their original Tier II requirement for level 3.
+- Standard elemental towers require Tier I for levels 1–2, Tier II for levels 3–4, and Tier III for levels 5–6. Dual and triple towers require Tier II for level 2 and Tier III for level 3 across all included elements.
 - Element selection is mandatory when an upgrade remains available. After all 18 tiers are unlocked, the selection prompt retires.
 - Element choices start a standalone bonus before wave 5 and every fifth wave thereafter. The chosen spirit unlocks its tier and pays its bounty on defeat or breach. A breach costs five gate lives. Every tenth regular wave features a boss, whose bounty is 150% of the original amount.
 - Autosave preserves active combat and live tower edits. Pausing or leaving saves the exact current combat state. Existing build-phase checkpoints also load.

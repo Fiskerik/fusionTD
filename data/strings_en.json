@@ -135,7 +135,6 @@
   "upgrade_current": "Current",
   "upgrade_after": "After upgrade",
   "requires_tier": "Requires %s %s",
-  "requires_dual_tier": "Requires %s II",
   "entrance": "ENTRANCE",
   "gate": "GREENMARCH GATE",
   "gate_meter": "GATE %d/%d",

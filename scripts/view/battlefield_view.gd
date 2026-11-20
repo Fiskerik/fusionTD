@@ -43,6 +43,8 @@ var inspected_enemy: int = -1
 var status_vfx := StatusVfx.new()
 
 const MEADOW: Texture2D = preload("res://assets/woodland/greenmarch.webp")
+const CASTLE_HORIZON: Texture2D = preload("res://assets/woodland/castle_horizon.webp")
+const HORIZON_HEIGHT: float = 2.1
 const PATH: Color = Color("#ecd0a5")
 const GOLD: Color = Color("#f5c57c")
 const REWARD: Color = Color("#ffdc64")
@@ -313,10 +315,14 @@ func _draw() -> void:
 	if sim == null or size.x == 0 or size.y == 0:
 		return
 	var field_size: Vector2 = sim.track.bounds
-	zoom = minf((size.x - 8) / field_size.x, (size.y - 8) / field_size.y)
+	var horizon: float = HORIZON_HEIGHT if gate_on_top else 0.0
+	var frame_size: Vector2 = field_size + Vector2(0, horizon)
+	zoom = minf((size.x - 8) / frame_size.x, (size.y - 8) / frame_size.y)
 	if zoom <= 1:
 		return
-	origin = (size - field_size * zoom) * .5
+	origin = (size - frame_size * zoom) * .5 + Vector2(0, horizon * zoom)
+	if gate_on_top:
+		_draw_castle_horizon(field_size)
 	_set_board_transform()
 	_draw_field(field_size)
 	_draw_ice_puddles()
@@ -359,6 +365,13 @@ func _draw() -> void:
 	for reward: Dictionary in rewards:
 		_draw_reward(reward)
 	draw_set_transform(Vector2.ZERO)
+
+func _draw_castle_horizon(bounds: Vector2) -> void:
+	_set_upright(Vector2(bounds.x * .5, bounds.y))
+	var sky := Rect2(0, bounds.y - HORIZON_HEIGHT, bounds.x, HORIZON_HEIGHT)
+	draw_rect(sky.grow(.055), Color("#ded3aa"))
+	draw_texture_rect(CASTLE_HORIZON, sky, false)
+	draw_rect(sky, Color("#8eaa83"), false, .035)
 
 func _draw_field(bounds: Vector2) -> void:
 	var board := Rect2(Vector2.ZERO, bounds)
@@ -410,7 +423,7 @@ func _draw_pollen() -> void:
 		draw_circle(p, .026 + .009 * sin(phase), Color("#fff9d1", .22 + .16 * sin(phase + .5)))
 
 func _draw_gate(p: Vector2) -> void:
-	TowerArt.draw_landmark(self, "gate", p, Vector2(1.42, 1.13))
+	TowerArt.draw_landmark(self, "gate", p, Vector2(1.66, 1.48) if gate_on_top else Vector2(1.42, 1.13))
 	if int(sim.state.barrier) > 0:
 		var field_shield: PackedVector2Array = PackedVector2Array([p + Vector2(-.64,.14), p + Vector2(-.63,-.31),
 			p + Vector2(-.29,-.61), p + Vector2(.29,-.61), p + Vector2(.63,-.31), p + Vector2(.64,.14)])
@@ -422,7 +435,7 @@ func _draw_gate_health() -> void:
 	var gate: Vector2 = sim.track.points[-1]
 	_set_upright(gate)
 	if gate_on_top:
-		gate.y += 1.71
+		gate.y -= .15
 	var max_lives: int = sim.cfg.start_lives
 	var lives: int = sim.state.lives
 	var ratio: float = clampf(float(lives) / max_lives, 0.0, 1.0)

@@ -112,8 +112,10 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = TowerRules.level_requirement(tower, state.tiers)
 				cost = TowerRules.upgrade_cost(tower)
 		"empower_pure":
-			if tower.get("kind") != "ascended" or int(tower.level) < TowerRules.progression(tower).damage.size():
-				reason = "Choose a max-level Pure elemental tower."
+			if not TowerRules.can_socket_crystal(tower):
+				reason = "Choose a level-6 elemental tower or a Pure tower."
+			elif int(state.tiers[tower.element]) < 3:
+				reason = DataDB.text("requires_tier") % [String(tower.element).capitalize(), "III"]
 			elif pure_crystals() == 0:
 				reason = "Earn a Pure Crystal on reaching each %d-wave milestone." % int(cfg.pure_crystal_every)
 		"move":

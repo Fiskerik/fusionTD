@@ -77,23 +77,26 @@ static func level_requirement(tower: Dictionary, tier_by_element: Dictionary) ->
 	var next: int = int(tower.level) + 1
 	if next > progression(tower).damage.size():
 		return DataDB.text("max_level")
+	return rank_requirement(tower, next, tier_by_element)
+
+static func rank_requirement(tower: Dictionary, level: int, tier_by_element: Dictionary) -> String:
 	if tower.kind == "pure":
 		var caps: Array = DataDB.read("balance").pure_caps
-		var element: String = tower.element
 		for tier: int in range(1, caps.size()):
-			if next <= int(caps[tier]):
-				if int(tier_by_element[element]) < tier:
-					return DataDB.text("requires_tier") % [element.capitalize(), roman(tier)]
-				break
-	if tower.kind == "dual" and next == int(DataDB.read("balance").dual_cap):
-		for element: String in stats(tower).pair:
-			if int(tier_by_element[element]) < 2:
-				return DataDB.text("requires_dual_tier") % element.capitalize()
-	if tower.kind == "triple":
+			if level <= int(caps[tier]):
+				return _require_tier(tower.element, tier, tier_by_element)
+	elif is_fusion(tower):
 		for element: String in ingredients(tower):
-			if int(tier_by_element[element]) < next:
-				return DataDB.text("requires_tier") % [element.capitalize(), roman(next)]
+			var requirement: String = _require_tier(element, level, tier_by_element)
+			if not requirement.is_empty():
+				return requirement
 	return ""
+
+static func _require_tier(element: String, tier: int, tier_by_element: Dictionary) -> String:
+	return DataDB.text("requires_tier") % [element.capitalize(), roman(tier)] if int(tier_by_element.get(element, 0)) < tier else ""
+
+static func can_socket_crystal(tower: Dictionary) -> bool:
+	return tower.get("kind", "") in ["pure", "ascended"] and int(tower.level) >= progression(tower).damage.size()
 
 static func upgrade_cost(tower: Dictionary) -> int:
 	var prices: Array = stats(tower).upgrade if tower.kind in ["arrow", "cannon"] else progression(tower).upgrade
@@ -189,9 +192,12 @@ static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Di
 	var desired_level: int = mini(_fusion_level(first), _fusion_level(second))
 	while int(result.level) < desired_level and level_requirement(result, tiers).is_empty():
 		result.level += 1
+	var crystals: int = int(first.get("crystals", 0)) + int(second.get("crystals", 0))
+	if crystals > 0:
+		result.crystals = crystals
 	if float(stats(result).rate) > 0.0:
 		var strongest_hit: float = maxf(attack_profile(first, victories).damage, attack_profile(second, victories).damage)
-		result.fusion_damage_floor = strongest_hit / spirit_multiplier(result, victories)
+		result.fusion_damage_floor = strongest_hit / (spirit_multiplier(result, victories) * (1.0 + crystal_damage_bonus(result)))
 	inherit_record(result, first, second)
 	return result
 

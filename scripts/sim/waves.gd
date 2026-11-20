@@ -15,7 +15,7 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}) -> Dict
 	var late: Dictionary = rules.late_game
 	var late_waves: int = maxi(0, wave - int(late.after))
 	var harder_waves: int = maxi(0, wave - int(rules.pressure.after))
-	var hp: float = float(base.hp) * pow(float(balance.mob_hp_growth), wave - 1)
+	var hp: float = base_enemy_hp(wave)
 	hp *= 1.0 + harder_waves * float(rules.pressure.hp_per_wave)
 	hp *= float(tuning.get("hp_scale", 1.0))
 	hp *= 1.0 + late_waves * float(late.hp_per_wave)
@@ -80,6 +80,12 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}) -> Dict
 			_add_group(groups, support, element, secondary, elemental_share, index + 1)
 	var boss: Dictionary = {} if bosses_in_wave.is_empty() else bosses_in_wave[0]
 	return {"wave": wave, "groups": groups, "boss": boss, "bosses": bosses_in_wave, "spirit": {}}
+
+static func base_enemy_hp(wave: int) -> float:
+	var health: float = float(DataDB.read("mobs").hp)
+	health *= pow(float(DataDB.read("balance").mob_hp_growth), wave - 1)
+	var boost: Dictionary = DataDB.read("waves").health_boost
+	return health * float(boost.multiplier) if wave >= int(boost.from) else health
 
 static func spirit_group(element: String, tier: int, wave: int) -> Dictionary:
 	var data: Dictionary = DataDB.read("spirits")

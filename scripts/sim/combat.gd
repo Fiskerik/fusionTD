@@ -251,7 +251,7 @@ static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array
 			var mobs: Dictionary = DataDB.read("mobs")
 			var group: Dictionary = {
 				"kind": "husk", "props": [], "element": "none", "gold": 0, "armor": 0,
-				"hp": float(mobs.hp) * pow(float(sim.cfg.mob_hp_growth), int(sim.state.wave) - 1) * float(data.hp),
+				"hp": Waves.base_enemy_hp(int(sim.state.wave)) * float(data.hp),
 				"speed": float(mobs.speed), "leak": int(sim.cfg.leak.mob), "slow_cap": float(mobs.slow_cap),
 			}
 			for index: int in range(mini(int(data.count), int(data.cap) - husks)):

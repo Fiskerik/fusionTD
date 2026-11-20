@@ -240,8 +240,12 @@ func _render_detail() -> void:
 		for level: int in range(1, levels + 1):
 			var button: Button = UIKit.button(str(level), _set_rank.bind(level), level == rank, 37)
 			button.add_theme_font_size_override("font_size", 15)
-			button.tooltip_text = "Tower level %d" % level
+			var requirement: String = TowerRules.rank_requirement(tower, level, sim.state.tiers)
+			button.tooltip_text = "Tower level %d" % level if requirement.is_empty() else requirement
 			ranks.add_child(button)
+		var rank_requirement: String = TowerRules.rank_requirement(tower, rank, sim.state.tiers)
+		if rank > 1 and not rank_requirement.is_empty():
+			details.add_child(UIKit.label(rank_requirement, 15, UIKit.WARN, true))
 	details.add_child(UIKit.label(TowerInspector.metrics(tower, sim.spirit_victories()), 16, UIKit.INK, true))
 	var all_tiers: Dictionary = sim.state.tiers.duplicate()
 	for id: String in DataDB.ELEMENTS:

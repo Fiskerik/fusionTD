@@ -160,6 +160,9 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	sim.state.tiers.fire = 3
 	game._apply({"type": "build", "slot": "s1", "kind": "arrow"})
 	game._apply({"type": "build_pure", "slot": "s2", "kind": "fire"})
+	sim.state.tiers.nature = 3
+	game._apply({"type": "build", "slot": "s3", "kind": "nature"})
+	sim.state.towers.s3.level = 6
 	check(game.field.upgrade_ready.has("s1") and not game.field.upgrade_ready.has("s2"))
 	sim.state.gold = 0
 	game._update_hud()
@@ -170,13 +173,16 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	game._take_events()
 	check(game.stats.text.contains("◈ 1") and game.message.contains("+1 Pure Crystal"))
 	check(game.field.upgrade_ready.has("s2"), "The Pure tower gains an upgrade badge when a crystal is earned")
-	game._site_pressed("s2")
+	check(game.field.upgrade_ready.has("s3"), "A max-level Nature tower can spend the milestone crystal")
+	game._site_pressed("s3")
 	check(game.upgrade_button.text.begins_with("Use Crystal") and not game.upgrade_button.disabled)
 	game._upgrade_pressed()
 	check(game.tower_comparison.visible and game.upgrade_button.text.begins_with("Confirm"))
 	equal(sim.pure_crystals(), 1)
 	game._upgrade_pressed()
-	check(game.upgrade_button.disabled and not game.field.upgrade_ready.has("s2"))
+	check(game.upgrade_button.disabled and not game.field.upgrade_ready.has("s3"))
+	equal(sim.state.towers.s3.level, 6)
+	equal(sim.state.towers.s3.crystals, 1)
 	check(game.stats.text.contains("◈ 0") and game.tower_effects.tooltip_text.contains("damage by 25%"))
 	game.queue_free()
 	await runner.process_frame

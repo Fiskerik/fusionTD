@@ -746,7 +746,7 @@ func _cancel_catalog_build() -> void:
 	_refresh()
 
 func _tower_upgrade_action(tower: Dictionary) -> Dictionary:
-	return {"type": "empower_pure" if tower.kind == "ascended" else "upgrade", "slot": tower.slot}
+	return {"type": "empower_pure" if TowerRules.can_socket_crystal(tower) else "upgrade", "slot": tower.slot}
 
 func _upgrade_pressed() -> void:
 	if not upgrade_slot.is_empty():
@@ -1382,7 +1382,7 @@ func _render_upgrade(tower: Dictionary) -> void:
 	tower_effects.hide()
 	tower_comparison.show()
 	var future: Dictionary = tower.duplicate()
-	if tower.kind == "ascended":
+	if TowerRules.can_socket_crystal(tower):
 		future.crystals = int(tower.get("crystals", 0)) + 1
 	else:
 		future.level += 1
@@ -1400,7 +1400,12 @@ func _comparison_card(parent: HBoxContainer, tower: Dictionary, caption: String,
 	panel.add_child(column)
 	var heading: Color = UIKit.UPGRADE if upgraded else UIKit.INK
 	var font_size: int = 17 if fusion else 15
-	var rank: String = "◈ %d" % int(tower.get("crystals", 0)) if tower.kind == "ascended" else "Lv %d" % int(tower.level)
+	var crystals: int = int(tower.get("crystals", 0))
+	var rank: String = "Lv %d" % int(tower.level)
+	if tower.kind == "ascended":
+		rank = "◈ %d" % crystals
+	elif crystals > 0:
+		rank += " · ◈ %d" % crystals
 	var level: Label = UIKit.label(caption + " · " + rank, font_size, heading, true)
 	level.add_theme_font_override("font", UIKit.heading())
 	column.add_child(level)

@@ -224,19 +224,24 @@ func test_all_fusion_recipes_and_tier_gate() -> void:
 			check(sim.apply({"type": "upgrade", "slot": slot}).ok)
 		var before: int = sim.state_hash()
 		var invested: int = int(sim.state.towers.s1.invested) + int(sim.state.towers.s2.invested)
-		equal(sim.apply(fusion).cost, 250)
+		equal(sim.apply(fusion).cost, 313)
 		equal(sim.state.towers.s1.dual, recipe)
-		equal(sim.state.towers.s1.invested, invested + 250)
+		equal(sim.state.towers.s1.invested, invested + 313)
 		check(not sim.state.towers.has("s2"))
 		check(sim.apply({"type": "undo"}).ok)
 		equal(sim.state_hash(), before)
 		check(sim.apply(fusion).ok)
 		var upgrade: Dictionary = {"type": "upgrade", "slot": "s1"}
-		check(sim.apply(upgrade).ok)
+		equal(sim.state.towers.s1.level, 1)
 		check(not sim.apply(upgrade).ok)
 		sim.state.tiers[a] = 2
 		check(not sim.apply(upgrade).ok)
 		sim.state.tiers[b] = 2
+		check(sim.apply(upgrade).ok)
+		check(not sim.apply(upgrade).ok)
+		sim.state.tiers[b] = 3
+		check(not sim.apply(upgrade).ok)
+		sim.state.tiers[a] = 3
 		check(sim.apply(upgrade).ok)
 		sim.state.phase = "wave"
 		var group: Dictionary = _enemy()

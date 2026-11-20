@@ -11,9 +11,9 @@ workflows:
         - ios_settings
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.example.elementaltd
+        bundle_identifier: com.fiskerik.elementaltd
       vars:
-        BUNDLE_ID: com.example.elementaltd
+        BUNDLE_ID: com.fiskerik.elementaltd
         GODOT_VERSION: "4.4.1"
 
     scripts:

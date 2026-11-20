@@ -130,9 +130,25 @@ func test_later_enemy_formations_mix_elements_and_pressure() -> void:
 				near(group.speed, 1.0, "Ordinary enemies keep their movement speed")
 				check(float(group.armor) > 0.0)
 			elif group.props.has("swift"):
-				check(float(group.speed) > 1.3 and float(group.hp) < base_hp * pow(float(data.mob_hp_growth), 10) * .75)
+				check(float(group.speed) > 1.3 and float(group.hp) < Waves.base_enemy_hp(11) * .75)
 		equal(elements.size(), 2)
 		check(speeds.size() > 1 and armors.size() > 1)
+
+func test_wave_10_health_increase_keeps_enemy_counts() -> void:
+	var boost: Dictionary = DataDB.read("waves").health_boost
+	var multiplier: float = boost.multiplier
+	for wave: int in [9, 10, 11, 48, 90]:
+		var boosted: Dictionary = Waves.generate(42, wave)
+		boost.multiplier = 1.0
+		var original: Dictionary = Waves.generate(42, wave)
+		boost.multiplier = multiplier
+		var expected: float = 1.0 if wave < 10 else 1.2
+		var boosted_enemies: Array = boosted.groups + boosted.bosses
+		var original_enemies: Array = original.groups + original.bosses
+		equal(boosted_enemies.size(), original_enemies.size())
+		for index: int in range(boosted_enemies.size()):
+			equal(boosted_enemies[index].count, original_enemies[index].count)
+			near(boosted_enemies[index].hp / original_enemies[index].hp, expected)
 
 func test_wave_48_caps_seeded_formation_spikes() -> void:
 	var adjustments: Dictionary = DataDB.read("waves").adjustments
@@ -358,7 +374,7 @@ func test_upgrade_bands_and_infusion() -> void:
 	view.free()
 	equal(TowerRules.trait_profile(tower, sim.state.tiers).burn[0], 5.0)
 	for level: int in range(2, 7):
-		if level == 4 or level == 6:
+		if level == 3 or level == 5:
 			check(not sim.apply(pure).ok)
 			sim.state.tiers.fire += 1
 		check(sim.apply(pure).ok)
@@ -466,7 +482,7 @@ func test_all_twenty_triples_and_third_element_rules() -> void:
 		pure.level = 2
 		equal(TowerRules.fusion_recipe(dual, pure), id)
 		equal(TowerRules.fusion_recipe(pure, dual), id)
-		equal(sim.apply(action).cost, int(sim.cfg.triple_fuse_cost))
+		equal(sim.apply(action).cost, 638)
 		var result: Dictionary = sim.state.towers.s1
 		equal(result.kind, "triple")
 		equal(result.dual, id)
@@ -526,7 +542,7 @@ func test_water_upgrades_and_elemental_specialties() -> void:
 	var sim := Sim.new()
 	sim.state.tiers.water = 3
 	var water: Dictionary = TowerRules.create(1, "s1", "pure", "water", "", 0)
-	var expected_slows: Array[float] = [.15, .1851, .2202, .27, .33318, .42]
+	var expected_slows: Array[float] = [.15, .1851, .27, .33318, .42, .51828]
 	for level: int in range(1, 7):
 		water.level = level
 		near(Effects.slow_strength(TowerRules.trait_profile(water, sim.state.tiers).slow[0], TowerRules.attack_profile(water).potency), expected_slows[level - 1])
@@ -670,7 +686,19 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 		equal(sim.pure_crystals(), expected, "Finishing a milestone pays once")
 	sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	equal(sim.pure_crystals(), 3)
-	check(not sim.apply({"type": "empower_pure", "slot": "s2"}).ok, "Regular level-6 elemental towers cannot use Pure Crystals")
+	var elemental_action: Dictionary = {"type": "empower_pure", "slot": "s2"}
+	var elemental_hit: float = TowerRules.attack_profile(sim.state.towers.s2).damage
+	sim.state.tiers.fire = 2
+	check(not sim.apply(elemental_action).ok, "A legacy level-6 elemental tower still needs Tier III")
+	sim.state.tiers.fire = 3
+	sim.state.towers.s2.level = 5
+	check(not sim.apply(elemental_action).ok, "An elemental tower must be max level to use a crystal")
+	sim.state.towers.s2.level = 6
+	check(sim.apply(elemental_action).ok)
+	equal(sim.pure_crystals(), 2)
+	near(TowerRules.attack_profile(sim.state.towers.s2).damage, elemental_hit * 1.25)
+	check(sim.apply({"type": "undo"}).ok)
+	equal(sim.pure_crystals(), 3)
 	check(sim.apply(action).ok)
 	equal(sim.pure_crystals(), 2)
 	near(TowerRules.attack_profile(sim.state.towers.s1).damage, base_hit * 1.25)
@@ -687,6 +715,23 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 	equal(loaded.pure_crystals(), 0)
 	equal(loaded.state.towers.s3.crystals, 3)
 	near(TowerRules.attack_profile(loaded.state.towers.s3).damage, base_hit * 1.75)
+
+func test_fusion_carries_socketed_crystal_without_counting_its_bonus_twice() -> void:
+	var sim := Sim.new()
+	sim.state.gold = 10000
+	sim.state.wave = 30
+	sim.state.tiers.fire = 3
+	sim.state.tiers.nature = 1
+	check(sim.apply({"type": "build", "slot": "s1", "kind": "fire"}).ok)
+	check(sim.apply({"type": "build", "slot": "s2", "kind": "nature"}).ok)
+	sim.state.towers.s1.level = 6
+	sim.state.towers.s2.level = 2
+	check(sim.apply({"type": "empower_pure", "slot": "s1"}).ok)
+	var empowered_hit: float = TowerRules.attack_profile(sim.state.towers.s1).damage
+	check(sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s2"}).ok)
+	equal(sim.state.towers.s1.crystals, 1)
+	equal(sim.pure_crystals(), 0)
+	near(TowerRules.attack_profile(sim.state.towers.s1).damage, empowered_hit)
 
 func test_spirit_damage_bonuses_reward_victories_and_follow_damage_elements() -> void:
 	var sim := Sim.new()
