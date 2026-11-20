@@ -44,7 +44,6 @@ var overlay_actions: Dictionary = {}
 var last_gold: int = -1
 var round_controls: HBoxContainer
 var start_button: Button
-var timer_button: Button
 var fuse_button: Button
 var last_countdown: int = -1
 var combat_status: Label
@@ -172,9 +171,9 @@ func _build_layout() -> void:
 	speed_button.custom_minimum_size.x = 68
 	speed_button.tooltip_text = DataDB.text("speed_tip")
 	controls.add_child(speed_button)
-	var pause_button: Button = UIKit.icon_button("pause", DataDB.text("pause"), _show_pause, 54)
-	pause_button.custom_minimum_size.x = 58
-	controls.add_child(pause_button)
+	var menu_button: Button = UIKit.icon_button("menu", DataDB.text("game_menu"), _show_pause, 54)
+	menu_button.custom_minimum_size.x = 58
+	controls.add_child(menu_button)
 	var ribbon: HBoxContainer = UIKit.row(8)
 	header_stack.add_child(ribbon)
 	wave_effects = HFlowContainer.new()
@@ -186,18 +185,8 @@ func _build_layout() -> void:
 	element_status = UIKit.row(4)
 	ribbon.add_child(element_status)
 
-	var forecast: HBoxContainer = UIKit.row(5)
-	stack.add_child(forecast)
 	preview_row = UIKit.row(4)
-	preview_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	forecast.add_child(preview_row)
-	var status_help: Button = UIKit.icon_button("info", DataDB.text("status_help"), _show_status_help, 46)
-	status_help.custom_minimum_size.x = 43
-	forecast.add_child(status_help)
-	var legend_button: Button = UIKit.icon_button("book", DataDB.text("legend"), _open_legend, 46)
-	legend_button.custom_minimum_size.x = 43
-	legend_button.tooltip_text = "Tower overview"
-	forecast.add_child(legend_button)
+	stack.add_child(preview_row)
 
 	var play_area := Control.new()
 	play_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -308,8 +297,8 @@ func _build_layout() -> void:
 	round_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	play_area.add_child(round_controls)
 	round_controls.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	round_controls.offset_left = -220
-	round_controls.offset_right = 220
+	round_controls.offset_left = -128
+	round_controls.offset_right = 128
 	round_controls.offset_top = 6
 	round_controls.offset_bottom = 60
 	_refresh()
@@ -336,7 +325,7 @@ func _process(delta: float) -> void:
 		_update_hud()
 
 func _count_down(delta: float) -> void:
-	if sim.intermission_paused or sim.state.selection_pending or not sim.state.trial.is_empty():
+	if sim.state.selection_pending or not sim.state.trial.is_empty():
 		return
 	sim.intermission_left = maxf(0.0, sim.intermission_left - delta)
 	if sim.intermission_left == 0.0:
@@ -354,17 +343,6 @@ func _update_countdown() -> void:
 	last_countdown = ceili(sim.intermission_left)
 	start_button.text = DataDB.text("start_countdown") % last_countdown
 	start_button.tooltip_text = DataDB.text("start_early")
-	if is_instance_valid(timer_button):
-		timer_button.text = "Resume\ntimer" if sim.intermission_paused else "Pause\ntimer"
-		timer_button.set_pressed_no_signal(sim.intermission_paused)
-
-func _toggle_timer() -> void:
-	if sim.state.phase != "build" or sim.state.selection_pending or not sim.state.trial.is_empty():
-		return
-	sim.intermission_paused = not sim.intermission_paused
-	_update_countdown()
-	_checkpoint()
-	audio.play("ui")
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and is_node_ready():
@@ -379,6 +357,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_resume()
 		elif overlay_type == "restart":
 			_show_pause()
+		elif overlay_type in ["statuses", "legend"]:
+			_close_reference()
 		elif overlay_type == "fusion":
 			_cancel_fusion()
 		elif overlay_type == "leaderboard":
@@ -419,30 +399,14 @@ func _refresh() -> void:
 				field.partners.append(slot)
 	UIKit.clear(round_controls)
 	start_button = null
-	timer_button = null
 	var building: bool = sim.state.phase == "build"
 	inspector_panel.visible = sim.state.phase != "game_over"
 	round_controls.visible = building
 	if building:
-		var undo: Button = UIKit.button(DataDB.text("undo") % sim.undo_stack.size(), _apply.bind({"type": "undo"}), false, 54)
-		undo.modulate.a = .84
-		undo.add_theme_font_size_override("font_size", 17)
-		undo.disabled = sim.undo_stack.is_empty()
-		undo.tooltip_text = sim.describe({"type": "undo"}).reason
-		round_controls.add_child(undo)
 		var choose: bool = sim.state.selection_pending
-		if not choose and sim.state.trial.is_empty():
-			timer_button = UIKit.button("", _toggle_timer, false, 54)
-			timer_button.modulate.a = .90
-			timer_button.name = "WaveTimer"
-			timer_button.toggle_mode = true
-			timer_button.tooltip_text = "Hold the countdown while you build. Start Wave still works."
-			timer_button.add_theme_font_size_override("font_size", 17)
-			round_controls.add_child(timer_button)
 		var action: Callable = _show_selection if choose else _apply.bind({"type": "start_wave"})
 		var start_key: String = "choose_spirit" if choose else ("start_bonus" if not sim.state.trial.is_empty() else "start_wave")
 		start_button = UIKit.button(DataDB.text(start_key), action, true, 54)
-		start_button.size_flags_stretch_ratio = 2.0
 		round_controls.add_child(start_button)
 		var style: StyleBoxFlat = start_button.get_theme_stylebox("normal")
 		var pulse: Tween = start_button.create_tween().set_loops()
@@ -548,17 +512,28 @@ func _render_wave_heading() -> void:
 		_effect_chip(wave_effects, "%d bosses" % names.size(), UIKit.WARN, "dark", " · ".join(names))
 	elif summary.bosses.size() == 1:
 		var boss: Dictionary = summary.bosses[0]
-		_effect_chip(wave_effects, "%s · Boss" % StatusInfo.enemy_name(boss), UIKit.WARN, "dark")
+		if boss.boss_type == "prismheart" and sim.state.phase == "wave":
+			for enemy: Dictionary in sim.state.mobs:
+				if enemy.boss_type == boss.boss_type:
+					boss = enemy
+					break
+		_effect_chip(wave_effects, "%s · Boss" % StatusInfo.enemy_name(boss), UIKit.WARN, boss.element)
+		var weakness: String = Damage.weakness(boss)
+		if not weakness.is_empty():
+			_effect_chip(wave_effects, StatusInfo.weakness_title(weakness), UIKit.WARN, StatusInfo.weakness_icon(weakness),
+				StatusInfo.weakness_description(weakness, Damage.weakness_multiplier(boss)))
 		var trait_id: String = StatusInfo.enemy_traits(boss)[0]
 		var ability: Array = StatusInfo.TRAITS[trait_id]
 		_effect_chip(wave_effects, ability[0], Glyphs.hue(ability[2]).darkened(.57), ability[2],
 			StatusInfo.trait_description(trait_id))
-	var resistance: float = EnemyRules.control_resistance(wave)
+	var resistance: float = EnemyRules.control_resistance(wave) if summary.bosses.is_empty() else float(summary.boss.control_resistance)
 	if resistance > 0.0:
 		_effect_chip(wave_effects, "%s tenacity" % TowerInspector.percent(resistance),
 			UIKit.WARN, "normal", StatusInfo.trait_description("resistance"))
 	var seen: Dictionary = {}
 	for group: Dictionary in summary.groups:
+		if group.kind == "bonus":
+			_effect_chip(wave_effects, "Gilded Courier", UIKit.UPGRADE, "light", StatusInfo.trait_description("bonus"))
 		var element: String = group.element
 		if element != "none" and not seen.has(element):
 			seen[element] = true
@@ -589,6 +564,13 @@ func _render_preview() -> void:
 		var total: int = preview.bosses.size()
 		var icons := PackedStringArray()
 		var descriptions := PackedStringArray()
+		var weaknesses := PackedStringArray()
+		for boss: Dictionary in preview.bosses:
+			var icon: String = boss.element
+			if boss.boss_type == "ironwood":
+				icon = "damage"
+			if icon != "none" and not icons.has(icon):
+				icons.append(icon)
 		for group: Dictionary in preview.groups:
 			total += int(group.count)
 			if group.element != "none" and not icons.has(group.element):
@@ -597,8 +579,18 @@ func _render_preview() -> void:
 			if group.props.has("phasing") and not icons.has("phasing"):
 				icons.append("phasing")
 				descriptions.append(StatusInfo.title("phasing"))
+		for enemy: Dictionary in preview.bosses + preview.groups:
+			var weakness: String = Damage.weakness(enemy)
+			if not weakness.is_empty() and not weaknesses.has(weakness):
+				weaknesses.append(weakness)
+		if not weaknesses.is_empty():
+			var names := PackedStringArray()
+			for weakness: String in weaknesses:
+				names.append("Neutral" if weakness == "normal" else weakness.capitalize())
+			descriptions.append("Weaknesses: " + ", ".join(names))
 		var chip: Button = UIKit.button("", _show_preview.bind(wave), false, 48)
-		UIKit.creature_forecast(chip, preview.groups[0], wave, total, icons, preview.bosses)
+		var representative: Dictionary = preview.groups[0] if preview.bosses.is_empty() else preview.bosses[0]
+		UIKit.creature_forecast(chip, representative, wave, total, icons, preview.bosses)
 		if not descriptions.is_empty():
 			chip.tooltip_text += " · " + " / ".join(descriptions)
 		preview_row.add_child(chip)
@@ -935,15 +927,16 @@ func _update_enemy_inspector() -> void:
 		return
 	var traits: PackedStringArray = StatusInfo.enemy_traits(enemy)
 	var active: PackedStringArray = StatusInfo.active(enemy, sim.state.tick, sim.hz)
+	var stopped: bool = int(enemy.root_time) > 0 or int(enemy.freeze_time) > 0 or enemy.has("corner")
 	var metrics: String = "%d / %d HP   ·   %s armor   ·   %s tiles/s" % [
 		ceili(enemy.hp), ceili(enemy.max_hp), TowerInspector.number(maxf(0.0, float(enemy.armor) - float(enemy.shred))),
-		TowerInspector.number(0.0 if int(enemy.root_time) > 0 or int(enemy.freeze_time) > 0 else float(enemy.speed) * (1.0 - float(enemy.slow)) * Effects.slip_speed(enemy))]
+		TowerInspector.number(0.0 if stopped else float(enemy.speed) * (1.0 - float(enemy.slow)) * Effects.slip_speed(enemy))]
 	tower_metrics.text = metrics
 	tower_metrics.show()
 	if is_instance_valid(enemy_detail_metrics):
 		enemy_detail_metrics.text = metrics
 		_render_enemy_details(enemy, traits, active)
-	var signature: String = " / ".join(traits) + "|" + " / ".join(active)
+	var signature: String = enemy.element + "|" + " / ".join(traits) + "|" + " / ".join(active)
 	if enemy_signature == signature:
 		return
 	enemy_signature = signature
@@ -957,6 +950,11 @@ func _update_enemy_inspector() -> void:
 		tower_composition.add_child(UIKit.badge(enemy.element))
 		tower_composition.add_child(UIKit.label(String(enemy.element).capitalize(), 15, Glyphs.hue(enemy.element).darkened(.6)))
 	var remaining: int = 4
+	var weakness: String = Damage.weakness(enemy)
+	if not weakness.is_empty():
+		_effect_chip(tower_effects, StatusInfo.weakness_title(weakness), UIKit.WARN, StatusInfo.weakness_icon(weakness),
+			StatusInfo.weakness_description(weakness, Damage.weakness_multiplier(enemy)))
+		remaining -= 1
 	for key: String in active:
 		if remaining == 0:
 			break
@@ -990,7 +988,7 @@ func _show_enemy_details() -> void:
 	overlay_type = "enemy"
 	enemy_detail_metrics = UIKit.label("", 19, UIKit.MINT, true)
 	body.add_child(enemy_detail_metrics)
-	if enemy.element != "none":
+	if enemy.element != "none" and enemy.boss_type != "prismheart":
 		var element_row: HBoxContainer = UIKit.row(5)
 		element_row.add_child(UIKit.badge(enemy.element))
 		element_row.add_child(UIKit.label(String(enemy.element).capitalize(), 18, Glyphs.hue(enemy.element).darkened(.56)))
@@ -1010,18 +1008,24 @@ func _render_enemy_details(enemy: Dictionary, traits: PackedStringArray, active:
 	var lines := PackedStringArray()
 	for id: String in active:
 		lines.append("%s  ·  %s" % [StatusInfo.title(id), StatusInfo.state_value(enemy, id, sim.state.tick, sim.hz)])
-	var signature: String = "\n".join(lines)
+	var signature: String = enemy.element + "|" + "\n".join(lines)
 	if signature == enemy_detail_signature and enemy_detail_rows.get_child_count() > 0:
 		return
 	enemy_detail_signature = signature
 	UIKit.clear(enemy_detail_rows)
+	if enemy.boss_type == "prismheart" and enemy.element != "none":
+		_enemy_detail_line("%s form" % String(enemy.element).capitalize(), "Current elemental form", enemy.element)
+	var weakness: String = Damage.weakness(enemy)
+	if not weakness.is_empty():
+		_enemy_detail_line(StatusInfo.weakness_title(weakness), StatusInfo.weakness_description(weakness, Damage.weakness_multiplier(enemy)),
+			StatusInfo.weakness_icon(weakness))
 	for id: String in traits:
 		var property_info: Array = StatusInfo.TRAITS[id]
 		_enemy_detail_line(StatusInfo.trait_title(id, enemy), StatusInfo.trait_description(id), property_info[2])
 	for i: int in range(active.size()):
 		var id: String = active[i]
 		_enemy_detail_line(lines[i], StatusInfo.description(id), StatusInfo.ICONS[id])
-	if traits.is_empty() and active.is_empty():
+	if enemy_detail_rows.get_child_count() == 0:
 		enemy_detail_rows.add_child(UIKit.label("No traits or active effects.", 18, UIKit.MUTED))
 
 func _enemy_detail_line(title: String, description: String, icon: String) -> void:
@@ -1153,6 +1157,8 @@ func _take_events() -> void:
 			"special_spawned":
 				if event.data.kind == "spirit":
 					_hint(4)
+			"boss_morphed":
+				_render_wave_heading()
 			"bonus_finished":
 				_checkpoint()
 				_refresh()
@@ -1253,7 +1259,8 @@ func _dialog(title: String, width: float = 570) -> VBoxContainer:
 	var dialog: Dictionary = UIKit.dialog(self, width)
 	overlay = dialog.overlay
 	var body: VBoxContainer = dialog.body
-	body.add_child(UIKit.label(title, 32))
+	if not title.is_empty():
+		body.add_child(UIKit.label(title, 32))
 	return body
 
 func _close_overlay() -> void:
@@ -1353,32 +1360,85 @@ func _show_preview(wave: int, bonus: bool = false) -> void:
 	overlay_bonus = bonus
 	var scroller := ScrollContainer.new()
 	scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroller.custom_minimum_size.y = minf(360, maxf(115, float(preview.groups.size() + 2) * 58))
+	var entries: Array = preview.bosses + preview.groups
+	if not preview.spirit.is_empty():
+		entries.push_front(preview.spirit)
+	scroller.custom_minimum_size.y = clampf(float(entries.size()) * 121, 134, minf(410, get_viewport_rect().size.y * .54))
 	body.add_child(scroller)
 	var list: VBoxContainer = UIKit.column(7)
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroller.add_child(list)
-	var entries: Array = preview.groups.duplicate()
-	entries = preview.bosses + entries
-	if not preview.spirit.is_empty():
-		entries.push_front(preview.spirit)
+	var hint: Label = UIKit.label("", 16, UIKit.MUTED, true)
+	hint.custom_minimum_size.y = 44
+	body.add_child(hint)
 	for group: Dictionary in entries:
-		var family: Dictionary = DataDB.read("mobs").families.get(group.get("family", ""), {})
-		var name: String = family.get("name", DataDB.text("grunt"))
-		if group.element != "none":
-			name = String(group.element).capitalize() + " " + name
-		var subject: String = DataDB.text("enemy_group") % [group.count, name]
-		if group.kind == "spirit":
-			subject = DataDB.text("spirit_group") % [group.element.capitalize(), TowerRules.roman(group.tier)]
-		elif group.kind == "boss":
-			subject = "%s · %d g" % [DataDB.read("bosses")[group.boss_type].name, int(group.gold)]
-		var tint: Color = Glyphs.hue(group.element) if group.element != "none" else Color(family.get("color", "#b0cbb9"))
-		list.add_child(UIKit.label(DataDB.text("enemy_stats") % [subject, roundi(group.hp), group.speed, group.armor], 20, tint.darkened(.54), true))
-		for key: String in StatusInfo.enemy_traits(group):
-			var property_info: Array = StatusInfo.TRAITS[key]
-			list.add_child(UIKit.label("%s · %s" % [StatusInfo.trait_title(key, group), StatusInfo.trait_description(key)],
-				17, Glyphs.hue(property_info[2]).darkened(.58), true))
+		_forecast_card(list, group, hint)
 	body.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true))
+
+func _forecast_card(list: VBoxContainer, group: Dictionary, hint: Label) -> void:
+	var tint: Color = Glyphs.hue(group.element) if group.element != "none" else Color("#b0cbb9")
+	if group.kind == "bonus":
+		tint = UIKit.GOLD
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UIKit.style(tint.lerp(UIKit.SURFACE, .86), tint.darkened(.13), 12, 8))
+	list.add_child(card)
+	var row: HBoxContainer = UIKit.row(7)
+	card.add_child(row)
+	var art := UIKit.ForecastPortrait.new()
+	art.enemy = group
+	art.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	art.custom_minimum_size = Vector2(54, 54)
+	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(art)
+	var details: VBoxContainer = UIKit.column(4)
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(details)
+	var heading: HBoxContainer = UIKit.row(4)
+	details.add_child(heading)
+	if group.element != "none" and group.kind != "spirit":
+		heading.add_child(UIKit.badge(group.element, 22))
+	var name_label: Label = UIKit.label(StatusInfo.enemy_name(group), 20, UIKit.INK)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	heading.add_child(name_label)
+	heading.add_child(UIKit.label("×%d" % int(group.count), 17, UIKit.MUTED))
+	var stat_row := HFlowContainer.new()
+	details.add_child(stat_row)
+	stat_row.add_child(UIKit.stat_value("health", TowerInspector.number(group.hp), "Health per enemy", 16, UIKit.INK))
+	stat_row.add_child(UIKit.stat_value("armor", TowerInspector.number(group.armor), "Armor", 16, UIKit.INK))
+	stat_row.add_child(UIKit.stat_value("speed", "%s/s" % TowerInspector.number(group.speed), "Movement speed in tiles per second", 16, UIKit.INK))
+	if group.kind in ["boss", "bonus", "spirit"]:
+		stat_row.add_child(UIKit.stat_value("gold", str(int(group.gold)), "Gold reward", 16, UIKit.UPGRADE))
+	var traits := HFlowContainer.new()
+	details.add_child(traits)
+	var weakness: String = Damage.weakness(group)
+	var shapeshifter: bool = group.get("boss_type", "") == "prismheart"
+	if shapeshifter:
+		for form: String in group.get("forms", PackedStringArray()):
+			var counter: String = Damage.weakness({"element": form})
+			var detail: String = "%s form. %s" % [form.capitalize(), StatusInfo.weakness_description(counter)]
+			var tint_color: Color = Glyphs.hue(form).darkened(.52)
+			var button: Button = UIKit.button("", _read_effect.bind(hint, {"detail": detail, "tint": tint_color}), false, 29)
+			button.custom_minimum_size.x = 32
+			button.size_flags_horizontal = Control.SIZE_FILL
+			button.tooltip_text = detail
+			UIKit.element_button(button, form, true, true)
+			traits.add_child(button)
+	if not weakness.is_empty() and not shapeshifter:
+		var multiplier: float = Damage.weakness_multiplier(group)
+		_effect_chip(traits, "%s · +%s" % [StatusInfo.weakness_title(weakness),
+			TowerInspector.percent(multiplier - 1.0)], UIKit.WARN, StatusInfo.weakness_icon(weakness),
+			StatusInfo.weakness_description(weakness, multiplier))
+	for key: String in StatusInfo.enemy_traits(group):
+		var icon: String = StatusInfo.TRAITS[key][2]
+		var effect := {"detail": StatusInfo.trait_description(key), "tint": Glyphs.hue(icon).darkened(.52)}
+		var button: Button = UIKit.button(StatusInfo.trait_title(key, group), _read_effect.bind(hint, effect), false, 29)
+		button.size_flags_horizontal = Control.SIZE_FILL
+		button.add_theme_font_size_override("font_size", 14)
+		button.tooltip_text = effect.detail
+		UIKit.element_button(button, icon)
+		traits.add_child(button)
 
 func _show_tower_details() -> void:
 	var tower: Dictionary = sim.state.towers.get(selected, {})
@@ -1496,10 +1556,7 @@ func _show_status_help() -> void:
 		var label: Label = UIKit.label(StatusInfo.tooltip(PackedStringArray([key])), 20, StatusInfo.accent(StatusInfo.title(key)), true)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
-	body.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true))
-
-func _open_legend() -> void:
-	_show_legend()
+	body.add_child(UIKit.button(DataDB.text("close"), _close_reference, true))
 
 func _select_legend_element(element: String) -> void:
 	legend_element = element
@@ -1514,10 +1571,19 @@ func _show_legend() -> void:
 	overview.filter_changed.connect(func(element: String) -> void: legend_element = element)
 	overview.build_requested.connect(_begin_catalog_build)
 	overview.configure(sim, legend_element, wide, get_viewport_rect().size.y)
-	body.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true, 48))
+	body.add_child(UIKit.button(DataDB.text("close"), _close_reference, true, 48))
+
+func _close_reference() -> void:
+	if paused:
+		_show_pause()
+	else:
+		_close_overlay()
 
 func _begin_catalog_build(kind: String, pure: bool) -> void:
-	_close_overlay()
+	if paused:
+		_resume()
+	else:
+		_close_overlay()
 	fuse_origin = ""
 	move_origin = ""
 	upgrade_slot = ""
@@ -1578,7 +1644,7 @@ func _update_fuse_button() -> void:
 		return
 	var label: String = DataDB.text("fusion_action")
 	var reason: String = ""
-	if int(tower.level) < int(sim.cfg.fuse_min_level):
+	if tower.kind == "pure" and int(tower.level) < int(sim.cfg.fuse_min_level):
 		reason = DataDB.text("requires_fuse_level") % sim.cfg.fuse_min_level
 	elif _fusion_options(selected).is_empty():
 		reason = DataDB.text("fusion_partner_help") % sim.cfg.fuse_min_level
@@ -1624,18 +1690,29 @@ func _show_fusion(partner: String) -> void:
 	_comparison_card(compare, result, rule.name, true, true)
 	var matchups := PackedStringArray()
 	var wave: Dictionary = sim.preview(sim.state.wave)
-	var groups: Array = wave.groups.duplicate()
+	var groups: Array = wave.bosses + wave.groups
 	if not wave.spirit.is_empty():
 		groups.append(wave.spirit)
 	var seen: Array[String] = []
 	for group: Dictionary in groups:
-		if seen.has(group.element) or float(rule.rate) <= 0:
+		var heading: String = group.element.capitalize() if group.element != "none" else DataDB.text("neutral")
+		if group.kind == "boss":
+			heading = StatusInfo.enemy_name(group)
+		if seen.has(heading) or float(rule.rate) <= 0:
 			continue
-		seen.append(group.element)
-		var value: float = Damage.blend(rule.split, group.element)
-		if rule.effect.has("adaptive"):
-			value = maxf(Damage.matchup("light", group.element), Damage.matchup("dark", group.element))
-		matchups.append("%s ×%.2f" % [group.element.capitalize() if group.element != "none" else DataDB.text("neutral"), value])
+		seen.append(heading)
+		var forms: PackedStringArray = group.get("forms", PackedStringArray())
+		if forms.size() > 1:
+			var form_matchups := PackedStringArray()
+			var form_profile: Dictionary = group.duplicate()
+			for form: String in forms:
+				form_profile.element = form
+				var form_value: float = Damage.against(rule.split, form_profile, rule.effect.has("adaptive"))
+				form_matchups.append("%s ×%.2f" % [form.capitalize(), form_value])
+			matchups.append("%s (%s)" % [heading, ", ".join(form_matchups)])
+			continue
+		var value: float = Damage.against(rule.split, group, rule.effect.has("adaptive"))
+		matchups.append("%s ×%.2f" % [heading, value])
 	if not matchups.is_empty():
 		body.add_child(UIKit.label(DataDB.text("fusion_matchup") % " / ".join(matchups), 16, UIKit.MUTED, true))
 	var controls: HBoxContainer = UIKit.row()
@@ -1655,8 +1732,15 @@ func _show_pause() -> void:
 		_checkpoint()
 	paused = true
 	field.animation_paused = true
-	var body: VBoxContainer = _dialog(DataDB.text("paused"), 485)
+	var body: VBoxContainer = _dialog("", 485)
 	overlay_type = "pause"
+	var references: HBoxContainer = UIKit.row(8)
+	var title: Label = UIKit.label(DataDB.text("game_menu"), 32)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	references.add_child(title)
+	references.add_child(UIKit.icon_button("info", DataDB.text("status_help"), _show_status_help))
+	references.add_child(UIKit.icon_button("book", DataDB.text("legend"), _show_legend))
+	body.add_child(references)
 	body.add_child(UIKit.button(DataDB.text("resume"), _resume, true, 76))
 	body.add_child(UIKit.toggle_row("Music", profile.music, _toggle_music))
 	body.add_child(UIKit.toggle_row("Sound effects", profile.sound, _toggle_sound))

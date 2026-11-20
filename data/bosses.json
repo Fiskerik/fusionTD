@@ -2,20 +2,24 @@
   "order": [
     "warlock",
     "ram",
-    "necromancer"
+    "necromancer",
+    "prismheart",
+    "tempest",
+    "ironwood"
   ],
   "spawn_tick": 60,
-  "normal_count": 0.6,
+  "health_adjustment": {"from": 20, "multiplier": 0.8},
+  "control_resistance": 0.5,
   "gold": [
     225,
     15
   ],
   "warlock": {
     "name": "Warlock",
+    "element": "fire",
     "hp_mult": 12,
     "armor": 10,
     "speed": 0.5,
-    "slow_cap": 0.3,
     "period": 300,
     "telegraph": 60,
     "stun": 180,
@@ -23,20 +27,48 @@
   },
   "ram": {
     "name": "Ram Captain",
-    "hp_mult": 11,
+    "element": "electric",
+    "hp_mult": 8.5,
     "armor": 25,
-    "speed": 0.4,
-    "slow_cap": 0
+    "speed": 1.4,
+    "turn_seconds": 3.0
   },
   "necromancer": {
     "name": "Necromancer",
+    "element": "dark",
     "hp_mult": 11,
     "armor": 10,
     "speed": 0.5,
-    "slow_cap": 0.3,
-    "period": 240,
-    "count": 4,
-    "cap": 12,
+    "period": 300,
+    "count": 2,
+    "cap": 4,
     "hp": 0.5
+  },
+  "prismheart": {
+    "name": "Prismheart",
+    "element": "none",
+    "hp_mult": 12,
+    "armor": 12,
+    "speed": 0.55,
+    "morph_seconds": 5.0,
+    "same_element_damage": 0.65
+  },
+  "tempest": {
+    "name": "Stormwing",
+    "element": "water",
+    "weakness": "electric",
+    "hp_mult": 10,
+    "armor": 8,
+    "speed": 0.74
+  },
+  "ironwood": {
+    "name": "Ironwood Engine",
+    "element": "none",
+    "weakness": "normal",
+    "elemental_damage": 0.5,
+    "neutral_damage": 2.0,
+    "hp_mult": 10,
+    "armor": 20,
+    "speed": 0.48
   }
 }

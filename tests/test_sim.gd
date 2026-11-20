@@ -31,22 +31,27 @@ func test_matchups_and_armor() -> void:
 	near(Damage.hit(20, 12, .5, 2, .25), 21)
 
 func test_wave_generation_and_preview() -> void:
-	var orders: Array = ["warlock", "ram", "necromancer"]
+	var orders: Array = ["warlock", "ram", "necromancer", "prismheart", "tempest", "ironwood"]
 	var last_family: String = ""
-	for index: int in range(40):
+	for index: int in range(60):
 		var wave: int = index + 1
 		var output: Dictionary = Waves.generate(42, wave)
 		equal(output, Waves.generate(42, wave))
-		check(output.groups[0].family != last_family, "Each consecutive regular wave has a different enemy family")
-		last_family = output.groups[0].family
 		if wave % 10 == 0:
-			equal(output.boss.boss_type, orders[int(float(wave) / 10.0 - 1) % 3])
+			check(output.groups.is_empty(), "Bosses spawn without a regular escort")
+			equal(output.boss.boss_type, orders[int(float(wave) / 10.0 - 1)])
 			equal(output.boss.gold, 225 + 15 * wave)
+			if output.boss.has("weakness"):
+				check((DataDB.ELEMENTS + ["normal"]).has(output.boss.weakness))
+				near(Damage.against({output.boss.weakness: 1.0}, output.boss, false), Damage.weakness_multiplier(output.boss))
 		else:
 			check(output.boss.is_empty())
+			check(output.groups[0].family != last_family, "Each consecutive regular wave has a different enemy family")
+			last_family = output.groups[0].family
 		for group: Dictionary in output.groups:
 			if wave < 6:
 				equal(group.element, "none")
+				check(not group.has("weakness"))
 			if wave < 16:
 				check(group.element not in ["light", "dark"])
 	var sim := Sim.new()
@@ -60,13 +65,50 @@ func test_wave_generation_and_preview() -> void:
 		total += int(group.count)
 	equal(sim.state.spawn_queue.size(), total)
 
+func test_wave_weaknesses_vary_by_seed_and_stay_fixed_in_combat() -> void:
+	var neutral_rolls: Dictionary = {}
+	var boss_rolls: Dictionary = {}
+	for seed_value: int in range(1, 25):
+		var by_affinity: Dictionary = {}
+		for group: Dictionary in Waves.generate(seed_value, 18).groups:
+			check(DataDB.ELEMENTS.has(group.weakness))
+			check(group.weakness != group.element)
+			equal(group.weakness, by_affinity.get(group.element, group.weakness))
+			by_affinity[group.element] = group.weakness
+		neutral_rolls[by_affinity.none] = true
+		boss_rolls[Waves.generate(seed_value, 20).boss.weakness] = true
+	check(neutral_rolls.size() > 1 and boss_rolls.size() > 1, "Regular and boss weaknesses vary across campaign seeds")
+	var sim := Sim.new(42)
+	sim.state.wave = 18
+	var forecast: Dictionary = sim.preview(18)
+	check(sim.apply({"type": "start_wave"}).ok)
+	while sim.state.mobs.is_empty():
+		sim.step()
+	equal(sim.state.mobs[0].weakness, forecast.groups[0].weakness)
+	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	equal(restored.state.mobs[0].weakness, forecast.groups[0].weakness)
+	equal(restored.preview(18), forecast)
+	var before_rollout: Dictionary = SaveStore.encode(sim).duplicate(true)
+	before_rollout.state.erase("wave_has_rolled_weaknesses")
+	for enemy: Dictionary in before_rollout.state.mobs:
+		enemy.erase("weakness")
+	for entry: Dictionary in before_rollout.state.spawn_queue:
+		entry.group.erase("weakness")
+	var legacy: Sim = SaveStore.decode(before_rollout)
+	check(not legacy.preview(18).groups[0].has("weakness"), "In-progress legacy waves keep their original matchups")
+	check(legacy.preview(19).groups[0].has("weakness"))
+	var spirit: Dictionary = Waves.generate(42, 18, {"element": "fire", "tier": 2}).spirit
+	check(not spirit.has("weakness"))
+	equal(Damage.weakness(spirit), "water")
+
 func test_endgame_wave_budget_and_boss_lineup() -> void:
 	var families: Dictionary = {}
 	for wave: int in range(20, 111):
 		var preview: Dictionary = Waves.generate(42, wave)
 		for group: Dictionary in preview.groups:
-			families[group.family] = true
-			check(DataDB.read("mobs").families[group.family].appears_from <= wave)
+			if group.kind != "bonus":
+				families[group.family] = true
+				check(DataDB.read("mobs").families[group.family].appears_from <= wave)
 		if wave <= 60:
 			continue
 		var total: int = preview.bosses.size()
@@ -96,7 +138,7 @@ func test_legacy_active_wave_gains_tenacity_on_resume() -> void:
 	var sim := Sim.new()
 	sim.state.wave = 80
 	sim.state.phase = "wave"
-	var group: Dictionary = Waves.generate(42, 80).groups[0].duplicate()
+	var group: Dictionary = Waves.generate(42, 81).groups[0].duplicate()
 	group.erase("control_resistance")
 	group.erase("armor_rank")
 	Combat.spawn(sim, group, 6.0)
@@ -121,6 +163,8 @@ func test_later_enemy_formations_mix_elements_and_pressure() -> void:
 		var speeds: Dictionary = {}
 		var armors: Dictionary = {}
 		for group: Dictionary in formation.groups:
+			if group.kind == "bonus":
+				continue
 			if group.element != "none":
 				elements[group.element] = true
 			speeds[group.speed] = true
@@ -133,6 +177,19 @@ func test_later_enemy_formations_mix_elements_and_pressure() -> void:
 				check(float(group.speed) > 1.3 and float(group.hp) < Waves.base_enemy_hp(11) * .75)
 		equal(elements.size(), 2)
 		check(speeds.size() > 1 and armors.size() > 1)
+
+func test_wave_20_boss_health_reduction() -> void:
+	var adjustment: Dictionary = DataDB.read("bosses").health_adjustment
+	var multiplier: float = adjustment.multiplier
+	for wave: int in [10, 20, 30, 70, 90]:
+		var reduced: Dictionary = Waves.generate(42, wave)
+		adjustment.multiplier = 1.0
+		var original: Dictionary = Waves.generate(42, wave)
+		adjustment.multiplier = multiplier
+		equal(reduced.groups, original.groups)
+		equal(reduced.bosses.size(), original.bosses.size())
+		for i: int in range(reduced.bosses.size()):
+			near(float(reduced.bosses[i].hp) / float(original.bosses[i].hp), 1.0 if wave == 10 else .8)
 
 func test_wave_10_health_increase_keeps_enemy_counts() -> void:
 	var boost: Dictionary = DataDB.read("waves").health_boost
@@ -465,8 +522,8 @@ func test_all_twenty_triples_and_third_element_rules() -> void:
 		var elements: Array = DataDB.read("triples")[id].elements
 		var sim := Sim.new(33)
 		sim.state.gold = 3000
-		sim.state.tiers[elements[0]] = 2
-		sim.state.tiers[elements[1]] = 2
+		sim.state.tiers[elements[0]] = 1
+		sim.state.tiers[elements[1]] = 1
 		sim.state.tiers[elements[2]] = 1
 		var dual: Dictionary = TowerRules.fusion_result(TowerRules.recipe(elements[0], elements[1]), "s1", 1, 500)
 		var pure: Dictionary = TowerRules.create(2, "s2", "pure", elements[2], "", 145)
@@ -474,9 +531,6 @@ func test_all_twenty_triples_and_third_element_rules() -> void:
 		sim.state.towers = {"s1": dual, "s2": pure}
 		sim.state.next_id = 3
 		dual.level = 1
-		pure.level = 2
-		check(not sim.apply(action).ok, "Dual must reach tower level 2")
-		dual.level = 2
 		pure.level = 1
 		check(not sim.apply(action).ok, "Third ingredient must reach tower level 2")
 		pure.level = 2
@@ -490,7 +544,8 @@ func test_all_twenty_triples_and_third_element_rules() -> void:
 		check(not sim.state.towers.has("s2"))
 		check(TowerRules.attack_profile(result).damage > 0.0)
 		check(not TowerRules.level_requirement(result, sim.state.tiers).is_empty(), "All three Tier II unlocks gate triple level 2")
-		sim.state.tiers[elements[2]] = 2
+		for element: String in elements:
+			sim.state.tiers[element] = 2
 		check(sim.apply({"type": "upgrade", "slot": "s1"}).ok)
 		check(not TowerRules.level_requirement(result, sim.state.tiers).is_empty(), "All Tier III unlocks gate triple level 3")
 		var loaded: Sim = SaveStore.decode(SaveStore.encode(sim))

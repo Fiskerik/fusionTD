@@ -1,11 +1,14 @@
 class_name MobArt
 extends RefCounted
 
-const BONE: Color = Color("#fbecce")
-const EYES: Color = Color("#392e36")
-
 const CREATURES: Texture2D = preload("res://assets/woodland/creatures.png")
 const GRIM_CREATURES: Texture2D = preload("res://assets/woodland/grim_creatures.webp")
+const BOSSES: Texture2D = preload("res://assets/woodland/bosses.webp")
+const BOSS_CELLS: Dictionary = {"warlock": 0, "ram": 1, "necromancer": 2, "tempest": 3, "ironwood": 4}
+const BOSS_CELL: int = 192
+const PRISMHEART: Texture2D = preload("res://assets/woodland/prismheart.webp")
+const PRISMHEART_FORMS: Array[String] = ["none", "fire", "water", "nature", "electric", "light", "dark"]
+const PRISMHEART_CELL: int = 192
 const CELLS: Dictionary = {"acorn": 0, "beetle": 1, "hare": 2, "guard": 3, "cap": 4, "moth": 5, "boar": 6, "drake": 7}
 const GAITS: Dictionary = {"acorn": "hop", "hare": "hop", "cap": "hop", "moth": "fly", "guard": "lumber", "boar": "lumber"}
 const ARMOR: Array[Color] = [Color("#c28b53"), Color("#b4cbd4"), Color("#e2b969"), Color("#bba1ef")]
@@ -13,8 +16,7 @@ const CAMPAIGN_TINTS: Array[Color] = [Color("#ddc397"), Color("#9fb9d9"), Color(
 
 static func draw(canvas: CanvasItem, enemy: Dictionary, p: Vector2, direction: Vector2, r: float, tint: Color, distance: float, clock: float, impact: float = 0.0) -> void:
 	if enemy.kind == "boss":
-		_boss(canvas, enemy.boss_type, p - direction * impact * .045, r, direction, clock, distance)
-		_draw_armor(canvas, p, r, int(enemy.get("armor_rank", 0)), clock)
+		_boss(canvas, enemy, p - direction * impact * .045, r, direction, clock, distance)
 		return
 	var family: String = enemy.get("family", "acorn")
 	var entry: Dictionary = DataDB.read("mobs").families.get(family, {})
@@ -83,66 +85,84 @@ static func _draw_armor(canvas: CanvasItem, p: Vector2, r: float, rank: int, clo
 	if rank >= 4:
 		canvas.draw_arc(p + Vector2(0, r * .58), r * .88, .15, PI - .15, 16, Color(metal, .68 + .17 * sin(clock * 6.0)), r * .12, true)
 
-static func _boss(canvas: CanvasItem, id: String, p: Vector2, r: float, forward: Vector2, clock: float, distance: float) -> void:
-	var side: Vector2 = forward.orthogonal()
-	match id:
+static func _boss(canvas: CanvasItem, enemy: Dictionary, p: Vector2, r: float, forward: Vector2, clock: float, distance: float) -> void:
+	var boss_type: String = enemy.boss_type
+	if boss_type == "prismheart":
+		draw_prismheart(canvas, enemy.element, p, r, clock)
+		return
+	var up: Vector2 = forward if boss_type in ["ram", "tempest", "ironwood"] and forward != Vector2.ZERO else Vector2.UP
+	var center: Vector2 = p
+	var wing_span: float = 1.0
+	match boss_type:
 		"warlock":
-			var center: Vector2 = p - Vector2(0,.12 + .09 * sin(clock * 4.7)) * r
-			var ink := Color("#4a294b")
-			_shape(canvas, center, forward, r, [Vector2(-1.29,-.86),Vector2(-.20,-.51),Vector2(.71,-.63),
-				Vector2(1.03,-.14),Vector2(.81,.51),Vector2(-.22,.76),Vector2(-1.28,.90),Vector2(-.96,.06)], ink)
-			_oval(canvas, center, forward, Vector2(.77,.67) * r, Color("#b95a82"))
-			_oval(canvas, center + forward * .28 * r, forward, Vector2(.51,.44) * r, Color("#432936"))
-			_face(canvas, center + forward * .42 * r, forward, side, r, Color("#ffef9a"))
-			var staff: Vector2 = center + side * r * 1.02
-			canvas.draw_line(staff - forward * r * .74, staff + forward * r * .52, Color("#7e5242"), r * .17)
-			canvas.draw_circle(staff + forward * r * .53, r * .28, Color("#ed88d1", .62 + sin(clock * 8) * .22))
-			canvas.draw_circle(staff + forward * r * .53, r * .12, BONE)
+			center.y -= r * (.09 + sin(clock * 4.7) * .08)
+			if not enemy.get("telegraph", {}).is_empty():
+				var staff: Vector2 = center + Vector2(.93, -.88) * r
+				canvas.draw_circle(staff, r * (.19 + .06 * sin(clock * 13.0)), Color("#fa8dde", .44), true, -1, true)
+		"necromancer":
+			center.y -= r * (.12 + sin(clock * 3.6) * .10)
+			if distance > 0.0:
+				for i: int in range(2):
+					var orbit: Vector2 = Vector2.from_angle(clock * 1.65 + PI * i)
+					var wisp: Vector2 = center + orbit * Vector2(1.52, .88) * r
+					canvas.draw_circle(wisp, r * .11, Color("#8ecda8", .48), true, -1, true)
+					canvas.draw_circle(wisp, r * .045, Color("#e9ffbb"), true, -1, true)
 		"ram":
-			var ink := Color("#464d55")
-			var gait: float = sin(distance * 16)
-			_legs(canvas, p, forward, side, r, ink, Color("#9da7a7"), gait, 2)
-			_body(canvas, p, forward, 1.05, .96, r, Color("#a1aaa4"), ink)
-			_oval(canvas, p + forward * r * .41, forward, Vector2(.67,.58) * r, Color("#6f8285"))
-			for sign_x: float in [-1., 1.]:
-				var horn: Vector2 = p + side * sign_x * r * .89 + forward * r * .17
-				canvas.draw_arc(horn, r * .42, forward.angle() - 1.0, forward.angle() + 3.0, 15, ink, .27 * r)
-				canvas.draw_arc(horn, r * .42, forward.angle() - .91, forward.angle() + 2.9, 15, BONE, .18 * r)
-				canvas.draw_circle(p - forward * r * .35 + side * sign_x * r * .62, r * .10, Color("#e7bd77"))
-			_face(canvas, p + forward * .71 * r, forward, side, r, Color("#74483f"))
-		_:
-			var center: Vector2 = p - Vector2(0,.11 + sin(clock * 3.8) * .11) * r
-			var ink := Color("#304654")
-			_shape(canvas, center, forward, r, [Vector2(-1.35,-.66),Vector2(-.64,-.51),Vector2(.12,-.82),
-				Vector2(.85,-.54),Vector2(1.03,0),Vector2(.86,.58),Vector2(.08,.82),Vector2(-.57,.51),Vector2(-1.38,.71)], ink)
-			canvas.draw_arc(center, 1.04 * r, clock, clock + PI * 1.65, 26, Color("#6fb999",.65), r * .11)
-			_oval(canvas, center + forward * .24 * r, forward, Vector2(.67,.59) * r, BONE)
-			_face(canvas, center + forward * .48 * r, forward, side, r, Color("#297665"))
-			for i: int in range(3):
-				var wisp: Vector2 = center + Vector2.from_angle(-clock * 1.4 + TAU * i / 3.0) * r * 1.20
-				canvas.draw_circle(wisp, r * .15, Color("#9fe8b0",.72))
-				canvas.draw_circle(wisp, r * .07, Color("#efffbd"))
+			center -= up * (1.0 - cos(distance * 21.0)) * r * .026
+		"tempest":
+			wing_span = .86 + .14 * sin(clock * 12.0)
+		"ironwood":
+			center += up * sin(distance * 32.0) * r * .032
+			if distance > 0.0:
+				for i: int in range(2):
+					var drift: float = fposmod(clock * 1.5 + float(i) * .5, 1.0)
+					var smoke: Vector2 = center - up * r * (.92 + drift * .85)
+					canvas.draw_circle(smoke, r * (.09 + drift * .15), Color("#aa886a", (1.0 - drift) * .34), true, -1, true)
+	_painted_boss(canvas, boss_type, center, r, up, wing_span)
 
-static func _face(canvas: CanvasItem, p: Vector2, forward: Vector2, side: Vector2, r: float, color: Color) -> void:
-	for sign_x: float in [-1., 1.]:
-		var eye: Vector2 = p + side * sign_x * r * .27
-		canvas.draw_circle(eye, maxf(.027,r * .123), color)
-		canvas.draw_circle(eye - Vector2(.023,.028), r * .041, BONE)
-	var nose: Vector2 = p + forward * r * .24
-	canvas.draw_line(nose - side * .09 * r, nose + side * .09 * r, color, .07 * r)
+static func _painted_boss(canvas: CanvasItem, boss_type: String, center: Vector2, r: float, up: Vector2, wing_span: float) -> void:
+	var index: int = int(BOSS_CELLS.get(boss_type, 0))
+	var atlas_size: Vector2 = BOSSES.get_size()
+	var uv_origin: Vector2 = Vector2(index % 3, index / 3) * BOSS_CELL / atlas_size
+	var uv_size: Vector2 = Vector2.ONE * BOSS_CELL / atlas_size
+	var across: Vector2 = Vector2(-up.y, up.x) * r * 3.18
+	var down: Vector2 = -up * r * 3.18
+	var columns := PackedFloat32Array([0.0, .30, .70, 1.0] if boss_type == "tempest" else [0.0, 1.0])
+	var upper := PackedVector2Array()
+	var lower := PackedVector2Array()
+	# Keep Stormwing's torso fixed while its outer wing sections fold toward it.
+	for column: float in columns:
+		var x: float = column - .5
+		var wing_tip: bool = boss_type == "tempest" and absf(x) > .49
+		var sweep: float = (1.0 - wing_span) * .34 if wing_tip else 0.0
+		if wing_tip:
+			x *= wing_span
+		upper.append(center + across * x + down * (-.5 + sweep))
+		lower.append(center + across * x + down * (.5 + sweep))
+	for i: int in range(columns.size() - 1):
+		var points := PackedVector2Array([upper[i], upper[i + 1], lower[i + 1], lower[i]])
+		var left: Vector2 = uv_origin + Vector2(columns[i] * uv_size.x, 0)
+		var right: Vector2 = uv_origin + Vector2(columns[i + 1] * uv_size.x, 0)
+		var vertical := Vector2(0, uv_size.y)
+		var uv := PackedVector2Array([left, right, right + vertical, left + vertical])
+		canvas.draw_polygon(points, PackedColorArray([Color.WHITE]), uv, BOSSES)
 
-static func _legs(canvas: CanvasItem, p: Vector2, forward: Vector2, side: Vector2, r: float, ink: Color, tint: Color, gait: float, pairs: int) -> void:
-	for index: int in range(pairs):
-		for sign_x: float in [-1., 1.]:
-			var swing: float = sign_x * gait * .26
-			var foot: Vector2 = p + (side * sign_x * .72 + forward * (.55 - index * .54 + swing)) * r
-			canvas.draw_circle(foot, r * .25, ink)
-			canvas.draw_circle(foot - Vector2(0,.022), r * .165, tint.darkened(.25))
+static func draw_prismheart(canvas: CanvasItem, form: String, p: Vector2, r: float, clock: float,
+		previous_form: String = "", transition: float = 1.0) -> void:
+	var pivot: Vector2 = p + Vector2(0, -.15 + sin(clock * 4.5) * .11) * r
+	var blend: float = smoothstep(0.0, 1.0, transition)
+	if not previous_form.is_empty() and blend < 1.0:
+		_prismheart_sprite(canvas, previous_form, pivot, r * lerpf(1.0, 1.18, blend), clock, 1.0 - blend)
+	_prismheart_sprite(canvas, form, pivot, r * lerpf(.85, 1.0, blend), clock, blend)
 
-static func _body(canvas: CanvasItem, p: Vector2, direction: Vector2, length: float, width: float, r: float, tint: Color, ink: Color) -> void:
-	_oval(canvas,p,direction,Vector2(length,width) * r,ink)
-	_oval(canvas,p - Vector2(0,r * .075),direction,Vector2(length * .86,width * .81) * r,tint)
-	canvas.draw_circle(p - direction * r * .28 - Vector2(0,r * .29), r * .14, tint.lightened(.47))
+static func _prismheart_sprite(canvas: CanvasItem, form: String, pivot: Vector2, r: float, clock: float, opacity: float) -> void:
+	var index: int = maxi(0, PRISMHEART_FORMS.find(form))
+	var cell := Vector2(PRISMHEART_CELL, PRISMHEART_CELL)
+	var source := Rect2(Vector2(index % 4, index / 4) * cell, cell)
+	var breath: float = sin(clock * (3.7 if form == "water" else 5.7)) * .025
+	var span: Vector2 = Vector2(1.0 + breath, 1.0 - breath) * r * 3.4
+	var target := Rect2(pivot - span * Vector2(.5, 100.0 / PRISMHEART_CELL), span)
+	canvas.draw_texture_rect_region(PRISMHEART, target, source, Color(1.0, 1.0, 1.0, opacity))
 
 static func _shape(canvas: CanvasItem, p: Vector2, direction: Vector2, r: float, points: Array[Vector2], tint: Color) -> void:
 	var geometry := PackedVector2Array()
@@ -150,11 +170,3 @@ static func _shape(canvas: CanvasItem, p: Vector2, direction: Vector2, r: float,
 	for point: Vector2 in points:
 		geometry.append(p + (direction * point.x + side * point.y) * r)
 	canvas.draw_colored_polygon(geometry,tint)
-
-static func _oval(canvas: CanvasItem, p: Vector2, direction: Vector2, radius: Vector2, tint: Color) -> void:
-	var points := PackedVector2Array()
-	var side: Vector2 = direction.orthogonal()
-	for i: int in range(16):
-		var angle: float = TAU * i / 16.0
-		points.append(p + direction * cos(angle) * radius.x + side * sin(angle) * radius.y)
-	canvas.draw_colored_polygon(points,tint)

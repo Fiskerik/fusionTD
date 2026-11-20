@@ -66,3 +66,14 @@ func at(distance: float) -> Vector2:
 		if s <= lengths[index]:
 			return points[index - 1].lerp(points[index], (s - lengths[index - 1]) / (lengths[index] - lengths[index - 1]))
 	return points[-1]
+
+func corner_crossed(from: float, to: float) -> int:
+	for index: int in range(1, points.size() - 1):
+		if lengths[index] > to:
+			break
+		if lengths[index] > from:
+			var incoming: Vector2 = points[index] - points[index - 1]
+			var outgoing: Vector2 = points[index + 1] - points[index]
+			if not is_zero_approx(incoming.cross(outgoing)):
+				return index
+	return -1

@@ -191,7 +191,7 @@ func _spend(sim: Sim) -> void:
 func _fuse(sim: Sim, reserve: int) -> void:
 	for origin: String in site_order:
 		var dual: Dictionary = sim.state.towers.get(origin, {})
-		if dual.get("kind") != "dual" or int(dual.level) < int(sim.cfg.fuse_min_level):
+		if dual.get("kind") != "dual":
 			continue
 		for site: String in site_order:
 			if _purchase(sim, {"type": "fuse", "slot_a": origin, "slot_b": site}, maxi(reserve, 100)):

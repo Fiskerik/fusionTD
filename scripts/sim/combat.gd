@@ -17,6 +17,11 @@ static func advance(sim: RefCounted) -> void:
 	var ice: Dictionary = sim.ice_tiles()
 	var cutoff: int = int(sim.state.tick) - Effects.ticks(sim.cfg.disease_lookback, sim.hz)
 	for enemy: Dictionary in enemies:
+		if enemy.boss_type == "prismheart":
+			var previous_form: String = enemy.element
+			EnemyRules.update_form(enemy, sim.state.tick, sim.hz)
+			if enemy.element != previous_form:
+				sim.emit_event("boss_morphed")
 		var phased: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
 		Damage.expire_history(enemy, cutoff)
 		Effects.tick(enemy, sim.hz, phased, by_id, sim.state.tick)
@@ -26,8 +31,7 @@ static func advance(sim: RefCounted) -> void:
 		if not ice.is_empty() or enemy.has("on_ice"):
 			var tile := Vector2i(sim.track.at(old).floor())
 			skid = Effects.ice_speed(enemy, {} if phased else ice.get(tile, {}))
-		if int(enemy.freeze_time) == 0 and int(enemy.root_time) == 0:
-			enemy.s += float(enemy.speed) * (1.0 - float(enemy.slow)) * skid / sim.hz
+		EnemyRules.move(enemy, sim.track, sim.hz, skid)
 		points[enemy.id] = sim.track.at(enemy.s)
 		if enemy.kind == "boss" and float(enemy.hp) > 0:
 			_boss(sim, enemy, points[enemy.id], towers)
@@ -98,6 +102,7 @@ static func _attack(sim: RefCounted, tower: Dictionary, towers: Array, candidate
 				break
 			victims.append(last)
 	var split: Dictionary = TowerRules.damage_split(tower)
+	var adaptive: bool = trait_profile.has("adaptive")
 	var pierce: float = minf(0.9, float(trait_profile.get("pierce", 0.0)) * potency)
 	var previous: Dictionary = {}
 	for index: int in range(victims.size()):
@@ -108,14 +113,13 @@ static func _attack(sim: RefCounted, tower: Dictionary, towers: Array, candidate
 			scale = pow(falloff, index - area_count + 1)
 		elif index > 0 and not pulse and anchor.distance_squared_to(points[victim.id]) > float(profile.splash_core) ** 2:
 			scale = float(profile.splash_fringe)
-		var multiplier: float = Damage.blend(split, victim.element)
-		if trait_profile.has("adaptive"):
-			multiplier = maxf(Damage.matchup("light", victim.element), Damage.matchup("dark", victim.element))
+		var multiplier: float = Damage.against(split, victim, adaptive)
 		var adjusted: float = raw * multiplier * scale
 		if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
 			victim.silence_time = Effects.ticks(trait_profile.silence, sim.hz)
 		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick)
-		Effects.apply(victim, trait_profile, potency, infused, tower.hits, adjusted, sim.hz, tower.id)
+		var effect_base: float = raw * scale if Damage.has_special_resistances(victim) else adjusted
+		Effects.apply(victim, trait_profile, potency, infused, tower.hits, effect_base, sim.hz, tower.id)
 		var style: String = "bolt"
 		if pulse:
 			style = "pulse" if previous.is_empty() else "impact"

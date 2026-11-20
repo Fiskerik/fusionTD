@@ -2,7 +2,7 @@ class_name EnemyRules
 extends RefCounted
 
 static func create(id: int, group: Dictionary, distance: float, born: int) -> Dictionary:
-	return {
+	var enemy := {
 		"id": id, "kind": group.kind, "element": group.element, "tier": int(group.get("tier", 0)),
 		"props": group.props, "hp": float(group.hp), "max_hp": float(group.hp), "armor": float(group.armor),
 		"speed": float(group.speed), "s": distance, "prev_s": distance, "gold": int(group.gold),
@@ -14,6 +14,47 @@ static func create(id: int, group: Dictionary, distance: float, born: int) -> Di
 		"armor_rank": int(group.get("armor_rank", 0)), "control_resistance": float(group.get("control_resistance", 0.0)),
 		"heal_aura": bool(group.get("heal_aura", false)),
 	}
+	if group.has("weakness"):
+		enemy.weakness = group.weakness
+	if group.has("forms"):
+		enemy.forms = group.forms
+	if group.has("turn_seconds"):
+		enemy.turn_seconds = group.turn_seconds
+	return enemy
+
+static func airborne(enemy: Dictionary) -> bool:
+	return enemy.get("boss_type", "") == "tempest"
+
+static func update_form(enemy: Dictionary, tick: int, hz: float) -> void:
+	var forms: PackedStringArray = enemy.get("forms", PackedStringArray())
+	if forms.size() < 2:
+		return
+	var period: int = morph_period(hz)
+	var index: int = ((tick - int(enemy.born)) / period) % forms.size()
+	enemy.element = forms[index]
+
+static func morph_period(hz: float) -> int:
+	return Effects.ticks(DataDB.read("bosses").prismheart.morph_seconds, hz)
+
+static func move(enemy: Dictionary, track: Track, hz: float, skid: float) -> void:
+	if enemy.has("corner"):
+		enemy.turn_left -= 1
+		if int(enemy.turn_left) > 0:
+			return
+		enemy.erase("corner")
+		enemy.erase("turn_left")
+	if int(enemy.freeze_time) > 0 or int(enemy.root_time) > 0:
+		return
+	var from: float = enemy.s
+	var to: float = from + float(enemy.speed) * (1.0 - float(enemy.slow)) * skid / hz
+	if enemy.has("turn_seconds"):
+		var corner: int = track.corner_crossed(from, to)
+		if corner >= 0:
+			enemy.s = track.lengths[corner]
+			enemy.corner = corner
+			enemy.turn_left = Effects.ticks(enemy.turn_seconds, hz)
+			return
+	enemy.s = to
 
 static func armor_rank(wave: int) -> int:
 	return mini(4, wave / 20)
@@ -29,8 +70,14 @@ static func apply_wave_traits(enemy: Dictionary, wave: int) -> void:
 		enemy.armor_rank = armor_rank(wave)
 	if not enemy.has("control_resistance") and enemy.kind != "boss":
 		enemy.control_resistance = control_resistance(wave)
-	if enemy.kind == "boss" and not enemy.has("heal_aura"):
-		enemy.heal_aura = enemy.boss_type == "necromancer" and wave > int(DataDB.read("waves").late_game.after)
+	if enemy.kind == "boss":
+		var bosses: Dictionary = DataDB.read("bosses")
+		if enemy.element == "none":
+			enemy.element = bosses[enemy.boss_type].element
+			enemy.slow_cap = float(DataDB.read("mobs").slow_cap)
+			enemy.control_resistance = float(bosses.control_resistance)
+		if not enemy.has("heal_aura"):
+			enemy.heal_aura = enemy.boss_type == "necromancer" and wave > int(DataDB.read("waves").late_game.after)
 
 static func from_enemy(enemy: Dictionary) -> Dictionary:
 	var group: Dictionary = enemy.duplicate()

@@ -6,7 +6,6 @@ var track := Track.new()
 var cfg: Dictionary = DataDB.read("balance")
 var hz: float = float(cfg.sim_hz)
 var intermission_left: float = float(cfg.intermission_seconds)
-var intermission_paused: bool = false
 var events: Array[Dictionary] = []
 var history: Array[Dictionary] = []
 var undo_stack: Array[Dictionary] = []
@@ -17,6 +16,8 @@ func _init(seed_value: int = 1) -> void:
 		tiers[element] = 0
 	state = {
 		"seed": seed_value, "tick": 0, "wave_tick": 0, "phase": "build", "wave": 1,
+		"wave_has_rolled_weaknesses": true,
+		"wave_uses_expanded_boss_roster": true,
 		"lives": int(cfg.start_lives), "barrier": 0, "gold": int(cfg.start_gold), "next_id": 1,
 		"towers": {}, "mobs": [], "spawn_queue": [], "tiers": tiers, "trial": {},
 		"selection_pending": false, "rally_cd": 0, "stats": {"kills": 0, "spirits": 0, "fusions": 0, "leaked": 0},
@@ -36,7 +37,22 @@ func step() -> void:
 		_finish_wave()
 
 func preview(wave: int, include_trial: bool = true) -> Dictionary:
-	return Waves.generate(state.seed, wave, state.trial if include_trial and wave == int(state.wave) else {})
+	var current: bool = wave == int(state.wave)
+	var trial: Dictionary = state.trial if include_trial and current else {}
+	var current_active: bool = current and state.phase == "wave"
+	var wave_data: Dictionary = Waves.generate(state.seed, wave, trial,
+		not current_active or state.wave_has_rolled_weaknesses,
+		not current_active or state.wave_uses_expanded_boss_roster)
+	for boss: Dictionary in wave_data.bosses:
+		if boss.boss_type == "prismheart":
+			var forms := PackedStringArray()
+			for element: String in DataDB.ELEMENTS:
+				if int(state.tiers[element]) > 0:
+					forms.append(element)
+			boss.forms = forms
+			if not forms.is_empty():
+				boss.element = forms[0]
+	return wave_data
 
 func choices() -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
@@ -153,7 +169,7 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = DataDB.text("select_elemental_towers")
 			elif TowerRules.fusion_recipe(tower, second).is_empty():
 				reason = DataDB.text("select_different")
-			elif min(tower.level, second.level) < int(cfg.fuse_min_level):
+			elif (tower.kind == "pure" and int(tower.level) < int(cfg.fuse_min_level)) or (second.kind == "pure" and int(second.level) < int(cfg.fuse_min_level)):
 				reason = DataDB.text("requires_fuse_level") % int(cfg.fuse_min_level)
 			cost = TowerRules.fusion_cost(tower, second)
 		"sell", "set_target":
@@ -317,6 +333,8 @@ func state_hash() -> int:
 
 func _start_wave() -> void:
 	undo_stack.clear()
+	state.wave_has_rolled_weaknesses = true
+	state.wave_uses_expanded_boss_roster = true
 	state.phase = "wave"
 	state.wave_tick = 0
 	state.rally_cd = 0
@@ -339,7 +357,6 @@ func _start_wave() -> void:
 
 func _finish_wave() -> void:
 	intermission_left = float(cfg.intermission_seconds)
-	intermission_paused = false
 	if not state.trial.is_empty():
 		state.trial = {}
 		state.phase = "build"

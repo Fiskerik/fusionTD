@@ -9,7 +9,7 @@ const RECENT_LIMIT: int = 3
 
 static func encode(sim: Sim) -> Dictionary:
 	return {"version": VERSION, "state": sim.state, "undo": sim.undo_stack, "history": sim.history,
-		"intermission_left": sim.intermission_left, "intermission_paused": sim.intermission_paused}
+		"intermission_left": sim.intermission_left}
 
 static func decode(payload: Variant) -> Sim:
 	if not payload is Dictionary or int(payload.get("version", 0)) != VERSION:
@@ -20,6 +20,10 @@ static func decode(payload: Variant) -> Sim:
 	if not state.has("barrier"):
 		state = state.duplicate()
 		state.barrier = 0
+	for key: String in ["wave_has_rolled_weaknesses", "wave_uses_expanded_boss_roster"]:
+		if not state.has(key):
+			state = state.duplicate()
+			state[key] = false
 	var sim := Sim.new(int(state.seed))
 	for key: String in sim.state:
 		if not state.has(key) or typeof(state[key]) != typeof(sim.state[key]):
@@ -30,10 +34,11 @@ static func decode(payload: Variant) -> Sim:
 	for entry: Dictionary in state.spawn_queue:
 		EnemyRules.apply_wave_traits(entry.group, int(state.wave))
 	sim.intermission_left = clampf(float(payload.get("intermission_left", sim.cfg.intermission_seconds)), 0, float(sim.cfg.intermission_seconds))
-	sim.intermission_paused = bool(payload.get("intermission_paused", false))
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
 		restored.barrier = int(restored.get("barrier", 0))
+		restored.wave_has_rolled_weaknesses = bool(restored.get("wave_has_rolled_weaknesses", false))
+		restored.wave_uses_expanded_boss_roster = bool(restored.get("wave_uses_expanded_boss_roster", false))
 		sim.undo_stack.append(restored)
 	sim.history.assign(payload.get("history", []))
 	return sim

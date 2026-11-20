@@ -60,7 +60,15 @@ class ForecastPortrait extends Control:
 		if side <= 0.0:
 			return
 		var center: Vector2 = size * .5
-		MobArt.draw(self, enemy, center, Vector2.RIGHT, side * .38, Color.WHITE, 0, 1.3)
+		if enemy.kind == "spirit":
+			var tint: Color = Glyphs.hue(enemy.element)
+			draw_circle(center, side * .32, tint.lightened(.29), true, -1, true)
+			Glyphs.draw(self, enemy.element, center, side * .21, tint.darkened(.43))
+		else:
+			if enemy.kind == "bonus":
+				draw_circle(center, side * .44, Color("#fff0ae"), true, -1, true)
+			var direction: Vector2 = Vector2.UP if enemy.kind == "boss" else Vector2.RIGHT
+			MobArt.draw(self, enemy, center, direction, side * (.31 if enemy.kind == "boss" else .38), Color.WHITE, 0, 1.3)
 
 class UtilityIcon extends Control:
 	var kind: String
@@ -86,9 +94,21 @@ class UtilityIcon extends Control:
 		elif kind == "splash":
 			for radius: float in [3.2, 6.0, 8.4]:
 				draw_arc(p + Vector2(0, 4), radius, PI * 1.14, PI * 1.86, 12, ink, 1.4, true)
-		elif kind == "pause":
-			for x: float in [-5.0, 4.0]:
-				draw_rect(Rect2(p + Vector2(x - 1.5,-8), Vector2(4,16)), ink)
+		elif kind == "menu":
+			for y: float in [-6.0, 0.0, 6.0]:
+				draw_line(p + Vector2(-9, y), p + Vector2(9, y), ink, 2.4, true)
+		elif kind == "health":
+			draw_circle(p + Vector2(-3.4, -2.3), 4.1, Color("#b9594d"), true, -1, true)
+			draw_circle(p + Vector2(3.4, -2.3), 4.1, Color("#b9594d"), true, -1, true)
+			draw_colored_polygon(PackedVector2Array([p + Vector2(-7.2, -.8), p + Vector2(7.2, -.8), p + Vector2(0, 7.1)]), Color("#b9594d"))
+		elif kind == "armor":
+			draw_colored_polygon(PackedVector2Array([p + Vector2(-6,-6), p + Vector2(6,-6), p + Vector2(5,2),
+				p + Vector2(0,8), p + Vector2(-5,2)]), ink)
+			draw_line(p + Vector2(0,-4), p + Vector2(0,4), Color("#d8eadb"), 1.3, true)
+		elif kind == "gold":
+			draw_circle(p, 7.2, UIKit.UPGRADE, true, -1, true)
+			draw_circle(p, 5.6, UIKit.GOLD, true, -1, true)
+			draw_line(p + Vector2(0, -3.4), p + Vector2(0, 3.4), UIKit.UPGRADE, 1.5, true)
 		elif kind == "info":
 			draw_arc(p, 10, 0, TAU, 26, ink, 1.9, true)
 			draw_circle(p + Vector2(0,-4), 1.30, ink, true, -1, true)

@@ -19,7 +19,7 @@ static func tick(mob: Dictionary, hz: float, invulnerable: bool = false, towers:
 	for type: String in mob.dots.keys():
 		var dot: Dictionary = mob.dots[type]
 		if not invulnerable and float(mob.hp) > 0.0:
-			_tick_dot(mob, dot, hz, towers, at_tick)
+			_tick_dot(mob, type, dot, hz, towers, at_tick)
 		dot.time -= 1
 		if int(dot.time) <= 0:
 			mob.dots.erase(type)
@@ -31,14 +31,14 @@ static func tick(mob: Dictionary, hz: float, invulnerable: bool = false, towers:
 		if int(disease.time) <= 0 and float(mob.hp) > 0.0:
 			mob.erase("disease")
 
-static func _tick_dot(mob: Dictionary, dot: Dictionary, hz: float, towers: Dictionary, at_tick: int) -> void:
+static func _tick_dot(mob: Dictionary, type: String, dot: Dictionary, hz: float, towers: Dictionary, at_tick: int) -> void:
 	var owners: Array = dot.get("owners", [])
 	var stacks: int = int(dot.stacks)
 	var first: int = -1 if owners.is_empty() else int(owners[0])
+	var per_stack: float = float(dot.dps) / hz * Damage.special_matchup("fire" if type == "burn" else "nature", mob)
 	if owners.is_empty() or owners.count(first) == stacks:
-		Damage.deal(mob, float(dot.dps) * stacks / hz, towers.get(first, {}), at_tick)
+		Damage.deal(mob, per_stack * stacks, towers.get(first, {}), at_tick)
 		return
-	var per_stack: float = float(dot.dps) / hz
 	for index: int in range(stacks):
 		var owner: int = int(owners[index]) if index < owners.size() else -1
 		Damage.deal(mob, per_stack, towers.get(owner, {}), at_tick)
@@ -52,7 +52,7 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 			var stacks: int = ceili(float(effect[0]) * potency) if infusion else roundi(float(effect[0]) * potency)
 			var spread: float = float(trait_profile.get("spread", 0.0)) if not infusion and type == "burn" else 0.0
 			add_dot(mob, type, raw * float(effect[1]) * potency, stacks, 1, ticks(duration(effect[2], potency), hz), spread, [source])
-	if trait_profile.has("slow"):
+	if trait_profile.has("slow") and mob.kind != "bonus":
 		var strength: float = minf(float(mob.slow_cap), slow_strength(trait_profile.slow[0], potency))
 		strength *= 1.0 - float(mob.get("control_resistance", 0.0))
 		timed(mob, "slow", strength, ticks(slow_duration(trait_profile.slow[1], potency), hz))
@@ -70,18 +70,18 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 		var lifetime: int = ticks(duration(rules.duration, potency), hz)
 		infect(mob, {"fraction": float(rules.fraction) * potency, "duration": lifetime, "time": lifetime,
 			"source": source, "radius": rules.radius})
-	if mob.kind in ["boss", "spirit"]:
+	if mob.kind in ["spirit", "bonus"]:
 		return
 	for cc: String in ["freeze", "root"]:
 		if trait_profile.has(cc):
 			var every: int = control_interval(trait_profile[cc][0], potency, infusion, cc)
 			if hit_number % every == 0:
 				_apply_hard_control(mob, cc, control_duration(trait_profile[cc][1], potency, cc), hz)
-	if trait_profile.has("silence"):
+	if trait_profile.has("silence") and mob.kind != "boss":
 		mob.silence_time = maxi(mob.silence_time, ticks(trait_profile.silence, hz))
 
 static func _apply_hard_control(mob: Dictionary, effect: String, seconds: float, hz: float) -> void:
-	if mob.has("control_recovery"):
+	if mob.has("control_recovery") or (effect == "root" and EnemyRules.airborne(mob)):
 		return
 	var resistance: float = float(mob.get("control_resistance", 0.0))
 	var key: String = effect + "_time"
@@ -98,10 +98,10 @@ static func infect(mob: Dictionary, strain: Dictionary) -> void:
 		mob.disease = next
 
 static func disease_rate(mob: Dictionary) -> float:
-	return float(mob.get("recent_damage", 0.0)) * float(mob.get("disease", {}).get("fraction", 0.0))
+	return float(mob.get("recent_damage", 0.0)) * float(mob.get("disease", {}).get("fraction", 0.0)) * Damage.special_matchup("dark", mob)
 
 static func ice_speed(mob: Dictionary, ice: Dictionary) -> float:
-	if mob.kind in ["boss", "spirit"]:
+	if mob.kind in ["spirit", "bonus"] or EnemyRules.airborne(mob):
 		return 1.0
 	if not ice.is_empty() and not bool(mob.get("on_ice", false)) and int(mob.get("slip_time", 0)) == 0:
 		mob.slip_time = int(ice.slide) + int(ice.stumble)

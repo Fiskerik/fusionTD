@@ -106,13 +106,11 @@ func _add_matchups(parent: Container, split: Dictionary, adaptive: bool) -> void
 	if split.is_empty() or split.has("normal"):
 		return
 	for target: String in DataDB.ELEMENTS:
-		var multiplier: float = Damage.blend(split, target)
-		if adaptive:
-			multiplier = maxf(Damage.matchup("light", target), Damage.matchup("dark", target))
+		var multiplier: float = Damage.against(split, {"element": target}, adaptive)
 		if is_equal_approx(multiplier, 1.0):
 			continue
 		var stronger: bool = multiplier > 1.0
-		parent.add_child(UIKit.label("×%s vs %s" % [TowerInspector.number(multiplier), target.capitalize()], 15,
+		parent.add_child(UIKit.label("×%s vs %s spirits" % [TowerInspector.number(multiplier), target.capitalize()], 15,
 			UIKit.MINT if stronger else UIKit.WARN))
 
 func _category(tower: Dictionary) -> int:
@@ -271,7 +269,7 @@ func _render_detail() -> void:
 		refresh_purchase()
 	var sources: PackedStringArray = _source_keys(tower)
 	var required: int = int(sim.cfg.fuse_min_level)
-	var recipe_hint: String = "Add a level-%d element to a level-%d dual" % [required, required] if tower.kind == "triple" else "Built from level-%d towers" % required
+	var recipe_hint: String = "Add a level-%d+ element to a dual" % required if tower.kind == "triple" else "Built from level-%d+ elemental towers" % required
 	_link_row(recipe_hint, sources)
 	_link_row("Fuses into", _fusion_results(tower))
 

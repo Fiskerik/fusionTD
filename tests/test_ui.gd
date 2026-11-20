@@ -114,6 +114,27 @@ func test_scene_smoke_and_touch_layout() -> void:
 	_check_tower_toolbar(game)
 	game._show_preview(10)
 	equal(game.overlay_type, "preview")
+	var boss: Dictionary = game.sim.preview(10).boss
+	var weakness_label: String = "Weak to %s · +50%%" % String(boss.weakness).capitalize()
+	var shown_weakness: bool = false
+	for label: Label in game.overlay.find_children("*", "Label", true, false):
+		shown_weakness = shown_weakness or label.text == weakness_label
+	check(shown_weakness, "The forecast shows the boss's rolled weakness and damage bonus")
+	game.sim.state.tiers.fire = 1
+	game.sim.state.tiers.water = 1
+	game._show_preview(40)
+	var form_cards: int = 0
+	for button: Button in game.overlay.find_children("*", "Button", true, false):
+		if button.tooltip_text.begins_with("Fire form.") or button.tooltip_text.begins_with("Water form."):
+			form_cards += 1
+	equal(form_cards, 2, "The Prismheart forecast exposes both unlocked forms")
+	game._show_preview(60)
+	var shows_neutral: bool = false
+	for label: Label in game.overlay.find_children("*", "Label", true, false):
+		shows_neutral = shows_neutral or label.text == "Weak to Neutral · +100%"
+	check(shows_neutral, "The Ironwood forecast distinguishes neutral damage from elemental weaknesses")
+	game.sim.state.tiers.fire = 0
+	game.sim.state.tiers.water = 0
 	game.sim.state.phase = "build"
 	game.sim.state.mobs.clear()
 	game.sim.state.spawn_queue.clear()
@@ -216,13 +237,10 @@ func test_countdown_pauses_and_uses_real_time_at_quadruple_speed() -> void:
 	equal(game.speed, 4)
 	game._process(19)
 	near(game.sim.intermission_left, 11.0)
-	game._toggle_timer()
-	check(game.timer_button.text.begins_with("Resume"))
-	game._process(45)
-	near(game.sim.intermission_left, 11.0)
-	check(SaveStore.decode(SaveStore.encode(game.sim)).intermission_paused)
-	game._toggle_timer()
+	equal(game.round_controls.get_child_count(), 1, "Start Wave is the only round control")
 	game._show_pause()
+	check(is_instance_valid(game.overlay.find_child("Status effects", true, false)))
+	check(is_instance_valid(game.overlay.find_child("Legend", true, false)))
 	game._process(15)
 	near(game.sim.intermission_left, 11.0)
 	game._resume()
@@ -232,10 +250,14 @@ func test_countdown_pauses_and_uses_real_time_at_quadruple_speed() -> void:
 	equal(game.sim.state.tick, 4, "Combat advances at quadruple speed")
 	game._toggle_speed()
 	equal(game.speed, 1)
-	game._show_status_help()
+	game._show_pause()
+	(game.overlay.find_child("Status effects", true, false) as Button).pressed.emit()
 	equal(game.overlay_type, "statuses")
 	check(StatusInfo.description("phasing").contains("2 seconds every 5 seconds"))
-	game._open_legend()
+	game._close_reference()
+	equal(game.overlay_type, "pause")
+	check(game.paused)
+	(game.overlay.find_child("Legend", true, false) as Button).pressed.emit()
 	equal(game.overlay_type, "legend")
 	equal(game.element_status.get_child_count(), 0, "Locked elements stay out of the HUD")
 	game.sim.state.tiers.fire = 1

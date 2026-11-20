@@ -16,10 +16,14 @@ const TRAITS: Dictionary = {
 	"phasing": ["Phasing", "", "phasing"],
 	"revenant": ["Revenant", "Revives once with partial health unless healing is blocked.", "dark"],
 	"warlock": ["Hex", "Marks a tower, then temporarily stuns it.", "dark"],
-	"ram": ["Unstoppable", "Immune to slows and movement stops.", "normal"],
-	"necromancer": ["Raise husks", "Periodically summons husks along the lane.", "dark"],
+	"ram": ["Corner charge", "Rushes along straights, bounces at each bend, then pivots before the next charge.", "speed"],
+	"necromancer": ["Raise husks", "Summons two husks every 10 seconds, up to four alive at once.", "dark"],
+	"prismheart": ["Shapeshifter", "Cycles through your unlocked elements every 5 seconds. Each form resists its own element and the element it counters.", "light"],
+	"tempest": ["Airborne", "Flies over roots and ice puddles. Slows and freezes still work.", "water"],
+	"ironwood": ["Elemental plating", "Takes half damage from elemental attacks. Uninfused Arrow and Cannon towers deal double damage.", "armor"],
 	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
 	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
+	"bonus": ["Unstoppable", "Immune to slowing, roots, and freezes. Reaches the gate in 12 seconds and grants 250 extra gold on defeat.", "light"],
 }
 const ACCENTS: Dictionary = {
 	"Burn": "#963c24", "Spreading": "#963c24", "Poison": "#436b26", "Root": "#436b26",
@@ -73,12 +77,20 @@ static func enemy_name(enemy: Dictionary) -> String:
 		"spirit": return "%s Spirit %s" % [String(enemy.element).capitalize(), TowerRules.roman(enemy.tier)]
 		"splitling": return "Splitling"
 		"husk": return "Husk"
+		"bonus": return "Gilded Courier"
 	return DataDB.read("mobs").families[enemy.family].name
 
 static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 	var result := PackedStringArray(enemy.props)
 	if enemy.kind == "boss":
-		result.append("heal_aura" if enemy.get("heal_aura", false) else enemy.boss_type)
+		var boss_trait: String = enemy.boss_type
+		if enemy.get("heal_aura", false):
+			boss_trait = "heal_aura"
+		elif boss_trait == "ram" and not enemy.has("turn_seconds"):
+			boss_trait = "armored"
+		result.append(boss_trait)
+	elif enemy.kind == "bonus":
+		result.append("bonus")
 	if float(enemy.get("control_resistance", 0.0)) > 0.0:
 		result.append("resistance")
 	return result
@@ -108,11 +120,24 @@ static func state_value(enemy: Dictionary, id: String, tick: int, hz: float) -> 
 			return "%.1f s" % (float(Effects.ticks(interval.duration, hz) - age % Effects.ticks(interval.cycle, hz)) / hz)
 	return "%.1f s" % (float(enemy[id + "_time"]) / hz)
 
+static func weakness_title(element: String) -> String:
+	return "Weak to Neutral" if element == "normal" else "Weak to %s" % element.capitalize()
+
+static func weakness_icon(element: String) -> String:
+	return "damage" if element == "normal" else element
+
+static func weakness_description(element: String, multiplier: float = Damage.WEAKNESS_MULTIPLIER) -> String:
+	var source: String = "uninfused Arrow and Cannon towers" if element == "normal" else element.capitalize()
+	return "Takes %s more damage from %s." % [TowerInspector.percent(multiplier - 1.0), source]
+
 static func describe_enemy(enemy: Dictionary, tick: int, hz: float) -> String:
 	var heading: String = enemy_name(enemy)
 	if enemy.element != "none" and enemy.kind != "spirit":
 		heading += "   ·   " + String(enemy.element).capitalize()
 	var lines := PackedStringArray([heading])
+	var weakness: String = Damage.weakness(enemy)
+	if not weakness.is_empty():
+		lines.append(weakness_description(weakness, Damage.weakness_multiplier(enemy)))
 	for property_info: String in enemy_traits(enemy):
 		lines.append("%s · %s" % [trait_title(property_info, enemy), trait_description(property_info)])
 	for id: String in active(enemy, tick, hz):

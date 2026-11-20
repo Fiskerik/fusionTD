@@ -118,6 +118,22 @@ func test_spirit_victories_apply_to_actual_hits() -> void:
 	sim.step()
 	near(tower.damage_dealt, 12.0)
 
+func test_rolled_weakness_controls_elemental_damage() -> void:
+	var group: Dictionary = _enemy()
+	group.element = "fire"
+	group.weakness = "light"
+	near(Damage.against({"light": .5, "nature": .5}, group, false), 1.125)
+	near(Damage.against({"water": 1.0}, group, false), 1.0)
+	near(Damage.against({"normal": 1.0}, group, false), 1.0)
+	near(Damage.against({}, group, true), 1.5)
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	var tower: Dictionary = TowerRules.create(sim.next_id(), "s1", "pure", "light", "", 0)
+	sim.state.towers.s1 = tower
+	Combat.spawn(sim, group, 10.0)
+	sim.step()
+	near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * 1.5)
+
 func test_attacking_duals_out_hit_each_level_two_ingredient() -> void:
 	for id: String in DataDB.read("duals"):
 		var dual: Dictionary = TowerRules.fusion_result(id)
@@ -277,13 +293,13 @@ func test_prism_ramp_and_non_stacking_bloom() -> void:
 	equal(sim.state.wave, 4)
 
 func test_late_enemies_recover_between_disables() -> void:
-	var group: Dictionary = Waves.generate(1, 80).groups[0]
+	var group: Dictionary = Waves.generate(1, 81).groups[0]
 	var mob: Dictionary = EnemyRules.create(1, group, 0, 0)
 	var root := {"root": [1, 2.0], "slow": [.5, 3.0]}
 	Effects.apply(mob, root, 1.0, false, 1, 0.0, 30.0)
 	var initial: int = mob.root_time
-	equal(initial, 42)
-	near(mob.slow, .345)
+	equal(initial, 41)
+	near(mob.slow, .34)
 	var free_ticks := 0
 	for i: int in range(initial + 15):
 		Effects.tick(mob, 30.0)
@@ -310,6 +326,44 @@ func test_late_necromancer_heals_without_adding_units() -> void:
 	check(sim.state.spawn_queue.is_empty())
 	near(sim.state.mobs[1].hp, 700.0)
 	near(sim.state.mobs[2].hp, 600.0)
+
+func test_gilded_courier_payout_and_travel_time() -> void:
+	var courier: Dictionary = {}
+	var ordinary: Dictionary = {}
+	for seed_value: int in range(1, 300):
+		var wave: Dictionary = Waves.generate(seed_value, 11)
+		var bonus: Array = wave.groups.filter(func(group: Dictionary) -> bool: return group.kind == "bonus")
+		check(bonus.size() <= 1)
+		if not bonus.is_empty():
+			courier = bonus[0]
+			ordinary = wave.groups.filter(func(group: Dictionary) -> bool: return group.kind == "grunt" and group.props.is_empty())[0]
+			break
+	check(not courier.is_empty())
+	if courier.is_empty():
+		return
+	equal(courier.count, 1)
+	near(courier.hp, float(ordinary.hp) * 2.0)
+	near(courier.armor, float(ordinary.armor) * .5)
+	equal(courier.gold, int(ordinary.gold) + 250)
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	sim.schedule(ordinary, 900)
+	Combat.spawn(sim, courier, 0.0)
+	var mob: Dictionary = sim.state.mobs[0]
+	Effects.apply(mob, {"slow": [.7, 20], "root": [1, 20], "freeze": [1, 20]}, 1.0, false, 1, 0.0, sim.hz)
+	check(mob.slow_time == 0 and mob.freeze_time == 0 and mob.root_time == 0)
+	near(Effects.ice_speed(mob, {"slide": 1, "stumble": 10}), 1.0)
+	for tick: int in range(359):
+		sim.step()
+	equal(sim.state.mobs.size(), 1)
+	sim.step()
+	equal(sim.state.mobs.size(), 0)
+	equal(sim.state.lives, 19)
+	var before: int = sim.state.gold
+	Combat.spawn(sim, courier, 0.0)
+	sim.state.mobs[0].hp = 0
+	sim.step()
+	equal(int(sim.state.gold) - before, courier.gold)
 
 func test_chain_falloff_and_fire_spread() -> void:
 	var sim := Sim.new()
@@ -424,8 +478,8 @@ func test_warlock_rally_ram_and_necromancer() -> void:
 	check(not sim.apply({"type": "rally", "slot": "s1"}).ok)
 	var ram: Dictionary = EnemyRules.create(1, Waves.generate(1, 20).boss, 10, 0)
 	Effects.apply(ram, {"slow": [.6, 4], "root": [1, 3]}, 1, false, 1, 0, 30)
-	near(ram.slow, 0)
-	equal(ram.root_time, 0)
+	near(ram.slow, .3)
+	equal(ram.root_time, 45)
 	sim.state.towers.clear()
 	sim.state.mobs.clear()
 	var necromancer: Dictionary = Waves.generate(1, 30).boss
@@ -433,7 +487,88 @@ func test_warlock_rally_ram_and_necromancer() -> void:
 	Combat.spawn(sim, necromancer, 5)
 	for tick: int in range(980):
 		sim.step()
-	equal(sim.state.mobs.size(), 13)
+	equal(sim.state.mobs.size(), 5)
+
+func test_ram_stops_at_every_bend_and_resumes_its_charge() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 20
+	sim.state.phase = "wave"
+	Combat.spawn(sim, sim.preview(20).boss, sim.track.lengths[1] - .01)
+	sim.step()
+	var ram: Dictionary = sim.state.mobs[0]
+	equal(ram.corner, 1)
+	near(ram.s, sim.track.lengths[1])
+	var turn_ticks: int = ram.turn_left
+	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	equal(restored.state.mobs[0].turn_left, turn_ticks)
+	for index: int in range(turn_ticks - 1):
+		sim.step()
+	near(ram.s, sim.track.lengths[1])
+	sim.step()
+	near(ram.s - sim.track.lengths[1], float(ram.speed) / sim.hz)
+	check(not ram.has("corner"))
+	var corners := PackedInt32Array([1])
+	for tick: int in range(1800):
+		if sim.state.mobs.is_empty():
+			break
+		sim.step()
+		if ram.has("corner") and int(ram.corner) != corners[-1]:
+			corners.append(ram.corner)
+			near(ram.s, sim.track.lengths[ram.corner])
+	equal(corners.size(), sim.track.points.size() - 2)
+	check(sim.state.mobs.is_empty(), "The boss reaches the gate after its final charge")
+
+func test_prismheart_uses_unlocked_forms_and_swaps_damage_matchups() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 40
+	equal(sim.preview(40).boss.element, "none")
+	sim.state.tiers.fire = 2
+	sim.state.tiers.water = 1
+	var group: Dictionary = sim.preview(40).boss
+	equal(group.forms, PackedStringArray(["fire", "water"]))
+	sim.state.phase = "wave"
+	Combat.spawn(sim, group, 3.0)
+	var boss: Dictionary = sim.state.mobs[0]
+	near(Damage.against({"fire": 1.0}, boss, false), .65)
+	near(Damage.against({"nature": 1.0}, boss, false), .75)
+	near(Damage.against({"water": 1.0}, boss, false), 1.5)
+	var period: int = EnemyRules.morph_period(sim.hz)
+	for tick: int in range(period - 1):
+		sim.step()
+	equal(boss.element, "fire")
+	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	restored.step()
+	boss = restored.state.mobs[0]
+	equal(boss.element, "water")
+	near(Damage.against({"electric": 1.0}, boss, false), 1.5)
+	near(Damage.against({"fire": 1.0}, boss, false), .75)
+	for tick: int in range(period):
+		restored.step()
+	equal(boss.element, "fire")
+
+func test_stormwing_ignores_ground_control_and_ironwood_resists_elements() -> void:
+	var bird: Dictionary = EnemyRules.create(1, Waves.generate(1, 50).boss, 0.0, 0)
+	Effects.apply(bird, {"root": [1, 4], "freeze": [1, 2], "slow": [.4, 2]}, 1, false, 1, 0, 30)
+	equal(bird.root_time, 0)
+	check(bird.freeze_time > 0)
+	near(bird.slow, .2)
+	near(Effects.ice_speed(bird, {"slide": 15, "stumble": 15}), 1.0)
+	check(not bird.has("slip_time"))
+	near(Damage.against({"electric": 1.0}, bird, false), 1.5)
+	var engine: Dictionary = Waves.generate(1, 60).boss
+	engine.armor = 0.0
+	for infusion: String in ["", "fire"]:
+		var sim := Sim.new()
+		sim.state.phase = "wave"
+		var tower: Dictionary = TowerRules.create(sim.next_id(), "s1", "arrow", "normal", "", 50)
+		tower.infusion = infusion
+		sim.state.tiers.fire = 1
+		sim.state.towers.s1 = tower
+		Combat.spawn(sim, engine, 10.0)
+		sim.step()
+		near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * (2.0 if infusion.is_empty() else .5))
+	near(Damage.against({"fire": .5, "water": .5}, engine, false), .5)
+	near(Damage.against({}, engine, true), .5)
 
 func _enemy(properties: Array = []) -> Dictionary:
 	return {"kind": "grunt", "element": "none", "props": properties, "hp": 1000.0,

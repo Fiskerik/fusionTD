@@ -1,7 +1,8 @@
 class_name Waves
 extends RefCounted
 
-static func generate(seed_value: int, wave: int, trial: Dictionary = {}) -> Dictionary:
+static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_weaknesses: bool = true,
+		expanded_roster: bool = true) -> Dictionary:
 	if not trial.is_empty():
 		return {"wave": wave, "groups": [], "boss": {}, "bosses": [], "spirit": spirit_group(trial.element, int(trial.tier), wave)}
 	var rules: Dictionary = DataDB.read("waves")
@@ -9,6 +10,8 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}) -> Dict
 	var bosses: Dictionary = DataDB.read("bosses")
 	var base: Dictionary = DataDB.read("mobs")
 	var rng := SimRng.new((seed_value * 1000003 + wave * 7919 + 12345) & 0x7fffffff)
+	var bonus_rng := SimRng.new(rng.state ^ 0x53a9c1)
+	var weakness_rng := SimRng.new(rng.state ^ 0x7c694e31)
 	var tuning: Dictionary = rules.adjustments.get(str(wave), {})
 	var seeded_pattern: String = _pattern(wave, rules, rng)
 	var pattern: Dictionary = rules.patterns[tuning.get("pattern", seeded_pattern)]
@@ -23,25 +26,41 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}) -> Dict
 	var count: int = int(balance.mob_count_base) + floori(float(balance.mob_count_per_wave) * wave)
 	count += floori(harder_waves * float(rules.pressure.added_count_per_wave))
 	count = roundi(count * float(tuning.get("count_scale", 1.0)))
-	var bosses_in_wave: Array[Dictionary] = []
+	var bonus: Dictionary = rules.bonus_mob
+	var include_bonus: bool = bonus_rng.take(100) < int(bonus.chance_percent)
 	if late_waves > 0:
-		count = mini(count, int(late.unit_cap))
+		count = mini(count, int(late.unit_cap) - (1 if include_bonus else 0))
 	if wave % int(balance.boss_every) == 0:
-		count = maxi(1, roundi(count * float(bosses.normal_count)))
+		var bosses_in_wave: Array[Dictionary] = []
+		var health_adjustment: Dictionary = bosses.health_adjustment
+		var boss_hp: float = hp * float(health_adjustment.multiplier) if wave >= int(health_adjustment.from) else hp
 		var boss_count: int = 1 if late_waves == 0 else (3 if wave >= int(late.third_boss_from) else 2)
-		var first: int = (wave / int(balance.boss_every) - 1) % bosses.order.size()
+		var roster_size: int = bosses.order.size() if expanded_roster else 3
+		var first: int = (wave / int(balance.boss_every) - 1) % roster_size
 		for index: int in range(boss_count):
-			var boss_type: String = bosses.order[(first + index) % bosses.order.size()]
+			var boss_type: String = bosses.order[(first + index) % roster_size]
 			var stats: Dictionary = bosses[boss_type]
 			bosses_in_wave.append({
-				"kind": "boss", "element": "none", "props": [], "count": 1, "interval": 0,
-				"hp": hp * float(stats.hp_mult), "armor": float(stats.armor) + wave,
+				"kind": "boss", "element": stats.element, "props": [], "count": 1, "interval": 0,
+				"hp": boss_hp * float(stats.hp_mult), "armor": float(stats.armor) + wave,
 				"speed": float(stats.speed), "gold": Economy.scaled(bosses.gold, wave),
-				"leak": int(balance.leak.boss), "slow_cap": float(stats.slow_cap),
+				"leak": int(balance.leak.boss), "slow_cap": float(base.slow_cap),
+				"control_resistance": float(bosses.control_resistance),
 				"boss_type": boss_type, "spawn": int(bosses.spawn_tick) + index * Effects.ticks(late.boss_spacing_seconds, balance.sim_hz),
 				"armor_rank": EnemyRules.armor_rank(wave),
 				"heal_aura": late_waves > 0 and boss_type == "necromancer",
 			})
+			if boss_type == "ram":
+				if expanded_roster:
+					bosses_in_wave[-1].turn_seconds = float(stats.turn_seconds)
+				else:
+					bosses_in_wave[-1].hp = boss_hp * 11.0
+					bosses_in_wave[-1].speed = .4
+			if stats.has("weakness"):
+				bosses_in_wave[-1].weakness = stats.weakness
+			elif roll_weaknesses and stats.element != "none":
+				bosses_in_wave[-1].weakness = _roll_weakness(weakness_rng, stats.element)
+		return {"wave": wave, "groups": [], "boss": bosses_in_wave[0], "bosses": bosses_in_wave, "spirit": {}}
 	var element: String = "none"
 	var secondary: String = "none"
 	var mixed: bool = wave >= int(rules.mixed_elements_from)
@@ -78,8 +97,33 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}) -> Dict
 			var support: Dictionary = _group(wave, menders, ["mender"], hp, gold, false)
 			support.interval = int(rules.interval)
 			_add_group(groups, support, element, secondary, elemental_share, index + 1)
-	var boss: Dictionary = {} if bosses_in_wave.is_empty() else bosses_in_wave[0]
-	return {"wave": wave, "groups": groups, "boss": boss, "bosses": bosses_in_wave, "spirit": {}}
+	if include_bonus:
+		var courier: Dictionary = _group(wave, 1, [], hp, gold, false)
+		courier.kind = "bonus"
+		courier.family = "hare"
+		courier.hp *= 2.0
+		courier.armor *= .5
+		courier.gold += int(bonus.extra_gold)
+		courier.speed = Track.new().total / float(bonus.travel_seconds)
+		courier.slow_cap = 0.0
+		courier.control_resistance = 0.0
+		courier.interval = int(rules.interval)
+		groups.insert(maxi(1, groups.size() / 2), courier)
+	if roll_weaknesses and wave >= int(rules.elemental_from):
+		var weaknesses: Dictionary = {}
+		for group: Dictionary in groups:
+			var affinity: String = group.element
+			if not weaknesses.has(affinity):
+				weaknesses[affinity] = _roll_weakness(weakness_rng, affinity)
+			group.weakness = weaknesses[affinity]
+	return {"wave": wave, "groups": groups, "boss": {}, "bosses": [], "spirit": {}}
+
+static func _roll_weakness(rng: SimRng, affinity: String) -> String:
+	var pool: Array[String] = []
+	for element: String in DataDB.ELEMENTS:
+		if element != affinity and Damage.matchup(element, affinity) >= 1.0:
+			pool.append(element)
+	return pool[rng.take(pool.size())]
 
 static func base_enemy_hp(wave: int) -> float:
 	var health: float = float(DataDB.read("mobs").hp)

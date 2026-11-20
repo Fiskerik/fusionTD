@@ -237,7 +237,7 @@ func _track_aim(delta: float) -> void:
 		var base: Vector2 = sim.track.slots[slot].position
 		if not enemy.is_empty() and int(tower.stun) == 0:
 			var target: Vector2 = _enemy_position(enemy)
-			if base.distance_to(target) <= TowerRules.attack_range(tower):
+			if base.distance_to(_enemy_position(enemy, true)) <= TowerRules.attack_range(tower):
 				aim.point = target
 		var point: Vector2 = aim.point
 		aim.angle = rotate_toward(float(aim.angle), (point - base).angle(), delta * 15.0)
@@ -691,32 +691,49 @@ func _draw_launcher(p: Vector2, aim: Vector2, tint: Color, cannon: bool) -> void
 		draw_line(p + side * .20, p - side * .20, Color("#fff0bf"), .027)
 		draw_circle(muzzle, .063, Color("#ffedba"))
 
-func _enemy_position(enemy: Dictionary) -> Vector2:
+func _enemy_position(enemy: Dictionary, ground_only: bool = false) -> Vector2:
 	var distance: float = lerpf(enemy.prev_s, enemy.s, fraction)
 	var p: Vector2 = sim.track.at(distance)
 	if enemy.kind in ["splitling", "husk"] or enemy.props.has("swarm"):
 		var side: Vector2 = _travel_direction(distance).orthogonal()
 		p += side * (float(int(enemy.id) % 3) - 1.0) * .15
+	if not ground_only and EnemyRules.airborne(enemy):
+		p.y += _flight_height() * (1.0 if gate_on_top else -1.0)
 	return p
+
+func _flight_height() -> float:
+	return .32 + .075 * sin(elapsed * 8.0)
 
 func _travel_direction(distance: float) -> Vector2:
 	var direction: Vector2 = sim.track.at(distance + .065) - sim.track.at(distance - .065)
 	return direction.normalized()
 
 func _draw_enemy(enemy: Dictionary) -> void:
-	var p: Vector2 = _enemy_position(enemy)
+	var p: Vector2 = _enemy_position(enemy, true)
 	_set_upright(p)
 	var distance: float = lerpf(enemy.prev_s, enemy.s, fraction)
 	var direction: Vector2 = _travel_direction(distance)
+	if enemy.has("turn_seconds"):
+		direction = (sim.track.at(distance + .002) - sim.track.at(distance)).normalized()
+	var turn: float = -1.0
+	if enemy.has("corner"):
+		var corner: int = enemy.corner
+		var turn_ticks: float = Effects.ticks(enemy.turn_seconds, sim.hz)
+		turn = clampf(1.0 - (float(enemy.turn_left) - fraction) / turn_ticks, 0.0, 1.0)
+		var from: Vector2 = sim.track.points[corner] - sim.track.points[corner - 1]
+		var to: Vector2 = sim.track.points[corner + 1] - sim.track.points[corner]
+		direction = from.normalized().rotated(from.angle_to(to) * smoothstep(.12, 1.0, turn))
 	if gate_on_top:
 		direction = -direction
 	var spirit: bool = enemy.kind == "spirit"
 	var boss: bool = enemy.kind == "boss"
+	var prismheart: bool = enemy.boss_type == "prismheart"
+	var bonus: bool = enemy.kind == "bonus"
 	var radius: float = .31
 	if spirit:
 		radius = spirit_radius(enemy.tier)
 	elif boss:
-		radius = .415
+		radius = .475
 	elif enemy.kind in ["splitling", "husk"] or enemy.props.has("swarm"):
 		radius = .205
 	var variant: Dictionary = DataDB.read("mobs").families.get(enemy.get("family", "acorn"), {})
@@ -735,11 +752,53 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	if shielded:
 		draw_circle(p, radius + .10, Color("#9bdcff", .48))
 		tint = tint.lerp(Color("#d2effe"), .36)
-	_draw_oval(p + Vector2(.035, radius * .53), Vector2(radius, radius * .42), Color("#614f42", .32))
+	if bonus:
+		draw_arc(p, .36, 0, TAU, 24, Color("#ffe584"), .05, true)
+		for index: int in range(3):
+			var sparkle: Vector2 = p - direction * (.21 + index * .15)
+			var offset: float = sin(elapsed * 13.0 + index * 2.2) * .15
+			draw_circle(sparkle + direction.orthogonal() * offset, .051 - index * .009, Color("#fff1a1"), true, -1, true)
+	var airborne: bool = EnemyRules.airborne(enemy)
+	_draw_oval(p + Vector2(.035, radius * .53), Vector2(radius, radius * .42), Color("#614f42", .23 if airborne or prismheart else .34))
 	_draw_status_ground(enemy, p, direction, radius)
+	var previous_form: String = ""
+	var morph_progress: float = 1.0
+	if enemy.boss_type == "ram" and enemy.has("turn_seconds"):
+		if turn >= 0.0:
+			var impact_age: float = turn * float(enemy.turn_seconds)
+			if impact_age < .42:
+				draw_arc(p, radius * (1.0 + impact_age * 3.8), 0, TAU, 25,
+					Color("#b97842", 1.0 - impact_age / .42), .054, true)
+			draw_arc(p, radius * 1.49, -PI / 2.0, -PI / 2.0 + TAU * maxf(turn, .025), 28, Color("#ffda82"), .056, true)
+			p -= direction * .22 * sin(PI * clampf(impact_age / .34, 0.0, 1.0))
+		elif float(enemy.s) > float(enemy.prev_s):
+			for i: int in range(3):
+				var edge: Vector2 = p - direction * (radius + .12 * i)
+				edge += direction.orthogonal() * (float(i) - 1.0) * .22
+				draw_line(edge, edge - direction * (.24 + float(i) * .07), Color("#bd8956", .65), .055, true)
+	elif prismheart and enemy.get("forms", PackedStringArray()).size() > 1:
+		var period: int = EnemyRules.morph_period(sim.hz)
+		var age: int = int(sim.state.tick) - int(enemy.born)
+		var cycle: float = fposmod(float(age) + fraction, float(period)) / period
+		if cycle > .82:
+			var next: String = enemy.forms[(age / period + 1) % enemy.forms.size()]
+			draw_arc(p, radius * 1.70, -PI / 2.0, -PI / 2.0 + TAU * (cycle - .82) / .18, 28,
+				Glyphs.hue(next).lightened(.30), .065, true)
+		elif age >= period and cycle < .08:
+			previous_form = enemy.forms[(age / period - 1) % enemy.forms.size()]
+			morph_progress = cycle / .08
+			var shard_color := Color(Glyphs.hue(enemy.element).lightened(.42), 1.0 - morph_progress)
+			for index: int in range(6):
+				var angle: float = float(index) * TAU / 6.0 + morph_progress * .24
+				var shard: Vector2 = p + Vector2.from_angle(angle) * radius * lerpf(.72, 2.05, morph_progress)
+				_draw_polygon_base(shard, radius * lerpf(.20, .08, morph_progress), 4, angle, shard_color)
+	if airborne:
+		p.y -= _flight_height()
 	if spirit:
 		p.y -= .08 + sin(elapsed * 5.5) * .065
 		_draw_spirit(p, direction, radius, tint, enemy.element, enemy.tier)
+	elif prismheart:
+		MobArt.draw_prismheart(self, enemy.element, p - direction * impact * .045, radius, elapsed, previous_form, morph_progress)
 	else:
 		MobArt.draw(self, enemy, p, direction, radius, tint, distance, elapsed, impact)
 	_draw_status_glints(enemy, p, radius)
@@ -750,13 +809,19 @@ func _draw_enemy(enemy: Dictionary) -> void:
 		for i: int in range(4):
 			var shield_spark: Vector2 = p + Vector2.from_angle(elapsed * 2.2 + TAU * i / 4.0) * (shield_radius + .045)
 			_draw_polygon_base(shield_spark, .057, 4, elapsed * 3.0, Color("#d9f8ff"))
-	_draw_health(enemy, p, radius)
+	var bar_lift: float = .17 if prismheart else (.10 if boss else 0.0)
+	_draw_health(enemy, p - Vector2(0, bar_lift), radius)
 	if enemy.element != "none" and not spirit:
-		var flag: Vector2 = p + Vector2(-radius - .045, -radius * .70)
+		var flag: Vector2 = p + Vector2(-radius * (1.43 if boss else 1.0) - .045, -radius * .70)
 		var element_color: Color = Glyphs.hue(enemy.element)
 		draw_circle(flag, .125, element_color.darkened(.58))
 		draw_circle(flag, .101, element_color.lightened(.32))
 		Glyphs.draw(self, enemy.element, flag, .074, element_color.darkened(.63))
+	elif enemy.boss_type == "ironwood":
+		var flag: Vector2 = p + Vector2(-radius * 1.43 - .045, -radius * .70)
+		draw_circle(flag, .13, Color("#433626"), true, -1, true)
+		draw_circle(flag, .102, Color("#f5cf83"), true, -1, true)
+		Glyphs.draw(self, "damage", flag, .075, Color("#493428"))
 	_draw_status_icons(enemy, p, radius)
 	if not enemy.props.is_empty():
 		var badges: String = ""

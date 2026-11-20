@@ -2,23 +2,66 @@ class_name Damage
 extends RefCounted
 
 const RING: Dictionary = {"fire": "nature", "nature": "electric", "electric": "water", "water": "fire"}
+const WEAKNESS_MULTIPLIER: float = 1.5
 
-static func matchup(attacker: String, defender: String) -> float:
+static func matchup(attacker: String, defender: String, rolled_weakness: String = "") -> float:
+	if not rolled_weakness.is_empty():
+		if attacker == rolled_weakness:
+			return WEAKNESS_MULTIPLIER
+		return minf(1.0, _base_matchup(attacker, defender))
+	return _base_matchup(attacker, defender)
+
+static func _base_matchup(attacker: String, defender: String) -> float:
 	if defender == "none" or attacker == "normal":
 		return 1.0
 	if attacker in ["light", "dark"] and defender in ["light", "dark"]:
-		return 0.75 if attacker == defender else 1.5
+		return 0.75 if attacker == defender else WEAKNESS_MULTIPLIER
 	if RING.get(attacker) == defender:
-		return 1.5
+		return WEAKNESS_MULTIPLIER
 	if RING.get(defender) == attacker:
 		return 0.75
 	return 1.0
 
-static func blend(split: Dictionary, defender: String) -> float:
+static func blend(split: Dictionary, defender: String, rolled_weakness: String = "") -> float:
 	var result: float = 0.0
 	for element: String in split:
-		result += float(split[element]) * matchup(element, defender)
+		result += float(split[element]) * matchup(element, defender, rolled_weakness)
 	return result
+
+static func against(split: Dictionary, enemy: Dictionary, adaptive: bool) -> float:
+	if has_special_resistances(enemy):
+		if adaptive:
+			return maxf(special_matchup("light", enemy), special_matchup("dark", enemy))
+		var multiplier: float = 0.0
+		for element: String in split:
+			multiplier += float(split[element]) * special_matchup(element, enemy)
+		return multiplier
+	var defender: String = enemy.element
+	var rolled_weakness: String = enemy.get("weakness", "")
+	if adaptive:
+		return maxf(matchup("light", defender, rolled_weakness), matchup("dark", defender, rolled_weakness))
+	return blend(split, defender, rolled_weakness)
+
+static func has_special_resistances(enemy: Dictionary) -> bool:
+	return enemy.get("boss_type", "") in ["prismheart", "ironwood"]
+
+static func special_matchup(attacker: String, enemy: Dictionary) -> float:
+	match enemy.get("boss_type", ""):
+		"ironwood":
+			var armor: Dictionary = DataDB.read("bosses").ironwood
+			return float(armor.neutral_damage if attacker == "normal" else armor.elemental_damage)
+		"prismheart":
+			if attacker == enemy.element:
+				return float(DataDB.read("bosses").prismheart.same_element_damage)
+			return _base_matchup(attacker, enemy.element)
+	return 1.0
+
+static func weakness_multiplier(enemy: Dictionary) -> float:
+	return float(DataDB.read("bosses").ironwood.neutral_damage) if enemy.get("boss_type", "") == "ironwood" else WEAKNESS_MULTIPLIER
+
+static func weakness(enemy: Dictionary) -> String:
+	var affinity: Dictionary = DataDB.read("elements").get(enemy.element, {})
+	return enemy.get("weakness", affinity.get("weak", ""))
 
 static func hit(raw: float, armor: float, pierce: float, shred: float, curse: float) -> float:
 	var amplified: float = raw * (1.0 + curse)
