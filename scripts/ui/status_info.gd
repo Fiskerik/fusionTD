@@ -1,0 +1,120 @@
+class_name StatusInfo
+extends RefCounted
+
+const ICONS: Dictionary = {
+	"burn": "fire", "poison": "nature", "slow": "water", "freeze": "water",
+	"root": "nature", "curse": "dark", "shred": "normal", "silence": "dark",
+	"heal_block": "light", "phasing": "phasing",
+	"disease": "dark", "slip": "water",
+}
+const TRAITS: Dictionary = {
+	"swift": ["Swift", "Moves faster and has less health.", "electric"],
+	"armored": ["Armored", "Armor reduces incoming hit damage.", "normal"],
+	"swarm": ["Swarm", "Travels in larger groups with less health per enemy.", "nature"],
+	"mender": ["Mender", "Heals nearby enemies on defeat.", "light"],
+	"splitter": ["Splitter", "Spawns smaller enemies when defeated.", "nature"],
+	"phasing": ["Phasing", "", "phasing"],
+	"revenant": ["Revenant", "Revives once with partial health unless healing is blocked.", "dark"],
+	"warlock": ["Hex", "Marks a tower, then temporarily stuns it.", "dark"],
+	"ram": ["Unstoppable", "Immune to slows and movement stops.", "normal"],
+	"necromancer": ["Raise husks", "Periodically summons husks along the lane.", "dark"],
+	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
+	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
+}
+const ACCENTS: Dictionary = {
+	"Burn": "#963c24", "Spreading": "#963c24", "Poison": "#436b26", "Root": "#436b26",
+	"Slow": "#1d6288", "Freeze": "#345597", "Curse": "#72478a", "Silence": "#72478a",
+	"Shred": "#845a2d", "Armor": "#845a2d", "Pierce": "#845a2d", "Chain": "#795d1b",
+	"Splash": "#32627b", "Stun": "#806019", "Heal": "#806019",
+	"Disease": "#6b437e", "Ice": "#205e8c", "Slip": "#205e8c", "Gate": "#39766b",
+	"Pure": "#1d6288",
+}
+
+static func active(enemy: Dictionary, tick: int, hz: float) -> PackedStringArray:
+	var result := PackedStringArray()
+	for dot: String in ["burn", "poison"]:
+		if enemy.dots.has(dot):
+			result.append(dot)
+	for status: String in ["slow", "freeze", "root", "curse", "shred", "silence", "heal_block"]:
+		if int(enemy.get(status + "_time", 0)) > 0:
+			result.append(status)
+	if int(enemy.get("slip_time", 0)) > 0:
+		result.append("slip")
+	if int(enemy.get("disease", {}).get("time", 0)) > 0:
+		result.append("disease")
+	if EnemyRules.phased(enemy, tick, hz):
+		result.append("phasing")
+	return result
+
+static func title(status: String) -> String:
+	return DataDB.read("strings_en").statuses[status][0]
+
+static func description(status: String) -> String:
+	var value: String = DataDB.read("strings_en").statuses[status][1]
+	if status == "phasing":
+		var rule: Dictionary = DataDB.read("mobs").properties.phasing
+		return value % [int(rule.duration), int(rule.cycle)]
+	if status == "disease":
+		return value % int(DataDB.read("balance").disease_lookback)
+	return value
+
+static func tooltip(statuses: PackedStringArray) -> String:
+	var lines := PackedStringArray()
+	for status: String in statuses:
+		lines.append("%s · %s" % [title(status), description(status)])
+	return "\n".join(lines)
+
+static func accent(label: String) -> Color:
+	return Color(ACCENTS.get(label.get_slice(" ", 0), "#387861"))
+
+static func enemy_name(enemy: Dictionary) -> String:
+	match enemy.kind:
+		"boss": return DataDB.read("bosses")[enemy.boss_type].name
+		"spirit": return "%s Spirit %s" % [String(enemy.element).capitalize(), TowerRules.roman(enemy.tier)]
+		"splitling": return "Splitling"
+		"husk": return "Husk"
+	return DataDB.read("mobs").families[enemy.family].name
+
+static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
+	var result := PackedStringArray(enemy.props)
+	if enemy.kind == "boss":
+		result.append("heal_aura" if enemy.get("heal_aura", false) else enemy.boss_type)
+	if float(enemy.get("control_resistance", 0.0)) > 0.0:
+		result.append("resistance")
+	return result
+
+static func trait_title(id: String, enemy: Dictionary) -> String:
+	if id == "resistance":
+		return "%s tenacity" % TowerInspector.percent(float(enemy.control_resistance))
+	return TRAITS[id][0]
+
+static func trait_description(id: String) -> String:
+	return description(id) if id == "phasing" else TRAITS[id][1]
+
+static func state_value(enemy: Dictionary, id: String, tick: int, hz: float) -> String:
+	match id:
+		"slow", "curse":
+			return TowerInspector.percent(enemy[id])
+		"burn", "poison":
+			var dot: Dictionary = enemy.dots[id]
+			return "%d× · %s HP/s" % [dot.stacks, TowerInspector.number(float(dot.dps) * int(dot.stacks))]
+		"disease":
+			return "%s HP/s · %.1f s left" % [TowerInspector.number(Effects.disease_rate(enemy)), float(enemy.disease.time) / hz]
+		"shred":
+			return "−%s armor" % TowerInspector.number(enemy.shred)
+		"phasing":
+			var interval: Dictionary = DataDB.read("mobs").properties.phasing
+			var age: int = tick - int(enemy.born)
+			return "%.1f s" % (float(Effects.ticks(interval.duration, hz) - age % Effects.ticks(interval.cycle, hz)) / hz)
+	return "%.1f s" % (float(enemy[id + "_time"]) / hz)
+
+static func describe_enemy(enemy: Dictionary, tick: int, hz: float) -> String:
+	var heading: String = enemy_name(enemy)
+	if enemy.element != "none" and enemy.kind != "spirit":
+		heading += "   ·   " + String(enemy.element).capitalize()
+	var lines := PackedStringArray([heading])
+	for property_info: String in enemy_traits(enemy):
+		lines.append("%s · %s" % [trait_title(property_info, enemy), trait_description(property_info)])
+	for id: String in active(enemy, tick, hz):
+		lines.append("%s · %s" % [title(id), description(id)])
+	return "\n".join(lines)

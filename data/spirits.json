@@ -1,0 +1,33 @@
+{
+  "tiers": [
+    {
+      "hp": 390,
+      "growth": 1.12,
+      "from": 4,
+      "armor": 5,
+      "recommended": 0
+    },
+    {
+      "hp": 2100,
+      "growth": 1.074,
+      "from": 7,
+      "armor": 19,
+      "recommended": 15
+    },
+    {
+      "hp": 12000,
+      "growth": 1.035,
+      "from": 12,
+      "armor": 40,
+      "recommended": 30
+    }
+  ],
+  "speed": 0.55,
+  "slow_cap": 0.25,
+  "spawn_tick": 30,
+  "gold": [
+    40,
+    5
+  ],
+  "extreme_margin": 6
+}

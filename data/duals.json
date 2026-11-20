@@ -1,0 +1,334 @@
+{
+  "steam": {
+    "name": "Steam",
+    "pair": [
+      "fire",
+      "water"
+    ],
+    "split": {
+      "fire": 0.5,
+      "water": 0.5
+    },
+    "damage": 24,
+    "rate": 0.9,
+    "range": 1.6,
+    "role": "Pulse damages every enemy in range and slows them.",
+    "effect": {
+      "pulse": true,
+      "slow": [
+        0.23,
+        1.7
+      ]
+    },
+    "art": "geyser"
+  },
+  "wildfire": {
+    "name": "Wildfire",
+    "pair": [
+      "fire",
+      "nature"
+    ],
+    "split": {
+      "fire": 0.6,
+      "nature": 0.4
+    },
+    "damage": 30,
+    "rate": 1,
+    "range": 2.8,
+    "role": "Burn spreads when a burning enemy dies.",
+    "effect": {
+      "burn": [
+        6,
+        0.15,
+        4
+      ],
+      "spread": 1.2
+    },
+    "art": "grove"
+  },
+  "forge": {
+    "name": "Forge",
+    "pair": [
+      "fire",
+      "electric"
+    ],
+    "split": {},
+    "damage": 0,
+    "rate": 0,
+    "range": 2.2,
+    "role": "Increases nearby tower damage.",
+    "effect": {
+      "aura_damage": 0.25
+    },
+    "art": "anvil"
+  },
+  "flare": {
+    "name": "Flare",
+    "pair": [
+      "fire",
+      "light"
+    ],
+    "split": {
+      "fire": 0.6,
+      "light": 0.4
+    },
+    "damage": 52,
+    "rate": 0.9,
+    "range": 3,
+    "role": "Burn and armor pierce.",
+    "effect": {
+      "burn": [
+        5,
+        0.15,
+        4
+      ],
+      "pierce": 0.4
+    },
+    "art": "sunburst"
+  },
+  "cinder": {
+    "name": "Cinder",
+    "pair": [
+      "fire",
+      "dark"
+    ],
+    "split": {
+      "fire": 0.6,
+      "dark": 0.4
+    },
+    "damage": 46,
+    "rate": 1,
+    "range": 2.8,
+    "role": "Heavy armor pierce and curse.",
+    "effect": {
+      "pierce": 0.6,
+      "curse": [
+        0.15,
+        3
+      ]
+    },
+    "art": "crater"
+  },
+  "spring": {
+    "name": "Spring",
+    "pair": [
+      "water",
+      "nature"
+    ],
+    "split": {},
+    "damage": 0,
+    "rate": 0,
+    "range": 2.2,
+    "role": "Increases nearby attack speed.",
+    "effect": {
+      "aura_speed": 0.25
+    },
+    "art": "spring"
+  },
+  "storm": {
+    "name": "Storm",
+    "pair": [
+      "water",
+      "electric"
+    ],
+    "split": {
+      "water": 0.5,
+      "electric": 0.5
+    },
+    "damage": 32,
+    "rate": 1,
+    "range": 2.8,
+    "role": "Chain lightning slows every target.",
+    "effect": {
+      "chain": [
+        4,
+        1.5,
+        0.75
+      ],
+      "slow": [
+        0.25,
+        1.7
+      ]
+    },
+    "art": "storm"
+  },
+  "frost": {
+    "name": "Frost",
+    "pair": [
+      "water",
+      "light"
+    ],
+    "split": {
+      "water": 0.6,
+      "light": 0.4
+    },
+    "damage": 36,
+    "rate": 1.1,
+    "range": 2.8,
+    "role": "Slows, freezes and pierces armor.",
+    "effect": {
+      "slow": [
+        0.29,
+        2.2
+      ],
+      "freeze": [
+        4,
+        1
+      ],
+      "pierce": 0.3
+    },
+    "art": "ice"
+  },
+  "venom": {
+    "name": "Bog Venom",
+    "pair": [
+      "water",
+      "dark"
+    ],
+    "split": {
+      "dark": 0.6,
+      "water": 0.4
+    },
+    "damage": 26,
+    "rate": 1.2,
+    "range": 2.8,
+    "splash": 1.1,
+    "role": "Toxic globules poison groups and prevent healing.",
+    "effect": {
+      "poison": [
+        6,
+        0.2,
+        5
+      ],
+      "heal_block": 5
+    },
+    "art": "trap"
+  },
+  "overgrowth": {
+    "name": "Overgrowth",
+    "pair": [
+      "nature",
+      "electric"
+    ],
+    "split": {
+      "nature": 0.6,
+      "electric": 0.4
+    },
+    "damage": 28,
+    "rate": 1,
+    "range": 2.8,
+    "role": "Chain lightning periodically roots.",
+    "effect": {
+      "chain": [
+        2,
+        1.5,
+        0.7
+      ],
+      "root": [
+        3,
+        1
+      ]
+    },
+    "art": "grove"
+  },
+  "bloom": {
+    "name": "Bloom",
+    "pair": [
+      "nature",
+      "light"
+    ],
+    "split": {
+      "light": 0.6,
+      "nature": 0.4
+    },
+    "damage": 32,
+    "rate": 1,
+    "range": 2.8,
+    "role": "Restores one gate HP after each regular wave. Excess repair builds a barrier.",
+    "effect": {
+      "wall_heal": 1
+    },
+    "art": "lotus"
+  },
+  "blight": {
+    "name": "Blight",
+    "pair": [
+      "nature",
+      "dark"
+    ],
+    "split": {
+      "nature": 0.6,
+      "dark": 0.4
+    },
+    "damage": 24,
+    "rate": 1.2,
+    "range": 2.8,
+    "role": "Each hit strips armor.",
+    "effect": {
+      "shred": [
+        3,
+        5,
+        4
+      ]
+    },
+    "art": "thorn"
+  },
+  "prism": {
+    "name": "Prism",
+    "pair": [
+      "electric",
+      "light"
+    ],
+    "split": {
+      "electric": 0.5,
+      "light": 0.5
+    },
+    "damage": 18,
+    "rate": 4,
+    "range": 3.4,
+    "role": "Beam damage grows while focused on a target.",
+    "effect": {
+      "ramp": [
+        0.15,
+        3
+      ]
+    },
+    "art": "prism"
+  },
+  "null": {
+    "name": "Null",
+    "pair": [
+      "electric",
+      "dark"
+    ],
+    "split": {
+      "electric": 0.6,
+      "dark": 0.4
+    },
+    "damage": 26,
+    "rate": 1,
+    "range": 2.8,
+    "role": "Silence suppresses enemy properties.",
+    "effect": {
+      "silence": 3
+    },
+    "art": "vortex"
+  },
+  "eclipse": {
+    "name": "Eclipse",
+    "pair": [
+      "light",
+      "dark"
+    ],
+    "split": {},
+    "damage": 44,
+    "rate": 1,
+    "range": 3,
+    "role": "Chooses the stronger element for each hit and pierces armor.",
+    "effect": {
+      "adaptive": true,
+      "pierce": 0.5
+    },
+    "art": "eclipse"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "families": {
+    "acorn": {"name": "Acorn Scout", "color": "#f3bd89"},
+    "beetle": {"name": "Burrow Beetle", "color": "#84baad"},
+    "hare": {"name": "Sprig Hare", "color": "#ead6b9"},
+    "guard": {"name": "Barkguard", "color": "#b7bf79"},
+    "cap": {"name": "Puffcap", "color": "#ec9caa"},
+    "moth": {"name": "Dusk Moth", "color": "#bba8df"},
+    "boar": {"name": "Briar Boar", "color": "#d6a683"},
+    "drake": {"name": "Pond Drake", "color": "#83c1cf"},
+    "bone_rat": {"name": "Bone Rat", "color": "#bc9e8e", "grim_index": 0, "gait": "scuttle", "appears_from": 20},
+    "plague_crow": {"name": "Plague Crow", "color": "#8e7d9a", "grim_index": 1, "gait": "fly", "appears_from": 20},
+    "iron_badger": {"name": "Iron Badger", "color": "#a68872", "grim_index": 2, "gait": "lumber", "appears_from": 20},
+    "mire_toad": {"name": "Mire Toad", "color": "#92a25f", "grim_index": 3, "gait": "hop", "appears_from": 20},
+    "grave_stag": {"name": "Grave Stag", "color": "#bfa68e", "grim_index": 4, "gait": "lumber", "appears_from": 20},
+    "iron_beetle": {"name": "Iron Beetle", "color": "#7ba7a0", "grim_index": 5, "gait": "scuttle", "appears_from": 20},
+    "grave_hound": {"name": "Grave Hound", "color": "#b5938c", "grim_index": 6, "gait": "scuttle", "appears_from": 20},
+    "spectral_owl": {"name": "Spectral Owl", "color": "#91b9ce", "grim_index": 7, "gait": "fly", "appears_from": 20},
+    "thorn_spider": {"name": "Thorn Spider", "color": "#a8976f", "grim_index": 8, "gait": "scuttle", "appears_from": 40},
+    "rust_giant": {"name": "Rust Giant", "color": "#b29572", "grim_index": 9, "gait": "lumber", "appears_from": 40},
+    "briar_serpent": {"name": "Briar Serpent", "color": "#97a76e", "grim_index": 10, "gait": "scuttle", "appears_from": 40},
+    "bone_crab": {"name": "Bone Crab", "color": "#ceb48e", "grim_index": 11, "gait": "scuttle", "appears_from": 40},
+    "ash_bat": {"name": "Ash Bat", "color": "#a98e9f", "grim_index": 12, "gait": "fly", "appears_from": 40},
+    "hollow": {"name": "Hollow Scarecrow", "color": "#b8a07f", "grim_index": 13, "gait": "lumber", "appears_from": 40},
+    "dread_goat": {"name": "Dread Goat", "color": "#bcad96", "grim_index": 14, "gait": "hop", "appears_from": 60},
+    "moth_knight": {"name": "Moth Knight", "color": "#ba92a1", "grim_index": 15, "gait": "fly", "appears_from": 60},
+    "moss_troll": {"name": "Moss Troll", "color": "#84996e", "grim_index": 16, "gait": "lumber", "appears_from": 60},
+    "wraith_wolf": {"name": "Wraith Wolf", "color": "#92a8bf", "grim_index": 17, "gait": "scuttle", "appears_from": 60},
+    "ember_drake": {"name": "Ember Drake", "color": "#be805a", "grim_index": 18, "gait": "fly", "appears_from": 60},
+    "obsidian_boar": {"name": "Obsidian Boar", "color": "#9386a2", "grim_index": 19, "gait": "lumber", "appears_from": 60}
+  },
+  "hp": 30,
+  "speed": 1,
+  "slow_cap": 0.7,
+  "properties": {
+    "swift": {
+      "badge": "S",
+      "hp": 0.63,
+      "speed": 1.35,
+      "pressure_armor_scale": 0.45
+    },
+    "armored": {
+      "badge": "A",
+      "hp": 1.3,
+      "speed": 0.85,
+      "armor": [
+        4,
+        0.5
+      ]
+    },
+    "swarm": {
+      "badge": "W",
+      "hp": 0.4,
+      "speed": 1.1,
+      "count": 2.5,
+      "gold": 0.5
+    },
+    "mender": {
+      "badge": "M",
+      "radius": 1.5,
+      "heal": 0.2
+    },
+    "splitter": {
+      "badge": "X",
+      "count": 2,
+      "hp": 0.35
+    },
+    "phasing": {
+      "badge": "P",
+      "cycle": 5,
+      "duration": 2
+    },
+    "revenant": {
+      "badge": "R",
+      "delay": 4,
+      "hp": 0.33
+    }
+  },
+  "elite": {
+    "hp": 1.5,
+    "gold": 2
+  }
+}

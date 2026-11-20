@@ -1,0 +1,182 @@
+{
+  "forced": [
+    "grunts",
+    "grunts",
+    "rush",
+    "grunts",
+    "armored"
+  ],
+  "first_tick": 30,
+  "interval": 27,
+  "elemental_from": 6,
+  "all_elements_from": 16,
+  "elemental_chance": 0.5,
+  "elemental_fraction": 0.5,
+  "mixed_elements_from": 11,
+  "mixed_elemental_fraction": 0.65,
+  "adjustments": {
+    "48": {"pattern": "raiders", "hp_scale": 0.78, "count_scale": 0.92}
+  },
+  "pressure": {
+    "after": 10,
+    "hp_per_wave": 0.026,
+    "added_count_per_wave": 0.32,
+    "armor_per_wave": 0.23,
+    "speed_per_wave": 0.006,
+    "speed_cap": 0.18
+  },
+  "late_game": {
+    "after": 60,
+    "unit_cap": 96,
+    "hp_per_wave": 0.02,
+    "armor_per_wave": 0.65,
+    "third_boss_from": 90,
+    "boss_spacing_seconds": 6,
+    "necromancer_heal": 0.10,
+    "necromancer_radius": 3.0
+  },
+  "control_resistance": {
+    "from": 50,
+    "per_wave": 0.01,
+    "cap": 0.70
+  },
+  "patterns": {
+    "grunts": {
+      "min": 1,
+      "weight": 4,
+      "groups": [
+        [
+          "",
+          1
+        ]
+      ]
+    },
+    "rush": {
+      "min": 3,
+      "weight": 3,
+      "groups": [
+        [
+          "",
+          0.6
+        ],
+        [
+          "swift",
+          0.4
+        ]
+      ]
+    },
+    "swarm": {
+      "min": 4,
+      "weight": 2,
+      "groups": [
+        [
+          "swarm",
+          1
+        ]
+      ],
+      "interval": 11
+    },
+    "armored": {
+      "min": 5,
+      "weight": 3,
+      "groups": [
+        [
+          "",
+          0.5
+        ],
+        [
+          "armored",
+          0.5
+        ]
+      ]
+    },
+    "support": {
+      "min": 8,
+      "weight": 2,
+      "groups": [
+        [
+          "",
+          1
+        ]
+      ],
+      "mender_per": 8
+    },
+    "split": {
+      "min": 12,
+      "weight": 2,
+      "groups": [
+        [
+          "",
+          0.5
+        ],
+        [
+          "splitter",
+          0.5
+        ]
+      ]
+    },
+    "elite": {
+      "min": 20,
+      "weight": 2,
+      "groups": [
+        [
+          "elite",
+          1
+        ]
+      ]
+    },
+    "phasing": {
+      "min": 8,
+      "introduce": 8,
+      "weight": 2,
+      "groups": [
+        [
+          "",
+          0.7
+        ],
+        [
+          "phasing",
+          0.3
+        ]
+      ]
+    },
+    "revenant": {
+      "min": 22,
+      "weight": 2,
+      "groups": [
+        [
+          "",
+          0.7
+        ],
+        [
+          "revenant",
+          0.3
+        ]
+      ]
+    },
+    "raiders": {
+      "min": 11,
+      "introduce": 11,
+      "weight": 3,
+      "groups": [["swift", 0.35], ["armored", 0.4], ["", 0.25]]
+    },
+    "escort": {
+      "min": 13,
+      "introduce": 13,
+      "weight": 3,
+      "groups": [["armored", 0.40], ["swift", 0.30], ["", 0.30]],
+      "mender_per": 5
+    },
+    "crossfire": {
+      "min": 15,
+      "introduce": 15,
+      "weight": 2,
+      "groups": [["swift", 0.27], ["phasing", 0.25], ["armored", 0.48]]
+    },
+    "vanguard": {
+      "min": 21,
+      "weight": 2,
+      "groups": [["elite", 0.3], ["swift", 0.28], ["armored", 0.42]]
+    }
+  }
+}

@@ -1,0 +1,20 @@
+# Design decisions
+
+- Elemental TD uses an original Greenmarch Gate battlefield and original vector-style art drawn in Godot. The elemental progression and Survival pacing take inspiration from classic custom-map tower defense.
+- Arrow and Cannon reach level 6. Their infusion tier is capped by level and by the selected element’s unlocked tier. Tier I starts at level 2, Tier II at 4, and Tier III at 6. Existing infusions scale as both requirements are met. Pricing uses the tier available at purchase.
+- Pure elemental towers require Tier I for levels 1–3, Tier II for levels 4–5, and Tier III for level 6. Dual towers retain their three levels and their original Tier II requirement for level 3.
+- Element selection is mandatory when an upgrade remains available. After all 18 tiers are unlocked, the selection prompt retires.
+- Element choices start a standalone bonus before wave 5 and every fifth wave thereafter. The chosen spirit unlocks its tier and pays its bounty on defeat or breach. A breach costs five gate lives. Every tenth regular wave features a boss, whose bounty is 150% of the original amount.
+- Autosave preserves active combat and live tower edits. Pausing or leaving saves the exact current combat state. Existing build-phase checkpoints also load.
+- The app adjusts the playfield and control layout for portrait and landscape.
+- Increased opening clear rewards so a Cannon-only opening can afford six level-1 towers by wave 4. The pure and normal level-6 stats extend the original five-level tables.
+- Tier II health was retuned for a single attempt. The original looping-trial balance study is preserved as historical data.
+- Null can dispel an active phase before applying its hit. Other towers wait for the enemy to become targetable.
+- The balance bot limits repeated fusion recipes so it can diversify its defenses in the fusion comparison.
+- Players can place one tower on any open terrain tile from wave 1. Road tiles stay clear. The original site IDs keep older saves and the comparison bot working.
+- Combat shares the tower inspector and build actions with the build phase. Arrow and Cannon accept infusions. Standard elemental towers of distinct elements can fuse from tower level 2 during combat or preparation. A level-2+ dual can take a third distinct level-2+ elemental tower. Attacking duals start at a minimum of 120% of the stronger level-2 ingredient's hit. Aura towers provide support. Undo is available during preparation.
+- Spirit selection launches its bonus immediately. The 30-second regular-wave countdown pauses in the Pause menu and while an elemental choice is required. Combat speed changes leave the countdown in real seconds.
+- After wave 10, regular formations add a second element, new enemy mixes, and a progressive boost to mob count, health, and armor. Swift mobs sprint and give up durability. Standard mobs retain their usual pace.
+- Standard elemental tower effects strengthen at each upgrade, with larger steps across tier boundaries. Water starts at 15% slow and reaches 42% at level 6. Light reaches every point of the map, Dark attacks quickly with lighter hits, and Nature attacks slowly with splash.
+- Tier III unlocks the separate Pure tower for that element. Three Pure towers can be on the field, with the limit shared across all elements. Each deals about 2.28× the hit damage of its corresponding level-6 elemental tower. Defeating a Tier II or Tier III spirit adds 10% damage for its element, weighted by damage split on fusions.
+- A level-2+ dual and a level-2+ standard tower of a third element form a triple. Its level comes from the lower of the dual's level and the single element's fusion band. Triple levels 2 and 3 require all three elements at the corresponding tier. The 20 original recipes use this project's Electric element. Daystar Bloom follows the Fire + Nature + Light Nova lineage with a close-range solar pulse that slows enemies. [Map author’s 4.3b notes](https://www.hiveworkshop.com/threads/element-td-survivor-4-3b.125024/) · [4.2 changelog](https://forums.eletd.com/topic/1906-element-td-42/)

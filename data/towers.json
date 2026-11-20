@@ -1,0 +1,156 @@
+{
+  "arrow": {
+    "name": "Arrow",
+    "cost": 50,
+    "damage": 13,
+    "rate": 1.2,
+    "range": 3.7,
+    "upgrade": [
+      40,
+      80,
+      150,
+      260,
+      420
+    ],
+    "role": "Fast single-target fire"
+  },
+  "cannon": {
+    "name": "Cannon",
+    "cost": 80,
+    "damage": 14,
+    "rate": 0.6,
+    "range": 2.6,
+    "upgrade": [
+      60,
+      110,
+      200,
+      340,
+      520
+    ],
+    "splash": 1,
+    "splash_per_level": 0.1,
+    "role": "Shells hit nearby enemies"
+  },
+  "fire": {
+    "name": "Fire",
+    "cost": 110,
+    "damage": 16,
+    "rate": 1,
+    "range": 2.8
+  },
+  "water": {
+    "name": "Water",
+    "cost": 110,
+    "damage": 10,
+    "rate": 1.2,
+    "range": 2.8
+  },
+  "nature": {
+    "name": "Nature",
+    "cost": 110,
+    "damage": 27,
+    "rate": 0.55,
+    "range": 3,
+    "splash": 1.20,
+    "splash_per_level": 0.065
+  },
+  "electric": {
+    "name": "Electric",
+    "cost": 120,
+    "damage": 14,
+    "rate": 0.9,
+    "range": 2.8
+  },
+  "light": {
+    "name": "Light",
+    "cost": 130,
+    "damage": 17,
+    "rate": 0.8,
+    "range": 3,
+    "global_range": true
+  },
+  "dark": {
+    "name": "Dark",
+    "cost": 120,
+    "damage": 5,
+    "rate": 2.2,
+    "range": 2.8
+  },
+  "normal_levels": {
+    "damage": [
+      1,
+      1.6,
+      2.4,
+      3.6,
+      5.2,
+      7.5
+    ],
+    "rate": [
+      1,
+      1,
+      1.1,
+      1.1,
+      1.2,
+      1.3
+    ]
+  },
+  "pure_levels": {
+    "potency": [1, 1.18, 1.36, 1, 1.18, 1],
+    "damage": [
+      1,
+      1.5,
+      2.2,
+      3.2,
+      4.6,
+      6.8
+    ],
+    "rate": [
+      1,
+      1,
+      1.1,
+      1.1,
+      1.25,
+      1.35
+    ],
+    "upgrade": [
+      70,
+      130,
+      230,
+      380,
+      550
+    ]
+  },
+  "ascended_levels": {
+    "damage": [15.5],
+    "rate": [1.35],
+    "potency": [1.23],
+    "upgrade": []
+  },
+  "dual_levels": {
+    "damage": [
+      1,
+      1.7,
+      2.6
+    ],
+    "rate": [
+      1,
+      1,
+      1
+    ],
+    "potency": [
+      1,
+      1.35,
+      1.7
+    ],
+    "upgrade": [
+      150,
+      280
+    ]
+  },
+  "triple_levels": {
+    "damage": [1.50, 1.88, 2.30],
+    "rate": [1, 1.05, 1.12],
+    "potency": [1.12, 1.38, 1.68],
+    "upgrade": [340, 580]
+  }
+}

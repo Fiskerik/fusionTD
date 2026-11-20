@@ -1,0 +1,42 @@
+{
+  "order": [
+    "warlock",
+    "ram",
+    "necromancer"
+  ],
+  "spawn_tick": 60,
+  "normal_count": 0.6,
+  "gold": [
+    225,
+    15
+  ],
+  "warlock": {
+    "name": "Warlock",
+    "hp_mult": 12,
+    "armor": 10,
+    "speed": 0.5,
+    "slow_cap": 0.3,
+    "period": 300,
+    "telegraph": 60,
+    "stun": 180,
+    "range": 4.5
+  },
+  "ram": {
+    "name": "Ram Captain",
+    "hp_mult": 11,
+    "armor": 25,
+    "speed": 0.4,
+    "slow_cap": 0
+  },
+  "necromancer": {
+    "name": "Necromancer",
+    "hp_mult": 11,
+    "armor": 10,
+    "speed": 0.5,
+    "slow_cap": 0.3,
+    "period": 240,
+    "count": 4,
+    "cap": 12,
+    "hp": 0.5
+  }
+}

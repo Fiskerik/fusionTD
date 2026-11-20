@@ -1,0 +1,83 @@
+workflows:
+  ios-testflight:
+    name: Elemental TD iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: elementaltower-ios
+    environment:
+      xcode: "26.4"
+      groups:
+        - ios_settings
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.example.elementaltd
+      vars:
+        BUNDLE_ID: com.example.elementaltd
+        GODOT_VERSION: "4.4.1"
+
+    scripts:
+      - name: Export Godot to Xcode
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR"
+
+          if [[ "$BUNDLE_ID" == "com.example.elementaltd" ]]; then
+            echo "Set your registered bundle ID in both places in codemagic.yaml."
+            exit 1
+          fi
+          if [[ ! "${APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "Set APPLE_TEAM_ID to your 10-character Apple Developer Team ID in the ios_settings group."
+            exit 1
+          fi
+          if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+            echo "BUNDLE_ID must be the explicit bundle identifier registered with Apple."
+            exit 1
+          fi
+
+          work_dir="$(mktemp -d)"
+          release_url="https://github.com/godotengine/godot-builds/releases/download/$GODOT_VERSION-stable"
+          prefix="Godot_v$GODOT_VERSION-stable"
+          curl --fail --location --retry 3 "$release_url/$prefix"_macos.universal.zip -o "$work_dir/godot.zip"
+          ditto -x -k "$work_dir/godot.zip" "$work_dir"
+          godot="$work_dir/Godot.app/Contents/MacOS/Godot"
+          "$godot" --version
+
+          curl --fail --location --retry 3 "$release_url/$prefix"_export_templates.tpz -o "$work_dir/templates.tpz"
+          template_dir="$HOME/Library/Application Support/Godot/export_templates/$GODOT_VERSION.stable"
+          mkdir -p "$template_dir"
+          unzip -p "$work_dir/templates.tpz" templates/ios.zip > "$template_dir/ios.zip"
+          test -s "$template_dir/ios.zip"
+
+          build_number=$((PROJECT_BUILD_NUMBER + 1))
+          sed -i '' \
+            -e "s/com.example.elementaltd/$BUNDLE_ID/g" \
+            -e "s/APPLETEAM0/$APPLE_TEAM_ID/g" \
+            -e "s/application\/version=\"1\"/application\/version=\"$build_number\"/" \
+            export_presets.cfg
+
+          "$godot" --headless --path "$CM_BUILD_DIR" --import 2>&1 | tee "$work_dir/import.log"
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource' "$work_dir/import.log"; then
+            exit 1
+          fi
+          "$godot" --headless --path "$CM_BUILD_DIR" --script res://tests/run_tests.gd
+
+          mkdir -p build/ios
+          "$godot" --headless --path "$CM_BUILD_DIR" --export-release iOS "$CM_BUILD_DIR/build/ios/ElementalTD.ipa"
+          test -f build/ios/ElementalTD.xcodeproj/project.pbxproj
+
+      - name: Sign and archive the iOS app
+        script: |
+          set -euo pipefail
+          ios_project="$CM_BUILD_DIR/build/ios/ElementalTD.xcodeproj"
+          xcode-project use-profiles --project "$ios_project"
+          xcode-project build-ipa --project "$ios_project" --scheme ElementalTD --config Release \
+            --ipa-directory "$CM_BUILD_DIR/build/ios/ipa"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration

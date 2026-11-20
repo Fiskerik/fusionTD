@@ -1,0 +1,589 @@
+{
+  "boilgrove": {
+    "name": "Boilgrove",
+    "elements": [
+      "fire",
+      "water",
+      "nature"
+    ],
+    "art": "geyser",
+    "split": {
+      "fire": 0.4,
+      "water": 0.3,
+      "nature": 0.3
+    },
+    "damage": 79,
+    "rate": 0.72,
+    "range": 3.05,
+    "splash": 1.55,
+    "role": "Scalding seed pods burst into clouds and slow the pack.",
+    "effect": {
+      "burn": [
+        5,
+        0.15,
+        3.8
+      ],
+      "slow": [
+        0.3,
+        2.2
+      ]
+    }
+  },
+  "thunderkiln": {
+    "name": "Thunderkiln",
+    "elements": [
+      "fire",
+      "water",
+      "electric"
+    ],
+    "art": "storm",
+    "split": {
+      "fire": 0.4,
+      "water": 0.3,
+      "electric": 0.3
+    },
+    "damage": 75,
+    "rate": 0.82,
+    "range": 3.1,
+    "role": "Lightning jumps through wet targets and leaves them chilled.",
+    "effect": {
+      "chain": [
+        4,
+        1.6,
+        0.79
+      ],
+      "slow": [
+        0.3,
+        2
+      ]
+    }
+  },
+  "dawngeysers": {
+    "name": "Dawn Geyser",
+    "elements": [
+      "fire",
+      "water",
+      "light"
+    ],
+    "art": "geyser",
+    "split": {
+      "fire": 0.4,
+      "water": 0.3,
+      "light": 0.3
+    },
+    "damage": 96,
+    "rate": 0.72,
+    "range": 2.95,
+    "splash": 1.38,
+    "role": "A boiling column hits a crowd and pierces armor.",
+    "effect": {
+      "pierce": 0.54,
+      "slow": [
+        0.28,
+        2.2
+      ]
+    }
+  },
+  "smoketide": {
+    "name": "Smoketide",
+    "elements": [
+      "fire",
+      "water",
+      "dark"
+    ],
+    "art": "vortex",
+    "split": {
+      "fire": 0.4,
+      "water": 0.3,
+      "dark": 0.3
+    },
+    "damage": 82,
+    "rate": 0.8,
+    "range": 3.15,
+    "splash": 1.26,
+    "role": "Scalding smoke weakens enemies and drags down their speed.",
+    "effect": {
+      "curse": [
+        0.23,
+        3.5
+      ],
+      "slow": [
+        0.29,
+        2.1
+      ]
+    }
+  },
+  "sparkthorn": {
+    "name": "Sparkthorn",
+    "elements": [
+      "fire",
+      "nature",
+      "electric"
+    ],
+    "art": "grove",
+    "split": {
+      "fire": 0.4,
+      "nature": 0.3,
+      "electric": 0.3
+    },
+    "damage": 76,
+    "rate": 0.86,
+    "range": 3.1,
+    "role": "Forked sparks ignite a target and leap through the pack.",
+    "effect": {
+      "chain": [
+        4,
+        1.55,
+        0.76
+      ],
+      "burn": [
+        6,
+        0.16,
+        4
+      ],
+      "spread": 1.5
+    }
+  },
+  "daystar": {
+    "name": "Daystar Bloom",
+    "elements": [
+      "fire",
+      "nature",
+      "light"
+    ],
+    "art": "starbloom",
+    "split": {
+      "fire": 0.4,
+      "nature": 0.3,
+      "light": 0.3
+    },
+    "damage": 123,
+    "rate": 0.59,
+    "range": 2.2,
+    "role": "A solar pulse burns and slows nearby enemies. Restores the gate.",
+    "effect": {
+      "pulse": true,
+      "wall_heal": 2,
+      "burn": [
+        6,
+        0.16,
+        4
+      ],
+      "slow": [
+        0.34,
+        2.2
+      ]
+    }
+  },
+  "ashorchard": {
+    "name": "Ash Orchard",
+    "elements": [
+      "fire",
+      "nature",
+      "dark"
+    ],
+    "art": "grove",
+    "split": {
+      "fire": 0.4,
+      "nature": 0.3,
+      "dark": 0.3
+    },
+    "damage": 102,
+    "rate": 0.61,
+    "range": 3,
+    "splash": 1.62,
+    "role": "Black fruit burst, burning enemies and making their wounds worse.",
+    "effect": {
+      "burn": [
+        6,
+        0.18,
+        3.8
+      ],
+      "curse": [
+        0.23,
+        3.25
+      ]
+    }
+  },
+  "arcfurnace": {
+    "name": "Arc Furnace",
+    "elements": [
+      "fire",
+      "electric",
+      "light"
+    ],
+    "art": "anvil",
+    "split": {
+      "fire": 0.4,
+      "electric": 0.3,
+      "light": 0.3
+    },
+    "damage": 115,
+    "rate": 0.84,
+    "range": 3.65,
+    "role": "Bright arcs jump through crowds and cut through armor.",
+    "effect": {
+      "chain": [
+        3,
+        1.6,
+        0.76
+      ],
+      "pierce": 0.55
+    }
+  },
+  "blackglass": {
+    "name": "Cindercoil",
+    "elements": [
+      "fire",
+      "electric",
+      "dark"
+    ],
+    "art": "vortex",
+    "split": {
+      "fire": 0.4,
+      "electric": 0.3,
+      "dark": 0.3
+    },
+    "damage": 65,
+    "rate": 1.55,
+    "range": 3.1,
+    "splash": 0.95,
+    "role": "Shreds armor with cinders that scatter and spread burning on defeat.",
+    "effect": {
+      "shred": [
+        4,
+        5,
+        3.2
+      ],
+      "burn": [
+        5,
+        0.12,
+        3.8
+      ],
+      "spread": 1.3
+    }
+  },
+  "embershade": {
+    "name": "Embershade",
+    "elements": [
+      "fire",
+      "light",
+      "dark"
+    ],
+    "art": "eclipse",
+    "split": {
+      "fire": 0.4,
+      "light": 0.3,
+      "dark": 0.3
+    },
+    "damage": 119,
+    "rate": 0.92,
+    "range": 3.25,
+    "role": "Day and night cross in a furnace beam that burns and pierces.",
+    "effect": {
+      "burn": [
+        6,
+        0.15,
+        3.8
+      ],
+      "pierce": 0.55
+    }
+  },
+  "monsoonroot": {
+    "name": "Monsoonroot",
+    "elements": [
+      "water",
+      "nature",
+      "electric"
+    ],
+    "art": "storm",
+    "split": {
+      "water": 0.4,
+      "nature": 0.3,
+      "electric": 0.3
+    },
+    "damage": 77,
+    "rate": 0.75,
+    "range": 3.12,
+    "role": "Chain lightning chills the pack and periodically pins it.",
+    "effect": {
+      "chain": [
+        5,
+        1.65,
+        0.78
+      ],
+      "slow": [
+        0.3,
+        2.25
+      ],
+      "root": [
+        4,
+        0.85
+      ]
+    }
+  },
+  "pearllotus": {
+    "name": "Pearl Lotus",
+    "elements": [
+      "water",
+      "nature",
+      "light"
+    ],
+    "art": "lotus",
+    "split": {
+      "water": 0.4,
+      "nature": 0.3,
+      "light": 0.3
+    },
+    "damage": 86,
+    "rate": 0.69,
+    "range": 3,
+    "splash": 1.55,
+    "role": "Lotus waves slow enemy crowds and mend the gate.",
+    "effect": {
+      "slow": [
+        0.31,
+        2.3
+      ],
+      "wall_heal": 2
+    }
+  },
+  "mireheart": {
+    "name": "Mireheart",
+    "elements": [
+      "water",
+      "nature",
+      "dark"
+    ],
+    "art": "trap",
+    "split": {
+      "water": 0.4,
+      "nature": 0.3,
+      "dark": 0.3
+    },
+    "damage": 86,
+    "rate": 0.73,
+    "range": 3.1,
+    "splash": 1.55,
+    "role": "A spreading mire poisons enemies and prevents them from healing.",
+    "effect": {
+      "poison": [
+        4,
+        0.16,
+        4.5
+      ],
+      "slow": [
+        0.29,
+        2.3
+      ],
+      "heal_block": 4.5
+    }
+  },
+  "glaciercoil": {
+    "name": "Glacier Coil",
+    "elements": [
+      "water",
+      "electric",
+      "light"
+    ],
+    "art": "ice",
+    "split": {
+      "water": 0.4,
+      "electric": 0.3,
+      "light": 0.3
+    },
+    "damage": 86,
+    "rate": 0.82,
+    "range": 3.3,
+    "role": "Ice arcs pierce armor, slow groups, and periodically freeze.",
+    "effect": {
+      "chain": [
+        4,
+        1.5,
+        0.78
+      ],
+      "slow": [
+        0.32,
+        2.2
+      ],
+      "freeze": [
+        3,
+        1
+      ],
+      "pierce": 0.39
+    }
+  },
+  "umbratide": {
+    "name": "Umbral Tide",
+    "elements": [
+      "water",
+      "electric",
+      "dark"
+    ],
+    "art": "storm",
+    "split": {
+      "water": 0.4,
+      "electric": 0.3,
+      "dark": 0.3
+    },
+    "damage": 85,
+    "rate": 0.9,
+    "range": 3.3,
+    "role": "A cold current chains across the pack and curses its targets.",
+    "effect": {
+      "chain": [
+        4,
+        1.65,
+        0.76
+      ],
+      "slow": [
+        0.3,
+        2
+      ],
+      "curse": [
+        0.21,
+        3
+      ]
+    }
+  },
+  "moonglacier": {
+    "name": "Moon Glacier",
+    "elements": [
+      "water",
+      "light",
+      "dark"
+    ],
+    "art": "ice",
+    "split": {
+      "water": 0.4,
+      "light": 0.3,
+      "dark": 0.3
+    },
+    "damage": 117,
+    "rate": 0.68,
+    "range": 3.35,
+    "splash": 1.65,
+    "role": "Ices reachable road tiles so enemies slide, stumble, and bunch up.",
+    "effect": {
+      "ice": {"slide": 0.34, "stumble": 1.05},
+      "slow": [
+        0.34,
+        2.4
+      ],
+      "freeze": [
+        3,
+        1
+      ],
+      "pierce": 0.42
+    }
+  },
+  "auroraarbor": {
+    "name": "Aurora Arbor",
+    "elements": [
+      "nature",
+      "electric",
+      "light"
+    ],
+    "art": "grove",
+    "split": {
+      "nature": 0.4,
+      "electric": 0.3,
+      "light": 0.3
+    },
+    "damage": 88,
+    "rate": 0.78,
+    "range": 3.1,
+    "splash": 1.18,
+    "role": "Empowers nearby towers and restores the gate.",
+    "effect": {
+      "wall_heal": 2,
+      "aura_damage": 0.2,
+      "aura_speed": 0.18
+    }
+  },
+  "nightbriar": {
+    "name": "Nightbriar",
+    "elements": [
+      "nature",
+      "electric",
+      "dark"
+    ],
+    "art": "trap",
+    "split": {
+      "nature": 0.4,
+      "electric": 0.3,
+      "dark": 0.3
+    },
+    "damage": 95,
+    "rate": 0.76,
+    "range": 3.05,
+    "splash": 1.49,
+    "role": "A thorn volley strips armor and roots periodic targets.",
+    "effect": {
+      "shred": [
+        4,
+        5,
+        3.4
+      ],
+      "root": [
+        3,
+        1
+      ]
+    }
+  },
+  "moonorchid": {
+    "name": "Moon Orchid",
+    "elements": [
+      "nature",
+      "light",
+      "dark"
+    ],
+    "art": "lotus",
+    "split": {
+      "nature": 0.4,
+      "light": 0.3,
+      "dark": 0.3
+    },
+    "damage": 98,
+    "rate": 0.77,
+    "range": 3.05,
+    "splash": 1.48,
+    "role": "Spreads a disease that feeds on recent damage and restores the gate.",
+    "effect": {
+      "disease": {"fraction": 0.12, "duration": 4, "radius": 1.5},
+      "curse": [
+        0.26,
+        3.5
+      ],
+      "heal_block": 4,
+      "wall_heal": 2
+    }
+  },
+  "eventide": {
+    "name": "Eventide",
+    "elements": [
+      "electric",
+      "light",
+      "dark"
+    ],
+    "art": "prism",
+    "split": {
+      "electric": 0.4,
+      "light": 0.3,
+      "dark": 0.3
+    },
+    "damage": 83,
+    "rate": 1.22,
+    "range": 3.45,
+    "role": "The prism lashes several targets and interrupts special enemy traits.",
+    "effect": {
+      "chain": [
+        3,
+        1.55,
+        0.76
+      ],
+      "silence": 2.5,
+      "pierce": 0.45
+    }
+  }
+}

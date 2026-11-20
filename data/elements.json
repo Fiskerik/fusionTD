@@ -1,0 +1,184 @@
+{
+  "fire": {
+    "name": "Fire",
+    "color": "#ff865f",
+    "weak": "water",
+    "role": "Stacking burn",
+    "effects": [
+      {
+        "burn": [
+          5,
+          0.15,
+          4
+        ]
+      },
+      {
+        "burn": [
+          8,
+          0.23,
+          4.7
+        ]
+      },
+      {
+        "burn": [
+          12,
+          0.34,
+          5.5
+        ],
+        "spread": 1.2
+      }
+    ]
+  },
+  "water": {
+    "name": "Water",
+    "color": "#67c9ff",
+    "weak": "electric",
+    "role": "Slow and freeze",
+    "effects": [
+      {
+        "slow": [
+          0.15,
+          2
+        ]
+      },
+      {
+        "slow": [
+          0.27,
+          3.05
+        ],
+        "freeze": [
+          5,
+          0.8
+        ]
+      },
+      {
+        "slow": [
+          0.42,
+          4.15
+        ],
+        "freeze": [
+          4,
+          1.2
+        ]
+      }
+    ]
+  },
+  "nature": {
+    "name": "Nature",
+    "color": "#a6df76",
+    "weak": "fire",
+    "role": "Poison and root",
+    "effects": [
+      {
+        "poison": [
+          1,
+          0.16,
+          4
+        ]
+      },
+      {
+        "poison": [
+          1,
+          0.28,
+          4.8
+        ],
+        "root": [
+          5,
+          0.9
+        ]
+      },
+      {
+        "poison": [
+          1,
+          0.43,
+          5.5
+        ],
+        "root": [
+          4,
+          1.55
+        ],
+        "heal_block": 4
+      }
+    ]
+  },
+  "electric": {
+    "name": "Electric",
+    "color": "#ffd470",
+    "weak": "nature",
+    "role": "Chain lightning",
+    "effects": [
+      {
+        "chain": [
+          2,
+          1.5,
+          0.7
+        ]
+      },
+      {
+        "chain": [
+          3,
+          1.65,
+          0.76
+        ]
+      },
+      {
+        "chain": [
+          4,
+          1.85,
+          0.83
+        ]
+      }
+    ]
+  },
+  "light": {
+    "name": "Light",
+    "color": "#fff1c7",
+    "weak": "dark",
+    "role": "Armor pierce and stun resistance",
+    "effects": [
+      {
+        "pierce": 0.3
+      },
+      {
+        "pierce": 0.5,
+        "cleanse": [
+          0.5,
+          2.5
+        ]
+      },
+      {
+        "pierce": 0.7,
+        "cleanse": [
+          1,
+          2.5
+        ]
+      }
+    ]
+  },
+  "dark": {
+    "name": "Dark",
+    "color": "#c3a2ff",
+    "weak": "light",
+    "role": "Curse for bonus damage",
+    "effects": [
+      {
+        "curse": [
+          0.15,
+          3
+        ]
+      },
+      {
+        "curse": [
+          0.28,
+          3.6
+        ]
+      },
+      {
+        "curse": [
+          0.44,
+          4.4
+        ]
+      }
+    ]
+  }
+}

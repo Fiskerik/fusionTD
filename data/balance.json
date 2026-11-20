@@ -1,0 +1,65 @@
+{
+  "start_gold": 160,
+  "start_lives": 20,
+  "leak": {
+    "mob": 1,
+    "spirit": 5,
+    "boss": 10
+  },
+  "sell_refund": 0.75,
+  "move_rate": 0.10,
+  "wave_clear_bonus": [
+    63,
+    3
+  ],
+  "interest": 0.02,
+  "interest_cap": 15,
+  "pure_tower_cost": 1600,
+  "pure_tower_limit": 3,
+  "pure_crystal_every": 30,
+  "pure_crystal_damage": 0.25,
+  "spirit_victory_damage": 0.1,
+  "selection_every": 5,
+  "boss_every": 10,
+  "sim_hz": 30,
+  "intermission_seconds": 30,
+  "infusion": {
+    "min_levels": [
+      2,
+      4,
+      6
+    ],
+    "potency": 0.5,
+    "cost": [
+      60,
+      40
+    ]
+  },
+  "pure_caps": [
+    0,
+    3,
+    5,
+    6
+  ],
+  "fuse_cost": 250,
+  "triple_fuse_cost": 510,
+  "dual_damage_scale": 1.25,
+  "dual_min_hit_ratio": 1.2,
+  "fuse_min_level": 2,
+  "dual_damage_reference_level": 3,
+  "fusion_starting_damage_scale": 0.86,
+  "dual_cap": 3,
+  "rally_cooldown_ticks": 360,
+  "armor_floor": 0.25,
+  "undo_limit": 10,
+  "gate_barrier_cap": 20,
+  "gate_repair_every": 1,
+  "splash_core_ratio": 0.52,
+  "splash_fringe_damage": 0.55,
+  "disease_lookback": 4,
+  "mob_hp_growth": 1.11,
+  "mob_count_base": 6,
+  "mob_count_per_wave": 1.2,
+  "kill_gold_base": 4,
+  "kill_gold_growth": 0.06
+}

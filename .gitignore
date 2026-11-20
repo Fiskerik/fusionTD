@@ -1,0 +1,8 @@
+.godot/
+build/
+*.ipa
+*.p8
+*.p12
+*.mobileprovision
+*.dat
+*.tmp
