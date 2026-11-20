@@ -1,12 +1,18 @@
 class_name TowerInspector
 extends RefCounted
 
-static func metrics(tower: Dictionary, victories: Dictionary = {}) -> String:
+static func fill_metrics(row: Container, tower: Dictionary, victories: Dictionary, font_size: int = 17,
+		tint: Color = UIKit.MINT, show_splash: bool = false) -> void:
 	var attack: Dictionary = TowerRules.attack_profile(tower, victories)
-	if float(attack.rate) == 0.0:
-		return "Support · %s tile radius" % number(attack.range)
+	var attacking: bool = float(attack.rate) > 0.0
+	if attacking:
+		row.add_child(UIKit.stat_value("damage", number(attack.damage), "Damage per hit", font_size, tint))
 	var reach: String = DataDB.text("whole_map") if is_inf(float(attack.range)) else number(attack.range)
-	return "DMG %s     RANGE %s     %s shots/s" % [number(attack.damage), reach, number(attack.rate)]
+	row.add_child(UIKit.stat_value("range", reach, "Attack range in tiles" if attacking else "Support radius in tiles", font_size, tint))
+	if attacking:
+		row.add_child(UIKit.stat_value("speed", "%s/s" % number(attack.rate), "Attacks per second", font_size, tint))
+	if show_splash and float(attack.splash) > 0.0:
+		row.add_child(UIKit.stat_value("splash", number(attack.splash), "Splash radius in tiles", font_size, tint))
 
 static func damage_type(tower: Dictionary, traits: Dictionary) -> String:
 	if traits.has("adaptive"):

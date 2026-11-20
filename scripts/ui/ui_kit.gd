@@ -68,7 +68,25 @@ class UtilityIcon extends Control:
 	func _draw() -> void:
 		var p: Vector2 = size * .5
 		var ink: Color = UIKit.MINT
-		if kind == "pause":
+		if kind == "damage":
+			var blade := PackedVector2Array([p + Vector2(-3, 1), p + Vector2(3, -6),
+				p + Vector2(8, -8), p + Vector2(6, -3), p + Vector2(0, 4)])
+			draw_colored_polygon(blade, ink)
+			draw_line(p + Vector2(-6, -1), p + Vector2(2, 7), ink, 1.7, true)
+			draw_line(p + Vector2(-3, 4), p + Vector2(-7, 8), ink, 2, true)
+		elif kind == "range":
+			draw_arc(p, 6.2, 0, TAU, 22, ink, 1.5, true)
+			for axis: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+				draw_line(p + axis * 4.5, p + axis * 8.2, ink, 1.5, true)
+			draw_circle(p, 1.3, ink, true, -1, true)
+		elif kind == "speed":
+			draw_arc(p + Vector2(0, 1), 6.1, 0, TAU, 24, ink, 1.5, true)
+			draw_line(p + Vector2(-2.3, -7.3), p + Vector2(2.3, -7.3), ink, 1.6, true)
+			draw_line(p + Vector2(0, 1), p + Vector2(2.7, -2), ink, 1.5, true)
+		elif kind == "splash":
+			for radius: float in [3.2, 6.0, 8.4]:
+				draw_arc(p + Vector2(0, 4), radius, PI * 1.14, PI * 1.86, 12, ink, 1.4, true)
+		elif kind == "pause":
 			for x: float in [-5.0, 4.0]:
 				draw_rect(Rect2(p + Vector2(x - 1.5,-8), Vector2(4,16)), ink)
 		elif kind == "info":
@@ -86,6 +104,20 @@ class UtilityIcon extends Control:
 				ink, 2.0, true)
 			for side: float in [-1.0, 1.0]:
 				draw_line(p + Vector2(side * 3,-3), p + Vector2(side * 7,-5), ink, 1.5, true)
+
+static func stat_value(kind: String, value: String, hint: String, font_size: int, tint: Color) -> HBoxContainer:
+	var item: HBoxContainer = row(3)
+	item.name = kind.capitalize()
+	item.tooltip_text = hint
+	var icon := UtilityIcon.new()
+	icon.kind = kind
+	icon.custom_minimum_size = Vector2(19, 19)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item.add_child(icon)
+	var amount: Label = label(value, font_size, tint)
+	amount.name = "Value"
+	item.add_child(amount)
+	return item
 
 static func icon_button(kind: String, hint: String, callback: Callable, height: int = 45) -> Button:
 	var control: Button = button("", callback, false, height)
@@ -240,37 +272,34 @@ static func toggle_row(title: String, active: bool, callback: Callable) -> HBoxC
 	return result
 
 static func creature_forecast(button: Button, group: Dictionary, wave: int, total: int, icons: PackedStringArray, bosses: Array) -> void:
-	var card := VBoxContainer.new()
+	var card: HBoxContainer = row(3)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	card.offset_left = 7
-	card.offset_right = -7
+	card.offset_left = 5
+	card.offset_right = -5
 	card.offset_top = 4
-	card.offset_bottom = -6
-	card.add_theme_constant_override("separation", 1)
+	card.offset_bottom = -4
 	button.add_child(card)
-	var head: HBoxContainer = row(2)
-	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(head)
-	var wave_text: Label = label("W%d" % wave, 16, MINT if bosses.is_empty() else WARN)
-	wave_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(wave_text)
-	head.add_child(label("×%d" % total, 14, MUTED))
-	var body := Control.new()
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	card.add_child(body)
 	var pet := ForecastPortrait.new()
 	pet.enemy = group if bosses.is_empty() else bosses[0]
 	pet.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	pet.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pet.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	body.add_child(pet)
-	var badges: VBoxContainer = column(1)
-	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.add_child(badges)
+	pet.custom_minimum_size = Vector2(33, 0)
+	card.add_child(pet)
+	var details: VBoxContainer = column(1)
+	details.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.alignment = BoxContainer.ALIGNMENT_CENTER
+	card.add_child(details)
+	var head: HBoxContainer = row(2)
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	details.add_child(head)
+	var wave_text: Label = label("W%d" % wave, 15, MINT if bosses.is_empty() else WARN)
+	wave_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(wave_text)
 	for element: String in icons:
-		badges.add_child(badge(element, 13))
+		head.add_child(badge(element, 12))
+	head.add_child(label("×%d" % total, 13, MUTED))
 	var title: String = StatusInfo.enemy_name(pet.enemy)
 	var description: String = title
 	if bosses.size() == 1:
@@ -281,35 +310,10 @@ static func creature_forecast(button: Button, group: Dictionary, wave: int, tota
 		for boss: Dictionary in bosses:
 			names.append(StatusInfo.enemy_name(boss))
 		description = " / ".join(names)
-	var caption: Label = label(title, 14, INK)
-	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var caption: Label = label(title, 13, INK)
 	caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	card.add_child(caption)
+	details.add_child(caption)
 	button.tooltip_text = "Wave %d · %s · %d enemies" % [wave, description, total]
-
-static func forecast_icons(button: Button, icons: PackedStringArray) -> void:
-	if icons.is_empty():
-		return
-	for state: String in ["normal", "hover", "pressed"]:
-		var box: StyleBoxFlat = button.get_theme_stylebox(state).duplicate()
-		box.content_margin_bottom = 29.0
-		box.content_margin_top = 4.0
-		button.add_theme_stylebox_override(state, box)
-	var badges: HBoxContainer = row(2)
-	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badges.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	var width: float = float(icons.size() * 25 + (icons.size() - 1) * 2)
-	badges.offset_left = -width * .5
-	badges.offset_right = width * .5
-	badges.offset_top = -29
-	badges.offset_bottom = -5
-	for icon: String in icons:
-		var badge := ElementBadge.new()
-		badge.element = icon
-		badge.custom_minimum_size = Vector2(25, 24)
-		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		badges.add_child(badge)
-	button.add_child(badges)
 
 static func gate_fill(ratio: float) -> Color:
 	if ratio <= .25:

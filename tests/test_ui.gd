@@ -51,7 +51,9 @@ func test_scene_smoke_and_touch_layout() -> void:
 	await runner.process_frame
 	check(not game.wide)
 	check(game.round_controls.visible)
-	near(game.round_controls.modulate.a, .70)
+	near(game.start_button.modulate.a * game.round_controls.modulate.a, 1.0)
+	check(game.preview_row.get_global_rect().end.y <= game.field.get_global_rect().position.y)
+	check(game.preview_row.size.y <= 54)
 	var build_board: Rect2 = game.field.get_global_rect()
 	game._site_pressed("s1")
 	game._apply({"type": "build", "slot": "s1", "kind": "arrow"})
@@ -69,7 +71,9 @@ func test_scene_smoke_and_touch_layout() -> void:
 	check(game.combat_status.size.x > 80, "The combat header uses available width")
 	check(not game.sim.state.mobs.is_empty(), "Live enemies are present in the visible battlefield")
 	check(game.field.aim_by_slot.has("s1"), "Tower aims at an enemy it fired at")
-	check(game.tower_metrics.text.contains("DMG 13") and game.tower_metrics.text.contains("RANGE 3.7"))
+	equal(game.tower_stats.get_node("Damage/Value").text, "13")
+	equal(game.tower_stats.get_node("Range/Value").text, "3.7")
+	equal(game.tower_stats.get_node("Speed/Value").text, "1.2/s")
 	var battlefield_rect: Rect2 = game.field.get_global_rect()
 	var gold_before: int = game.sim.state.gold
 	var original_button: Rect2 = game.upgrade_button.get_global_rect()
@@ -86,9 +90,9 @@ func test_scene_smoke_and_touch_layout() -> void:
 	for label: Label in game.tower_comparison.find_children("*", "Label", true, false):
 		panel_text.append(label.text)
 	check("Current · Lv 1" in panel_text and "After upgrade · Lv 2" in panel_text)
-	check("Dmg 13" in " ".join(panel_text))
+	check(is_instance_valid(game.tower_comparison.find_child("Damage", true, false)))
 	game._apply({"type": "upgrade", "slot": "s1"})
-	check(game.tower_metrics.text.contains("DMG 20.8"), "The inspector updates after a live upgrade")
+	equal(game.tower_stats.get_node("Damage/Value").text, "20.8", "The inspector updates after a live upgrade")
 	game._site_pressed("s2")
 	check(game.site_actions.get_child_count() > 0, "Build buttons appear on an open tile during combat")
 	await runner.process_frame
@@ -233,9 +237,14 @@ func test_countdown_pauses_and_uses_real_time_at_quadruple_speed() -> void:
 	check(StatusInfo.description("phasing").contains("2 seconds every 5 seconds"))
 	game._open_legend()
 	equal(game.overlay_type, "legend")
+	equal(game.element_status.get_child_count(), 0, "Locked elements stay out of the HUD")
+	game.sim.state.tiers.fire = 1
+	game.sim.state.tiers.nature = 2
+	game._render_element_status()
+	equal(game.element_status.get_child_count(), 2)
 	for element: String in DataDB.ELEMENTS:
 		check(is_instance_valid(game.overlay.find_child("Overview" + element.capitalize(), true, false)))
-		check(is_instance_valid(game.element_status.find_child("Tier" + element.capitalize(), true, false)))
+		equal(is_instance_valid(game.element_status.find_child("Tier" + element.capitalize(), true, false)), element in ["fire", "nature"])
 	game._select_legend_element("light")
 	var titles := PackedStringArray()
 	for entry: Button in game.overview.gallery.find_children("*", "Button", true, false):

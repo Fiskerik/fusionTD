@@ -246,7 +246,9 @@ func _render_detail() -> void:
 		var rank_requirement: String = TowerRules.rank_requirement(tower, rank, sim.state.tiers)
 		if rank > 1 and not rank_requirement.is_empty():
 			details.add_child(UIKit.label(rank_requirement, 15, UIKit.WARN, true))
-	details.add_child(UIKit.label(TowerInspector.metrics(tower, sim.spirit_victories()), 16, UIKit.INK, true))
+	var stat_row := HFlowContainer.new()
+	details.add_child(stat_row)
+	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), 16, UIKit.INK, true)
 	var all_tiers: Dictionary = sim.state.tiers.duplicate()
 	for id: String in DataDB.ELEMENTS:
 		all_tiers[id] = 3

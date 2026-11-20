@@ -21,6 +21,7 @@ var inspector_panel: PanelContainer
 var inspector_scroll: ScrollContainer
 var inspector_portrait: UIKit.TowerPortrait
 var tower_metrics: Label
+var tower_stats: HFlowContainer
 var tower_composition: HBoxContainer
 var tower_effects: HBoxContainer
 var tower_history: Label
@@ -125,8 +126,8 @@ func _build_layout() -> void:
 	overlay_type = ""
 	overview = null
 	UIKit.screen_background(self)
-	var margin: MarginContainer = UIKit.screen_margin(self, 14)
-	var stack: VBoxContainer = UIKit.column(8)
+	var margin: MarginContainer = UIKit.screen_margin(self, 10)
+	var stack: VBoxContainer = UIKit.column(6)
 	margin.add_child(stack)
 	var hud := PanelContainer.new()
 	hud.add_theme_stylebox_override("panel", UIKit.style(Color("#284c40"), Color("#487763"), 16, 7))
@@ -138,8 +139,12 @@ func _build_layout() -> void:
 	var heading: VBoxContainer = UIKit.column(0)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
-	wave_label = UIKit.label("", 28, Color("#fff4d6"))
-	heading.add_child(wave_label)
+	var wave_heading: HBoxContainer = UIKit.row(8)
+	heading.add_child(wave_heading)
+	wave_label = UIKit.label("", 26, Color("#fff4d6"))
+	wave_heading.add_child(wave_label)
+	combat_status = UIKit.label("", 16, Color("#d6e7bf"))
+	wave_heading.add_child(combat_status)
 	stats = UIKit.label("", 18, Color("#d6e7bf"))
 	heading.add_child(stats)
 	var meters: VBoxContainer = UIKit.column(3)
@@ -181,6 +186,19 @@ func _build_layout() -> void:
 	element_status = UIKit.row(4)
 	ribbon.add_child(element_status)
 
+	var forecast: HBoxContainer = UIKit.row(5)
+	stack.add_child(forecast)
+	preview_row = UIKit.row(4)
+	preview_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	forecast.add_child(preview_row)
+	var status_help: Button = UIKit.icon_button("info", DataDB.text("status_help"), _show_status_help, 46)
+	status_help.custom_minimum_size.x = 43
+	forecast.add_child(status_help)
+	var legend_button: Button = UIKit.icon_button("book", DataDB.text("legend"), _open_legend, 46)
+	legend_button.custom_minimum_size.x = 43
+	legend_button.tooltip_text = "Tower overview"
+	forecast.add_child(legend_button)
+
 	var play_area := Control.new()
 	play_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	play_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -198,27 +216,16 @@ func _build_layout() -> void:
 	play.add_child(field)
 	field.gate_on_top = bool(profile.get("gate_on_top", false))
 
-	var dock: VBoxContainer = UIKit.column(8)
+	var dock: VBoxContainer = UIKit.column(4)
 	if wide:
 		dock.custom_minimum_size.x = clampf(size.x * .33, 365, 520)
 		dock.alignment = BoxContainer.ALIGNMENT_CENTER
 	play.add_child(dock)
-	var forecast_heading: HBoxContainer = UIKit.row(8)
-	dock.add_child(forecast_heading)
-	status = UIKit.label("", 19, UIKit.MINT)
-	status.custom_minimum_size.y = 29
+	status = UIKit.label("", 16, UIKit.MINT)
+	status.custom_minimum_size.y = 20
 	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	forecast_heading.add_child(status)
-	combat_status = UIKit.label("", 18, UIKit.MUTED)
-	forecast_heading.add_child(combat_status)
-	var status_help: Button = UIKit.icon_button("info", DataDB.text("status_help"), _show_status_help, 46)
-	forecast_heading.add_child(status_help)
-	var legend_button: Button = UIKit.icon_button("book", DataDB.text("legend"), _open_legend, 46)
-	legend_button.tooltip_text = "Tower overview"
-	forecast_heading.add_child(legend_button)
-	preview_row = UIKit.row(7)
-	dock.add_child(preview_row)
+	dock.add_child(status)
 	inspector_panel = PanelContainer.new()
 	inspector_panel.add_theme_stylebox_override("panel", UIKit.style(UIKit.SURFACE, UIKit.BORDER, 19, 10))
 	inspector_panel.custom_minimum_size.y = 256
@@ -259,6 +266,9 @@ func _build_layout() -> void:
 	tower_metrics = UIKit.label("", 18, UIKit.MINT)
 	tower_metrics.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	inspector_content.add_child(tower_metrics)
+	tower_stats = HFlowContainer.new()
+	tower_stats.add_theme_constant_override("h_separation", 14)
+	inspector_content.add_child(tower_stats)
 	tower_effects = UIKit.row(4)
 	tower_effects.mouse_filter = Control.MOUSE_FILTER_STOP
 	inspector_content.add_child(tower_effects)
@@ -296,7 +306,6 @@ func _build_layout() -> void:
 
 	round_controls = UIKit.row(6)
 	round_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	round_controls.modulate.a = .70
 	play_area.add_child(round_controls)
 	round_controls.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	round_controls.offset_left = -220
@@ -416,6 +425,7 @@ func _refresh() -> void:
 	round_controls.visible = building
 	if building:
 		var undo: Button = UIKit.button(DataDB.text("undo") % sim.undo_stack.size(), _apply.bind({"type": "undo"}), false, 54)
+		undo.modulate.a = .84
 		undo.add_theme_font_size_override("font_size", 17)
 		undo.disabled = sim.undo_stack.is_empty()
 		undo.tooltip_text = sim.describe({"type": "undo"}).reason
@@ -423,6 +433,7 @@ func _refresh() -> void:
 		var choose: bool = sim.state.selection_pending
 		if not choose and sim.state.trial.is_empty():
 			timer_button = UIKit.button("", _toggle_timer, false, 54)
+			timer_button.modulate.a = .90
 			timer_button.name = "WaveTimer"
 			timer_button.toggle_mode = true
 			timer_button.tooltip_text = "Hold the countdown while you build. Start Wave still works."
@@ -433,6 +444,11 @@ func _refresh() -> void:
 		start_button = UIKit.button(DataDB.text(start_key), action, true, 54)
 		start_button.size_flags_stretch_ratio = 2.0
 		round_controls.add_child(start_button)
+		var style: StyleBoxFlat = start_button.get_theme_stylebox("normal")
+		var pulse: Tween = start_button.create_tween().set_loops()
+		pulse.tween_property(style, "bg_color", UIKit.GOLD.lerp(Color.WHITE, .24), .8).set_trans(Tween.TRANS_SINE)
+		pulse.tween_property(style, "bg_color", UIKit.GOLD, .8).set_trans(Tween.TRANS_SINE)
+		pulse.tween_interval(.5)
 		_update_countdown()
 	_update_hud(true)
 	_render_wave_heading()
@@ -462,7 +478,7 @@ func _update_hud(refresh_upgrades: bool = false) -> void:
 	var life_color: Color = UIKit.gate_fill(life_bar.value / life_bar.max_value)
 	if fill.bg_color != life_color:
 		fill.bg_color = life_color
-	status.text = DataDB.text("next_waves") if message.is_empty() else message
+	status.text = message
 	combat_status.visible = sim.state.phase == "wave"
 	if combat_status.visible:
 		var remaining: int = sim.state.mobs.size() + sim.state.spawn_queue.size()
@@ -494,22 +510,22 @@ func _render_element_status() -> void:
 	UIKit.clear(element_status)
 	for element: String in DataDB.ELEMENTS:
 		var tier: int = int(sim.state.tiers[element])
+		if tier == 0:
+			continue
 		var button: Button = UIKit.button("", _select_legend_element.bind(element), false, 39)
 		button.name = "Tier" + element.capitalize()
 		button.custom_minimum_size.x = 52
 		button.size_flags_horizontal = Control.SIZE_FILL
-		var tint: Color = Glyphs.hue(element) if tier > 0 else Color("#8eaa9e")
+		var tint: Color = Glyphs.hue(element)
 		button.add_theme_stylebox_override("normal", UIKit.style(tint.lerp(UIKit.SURFACE, .65), tint.darkened(.26), 9, 3))
-		button.tooltip_text = "%s · %s" % [element.capitalize(), "Locked" if tier == 0 else "Tier " + TowerRules.roman(tier)]
+		button.tooltip_text = "%s · Tier %s" % [element.capitalize(), TowerRules.roman(tier)]
 		var content: HBoxContainer = UIKit.row(2)
 		content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		content.alignment = BoxContainer.ALIGNMENT_CENTER
 		content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var badge: Control = UIKit.badge(element, 21)
-		if tier == 0:
-			badge.modulate = Color("#81968aaa")
 		content.add_child(badge)
-		content.add_child(UIKit.label("–" if tier == 0 else TowerRules.roman(tier), 15, UIKit.INK))
+		content.add_child(UIKit.label(TowerRules.roman(tier), 15, UIKit.INK))
 		button.add_child(content)
 		element_status.add_child(button)
 
@@ -562,10 +578,10 @@ func _render_preview() -> void:
 	var bonus: bool = not sim.state.trial.is_empty()
 	if bonus:
 		var chip: Button = UIKit.button(DataDB.text("bonus_chip") % TowerRules.roman(sim.state.trial.tier),
-			_show_preview.bind(int(sim.state.wave), true), false, 74)
-		chip.add_theme_font_size_override("font_size", 18)
+			_show_preview.bind(int(sim.state.wave), true), false, 48)
+		chip.add_theme_font_size_override("font_size", 16)
 		UIKit.element_button(chip, sim.state.trial.element)
-		UIKit.forecast_icons(chip, PackedStringArray([sim.state.trial.element]))
+		chip.tooltip_text = StatusInfo.enemy_name(sim.preview(int(sim.state.wave)).spirit)
 		preview_row.add_child(chip)
 	var first: int = int(sim.state.wave) + (1 if sim.state.phase == "wave" and not bonus else 0)
 	for wave: int in range(first, first + (2 if bonus else 3)):
@@ -581,7 +597,7 @@ func _render_preview() -> void:
 			if group.props.has("phasing") and not icons.has("phasing"):
 				icons.append("phasing")
 				descriptions.append(StatusInfo.title("phasing"))
-		var chip: Button = UIKit.button("", _show_preview.bind(wave), false, 90)
+		var chip: Button = UIKit.button("", _show_preview.bind(wave), false, 48)
 		UIKit.creature_forecast(chip, preview.groups[0], wave, total, icons, preview.bosses)
 		if not descriptions.is_empty():
 			chip.tooltip_text += " · " + " / ".join(descriptions)
@@ -591,6 +607,8 @@ func _render_site() -> void:
 	inspector_scroll.scroll_vertical = 0
 	UIKit.clear(site_actions)
 	UIKit.clear(tower_composition)
+	UIKit.clear(tower_stats)
+	tower_stats.hide()
 	UIKit.clear(tower_effects)
 	UIKit.clear(tower_comparison)
 	tower_comparison.hide()
@@ -614,7 +632,7 @@ func _render_site() -> void:
 		upgrade_slot = ""
 	detail_button.tooltip_text = "Tower details"
 	detail_button.visible = not tower.is_empty()
-	tower_metrics.visible = not tower.is_empty()
+	tower_metrics.hide()
 	tower_effects.visible = not tower.is_empty()
 	if tower.is_empty():
 		if not catalog_build.is_empty():
@@ -633,7 +651,8 @@ func _render_site() -> void:
 		var tier: int = TowerRules.infusion_tier(tower.level, sim.state.tiers[tower.infusion])
 		tower_composition.add_child(UIKit.label(TowerRules.roman(tier), 15, UIKit.MUTED))
 	tower_composition.show()
-	tower_metrics.text = TowerInspector.metrics(tower, sim.spirit_victories())
+	TowerInspector.fill_metrics(tower_stats, tower, sim.spirit_victories())
+	tower_stats.show()
 	tower_history.show()
 	_update_tower_history()
 	_add_tower_effects(tower_effects, tower)
@@ -644,7 +663,9 @@ func _render_site() -> void:
 		upgrade_slot = ""
 	_render_tower_toolbar(tower, upgrade, quote)
 	if not move_origin.is_empty():
+		tower_stats.hide()
 		tower_metrics.text = "Tap a highlighted tile · %d gold" % Economy.move_fee(tower.invested)
+		tower_metrics.show()
 		site_actions.hide()
 		return
 	if not upgrade_slot.is_empty():
@@ -1368,7 +1389,9 @@ func _show_tower_details() -> void:
 	body.add_child(UIKit.composition(tower, 29))
 	body.add_child(UIKit.label(TowerInspector.history(tower), 17, UIKit.MINT, true))
 	var profile_data: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers)
-	body.add_child(UIKit.label(TowerInspector.metrics(tower, sim.spirit_victories()), 20, UIKit.MINT, true))
+	var stat_row := HFlowContainer.new()
+	body.add_child(stat_row)
+	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), 20, UIKit.MINT, true)
 	var boost: float = TowerRules.spirit_multiplier(tower, sim.spirit_victories()) - 1.0
 	if boost > 0.0:
 		body.add_child(UIKit.label("Spirit victories   ·   +%s damage" % TowerInspector.percent(boost), 17, UIKit.UPGRADE))
@@ -1401,6 +1424,7 @@ func _cancel_upgrade() -> void:
 
 func _render_upgrade(tower: Dictionary) -> void:
 	tower_metrics.hide()
+	tower_stats.hide()
 	tower_effects.hide()
 	tower_composition.hide()
 	tower_history.hide()
@@ -1437,16 +1461,9 @@ func _comparison_card(parent: HBoxContainer, tower: Dictionary, caption: String,
 		column.add_child(UIKit.portrait(tower, 44))
 		column.add_child(UIKit.composition(tower, 20, false))
 
-	var profile_data: Dictionary = TowerRules.attack_profile(tower, sim.spirit_victories())
-	var reach: String = DataDB.text("whole_map") if is_inf(float(profile_data.range)) else TowerInspector.number(profile_data.range)
-	var damage: String = "Dmg %s   ·   %s/s" % [TowerInspector.number(profile_data.damage), TowerInspector.number(profile_data.rate)]
-	if float(profile_data.rate) == 0.0:
-		damage = "Support aura"
-	column.add_child(UIKit.label(damage, font_size, heading, true))
-	var coverage: String = "Range " + reach
-	if float(profile_data.splash) > 0.0:
-		coverage += "   ·   Splash " + TowerInspector.number(profile_data.splash)
-	column.add_child(UIKit.label(coverage, font_size, UIKit.MUTED, true))
+	var stat_row := HFlowContainer.new()
+	column.add_child(stat_row)
+	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), font_size, heading, true)
 	if fusion:
 		var profile_traits: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers)
 		column.add_child(UIKit.label(TowerInspector.damage_type(tower, profile_traits), font_size, UIKit.MINT, true))
