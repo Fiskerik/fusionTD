@@ -6,7 +6,7 @@ workflows:
     integrations:
       app_store_connect: FusionTD
     environment:
-      xcode: "26.4"
+      xcode: "27.2"
       groups:
         - ios_settings
       ios_signing:
@@ -14,13 +14,22 @@ workflows:
         bundle_identifier: com.fiskerik.elementaltd
       vars:
         BUNDLE_ID: com.fiskerik.elementaltd
-        GODOT_VERSION: "4.4.1"
+        GODOT_VERSION: "4.6.3"
 
     scripts:
       - name: Export Godot to Xcode
         script: |
           set -euo pipefail
           cd "$CM_BUILD_DIR"
+
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          sdk_major="${sdk_version%%.*}"
+          echo "iPhoneOS SDK: $sdk_version"
+          if [[ ! "$sdk_major" =~ ^[0-9]+$ ]] || (( sdk_major < 27 )); then
+            echo "App Store Connect requires the iOS 27 SDK or later from April 2027."
+            exit 1
+          fi
 
           if [[ "$BUNDLE_ID" == "com.example.elementaltd" ]]; then
             echo "Set your registered bundle ID in both places in codemagic.yaml."

@@ -50,6 +50,9 @@ func test_scene_smoke_and_touch_layout() -> void:
 	await runner.process_frame
 	await runner.process_frame
 	check(not game.wide)
+	check(game.round_controls.visible)
+	near(game.round_controls.modulate.a, .70)
+	var build_board: Rect2 = game.field.get_global_rect()
 	game._site_pressed("s1")
 	game._apply({"type": "build", "slot": "s1", "kind": "arrow"})
 	game._apply({"type": "start_wave"})
@@ -59,12 +62,15 @@ func test_scene_smoke_and_touch_layout() -> void:
 	for frame: int in range(3):
 		await runner.process_frame
 	equal(game.sim.state.phase, "wave")
+	check(not game.round_controls.visible, "Round controls hide while the wave is underway")
+	equal(game.field.get_global_rect(), build_board, "Hiding the round controls does not resize the board")
 	check(int(game.sim.state.tick) >= 300)
 	check(game.field.size.y > 320, "Portrait assault keeps the battlefield visible (%s)" % game.field.size)
 	check(game.combat_status.size.x > 80, "The combat header uses available width")
 	check(not game.sim.state.mobs.is_empty(), "Live enemies are present in the visible battlefield")
 	check(game.field.aim_by_slot.has("s1"), "Tower aims at an enemy it fired at")
 	check(game.tower_metrics.text.contains("DMG 13") and game.tower_metrics.text.contains("RANGE 3.7"))
+	var battlefield_rect: Rect2 = game.field.get_global_rect()
 	var gold_before: int = game.sim.state.gold
 	var original_button: Rect2 = game.upgrade_button.get_global_rect()
 	_check_tower_toolbar(game)
@@ -72,6 +78,7 @@ func test_scene_smoke_and_touch_layout() -> void:
 	await runner.process_frame
 	await runner.process_frame
 	equal(game.upgrade_button.get_global_rect(), original_button, "Confirm stays on the original Upgrade button")
+	equal(game.field.get_global_rect(), battlefield_rect, "Upgrade preview keeps the board in place")
 	equal(game.overlay_type, "", "Upgrade does not open a modal")
 	check(game.tower_comparison.visible)
 	equal(game.sim.state.gold, gold_before, "Upgrade preview is free")
@@ -79,10 +86,14 @@ func test_scene_smoke_and_touch_layout() -> void:
 	for label: Label in game.tower_comparison.find_children("*", "Label", true, false):
 		panel_text.append(label.text)
 	check("Current · Lv 1" in panel_text and "After upgrade · Lv 2" in panel_text)
+	check("Dmg 13" in " ".join(panel_text))
 	game._apply({"type": "upgrade", "slot": "s1"})
 	check(game.tower_metrics.text.contains("DMG 20.8"), "The inspector updates after a live upgrade")
 	game._site_pressed("s2")
 	check(game.site_actions.get_child_count() > 0, "Build buttons appear on an open tile during combat")
+	await runner.process_frame
+	await runner.process_frame
+	equal(game.field.get_global_rect(), battlefield_rect, "Switching between the tower and build panels keeps the board in place")
 	var battlefield: BattlefieldView = game.field
 	game._show_pause()
 	check(game.paused)

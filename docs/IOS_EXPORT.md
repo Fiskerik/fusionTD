@@ -1,6 +1,6 @@
 # Build Elemental TD for TestFlight from Windows
 
-Codemagic runs Godot and Xcode on a hosted Mac. The workflow in `codemagic.yaml` uses Godot 4.4.1 and Xcode 26.4, runs the game’s tests, builds a signed iOS archive, and uploads it to App Store Connect. Codemagic offers this Xcode version on its Mac mini M2 runners, and the project's iOS 15 deployment target meets Apple's current minimum. [Codemagic Xcode 26.4 image](https://docs.codemagic.io/specs-macos/xcode-26-4/) · [Apple upload requirements](https://developer.apple.com/news/upcoming-requirements/)
+Codemagic runs Godot and Xcode on a hosted Mac. The workflow in `codemagic.yaml` uses Godot 4.6.3 and Xcode 27.2, runs the game’s tests, builds a signed iOS archive, and uploads it to App Store Connect. The Godot export template uses the scene-based lifecycle that iOS 27 requires. The build logs the iPhoneOS SDK version and requires SDK 27 or later to meet Apple's April 2027 upload requirement. The app targets iOS 15 and later. [Godot iOS lifecycle](https://github.com/godotengine/godot/pull/109974) · [Codemagic Xcode 27.2 image](https://docs.codemagic.io/specs-macos/xcode-27-2/) · [Apple upload requirements](https://developer.apple.com/app-store/submitting/)
 
 ## 1. Register the app with Apple
 
