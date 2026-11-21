@@ -7,6 +7,18 @@ const WOOD: Color = Color("#775849")
 const LANDMARKS: Texture2D = preload("res://assets/woodland/landmarks.png")
 const CELLS: Dictionary = {"fire": 0, "water": 1, "nature": 2, "electric": 3, "light": 4, "dark": 5, "gate": 6, "portal": 7}
 
+const FUSION_FRAMES: Dictionary = {
+	"steam": "chimney", "wildfire": "flame_gate", "forge": "anvil", "flare": "rays",
+	"cinder": "crater", "spring": "fountain", "storm": "fork", "frost": "iceberg",
+	"venom": "fangs", "overgrowth": "canopy", "bloom": "petals", "blight": "brambles",
+	"prism": "lens", "null": "gate", "eclipse": "crescent", "boilgrove": "kettle",
+	"thunderkiln": "kiln", "dawngeysers": "terraces", "smoketide": "stacks",
+	"sparkthorn": "cage", "daystar": "sunflower", "ashorchard": "trees", "arcfurnace": "bridge",
+	"blackglass": "obelisk", "embershade": "shutters", "monsoonroot": "mast", "pearllotus": "shell",
+	"mireheart": "tusks", "glaciercoil": "icicle", "umbratide": "sail", "moonglacier": "moonspires",
+	"auroraarbor": "arch", "nightbriar": "thornring", "moonorchid": "orchid", "eventide": "hourglass",
+}
+
 static func draw_landmark(canvas: CanvasItem, id: String, center: Vector2, span: Vector2) -> void:
 	var cell: int = CELLS[id]
 	var region := Rect2((cell % 4) * 192, floori(cell / 4.0) * 192, 192, 192)
@@ -35,6 +47,10 @@ static func draw(canvas: CanvasItem, tower: Dictionary, p: Vector2, r: float, cl
 		var mote: Vector2 = crown + Vector2(sin(phase * PI * 1.4) * .29, -.50 - phase * .64) * r
 		canvas.draw_circle(mote, r * (.06 + (1.0 - phase) * .04), Color(current.lightened(.32), sin(phase * PI)))
 		return
+	if TowerRules.is_fusion(tower):
+		_fusion_frame(canvas, FUSION_FRAMES[tower.dual], p, r, current, accent, pulse)
+		r *= .72
+		p += Vector2(0, r * .20)
 	match motif:
 		"fire", "crater":
 			_poly(canvas, p, r, [Vector2(-.82,.20),Vector2(-.59,-.18),Vector2(.57,-.18),Vector2(.83,.20),Vector2(.53,.53),Vector2(-.55,.53)], INK)
@@ -86,6 +102,58 @@ static func draw(canvas: CanvasItem, tower: Dictionary, p: Vector2, r: float, cl
 			var color: Color = Glyphs.hue(ingredients[i])
 			canvas.draw_circle(point, r * .139, color.darkened(.45))
 			canvas.draw_circle(point - Vector2(0,.035) * r, r * .096, color.lightened(.30))
+
+static func _fusion_frame(canvas: CanvasItem, id: String, p: Vector2, r: float, a: Color, b: Color, pulse: float) -> void:
+	var stone: Color = a.lerp(b, .42).darkened(.29)
+	var trim: Color = b.lightened(.32)
+	var profile: Array[Vector2] = []
+	match id:
+		"chimney": profile = [Vector2(-.61,.49),Vector2(-.53,-.36),Vector2(-.28,-.36),Vector2(-.31,-1.03),Vector2(.15,-1.14),Vector2(.24,-.35),Vector2(.64,-.29),Vector2(.72,.49)]
+		"flame_gate": profile = [Vector2(-.88,.49),Vector2(-.81,-.39),Vector2(-.46,-.91),Vector2(-.33,-.30),Vector2(0,-.1),Vector2(.40,-.97),Vector2(.72,-.52),Vector2(.88,.49)]
+		"anvil": profile = [Vector2(-.83,-.45),Vector2(-.94,-.73),Vector2(.91,-.73),Vector2(.75,-.35),Vector2(.38,-.19),Vector2(.39,.55),Vector2(-.53,.55),Vector2(-.42,-.17)]
+		"rays": profile = [Vector2(-.96,.15),Vector2(-.69,-.50),Vector2(-.43,-.33),Vector2(-.32,-1.05),Vector2(.04,-.54),Vector2(.57,-1.01),Vector2(.64,-.29),Vector2(.99,-.18),Vector2(.70,.55),Vector2(-.71,.55)]
+		"crater": profile = [Vector2(-1.10,.22),Vector2(-.78,-.35),Vector2(-.53,-.32),Vector2(-.26,-.56),Vector2(.66,-.52),Vector2(.92,-.16),Vector2(1.04,.27),Vector2(.59,.55),Vector2(-.60,.55)]
+		"fountain": profile = [Vector2(-1.03,.31),Vector2(-.97,-.03),Vector2(-.44,.02),Vector2(-.20,-.89),Vector2(.13,-.89),Vector2(.36,.02),Vector2(.99,-.03),Vector2(1.03,.31),Vector2(.67,.51),Vector2(-.66,.51)]
+		"fork": profile = [Vector2(-.61,.53),Vector2(-.77,-.89),Vector2(-.44,-1.13),Vector2(-.29,-.45),Vector2(.22,-.45),Vector2(.43,-1.13),Vector2(.78,-.89),Vector2(.63,.53)]
+		"iceberg": profile = [Vector2(-.85,.48),Vector2(-.98,-.22),Vector2(-.54,-.49),Vector2(-.42,-1.12),Vector2(-.05,-.80),Vector2(.24,-.89),Vector2(.57,-.50),Vector2(.86,-.26),Vector2(.83,.48)]
+		"fangs": profile = [Vector2(-1.01,.38),Vector2(-.90,-.27),Vector2(-.56,-.71),Vector2(-.40,-.08),Vector2(.27,-.10),Vector2(.65,-.67),Vector2(.83,-.18),Vector2(1.01,.38),Vector2(.57,.56),Vector2(-.58,.56)]
+		"canopy": profile = [Vector2(-.52,.57),Vector2(-.52,.10),Vector2(-1.01,-.34),Vector2(-.68,-.77),Vector2(.20,-1.01),Vector2(.88,-.62),Vector2(1.03,-.21),Vector2(.51,.14),Vector2(.53,.57)]
+		"petals": profile = [Vector2(-.94,.16),Vector2(-.66,-.42),Vector2(-.47,-.28),Vector2(-.29,-.83),Vector2(0,-.58),Vector2(.29,-.83),Vector2(.47,-.28),Vector2(.67,-.42),Vector2(.94,.16),Vector2(.66,.56),Vector2(-.66,.56)]
+		"brambles": profile = [Vector2(-.90,.47),Vector2(-.81,-.46),Vector2(-.52,-.16),Vector2(-.38,-.88),Vector2(-.11,-.23),Vector2(.21,-.51),Vector2(.42,-.80),Vector2(.50,-.19),Vector2(.90,-.48),Vector2(.80,.47)]
+		"lens": profile = [Vector2(-.93,.08),Vector2(-.69,-.49),Vector2(.02,-.87),Vector2(.65,-.56),Vector2(.94,.13),Vector2(.48,.51),Vector2(-.43,.51)]
+		"gate": profile = [Vector2(-.90,.52),Vector2(-.96,-.58),Vector2(-.62,-.88),Vector2(-.43,-.30),Vector2(.42,-.30),Vector2(.61,-.88),Vector2(.94,-.58),Vector2(.88,.52)]
+		"crescent": profile = [Vector2(-.92,.14),Vector2(-.74,-.63),Vector2(-.04,-1.09),Vector2(-.21,-.59),Vector2(.05,-.15),Vector2(.68,-.09),Vector2(.88,-.31),Vector2(.80,.30),Vector2(.28,.56),Vector2(-.45,.50)]
+		"kettle": profile = [Vector2(-.89,.29),Vector2(-1.00,-.06),Vector2(-.58,-.12),Vector2(-.62,-.64),Vector2(.49,-.64),Vector2(.66,-.25),Vector2(1.02,-.44),Vector2(.82,.19),Vector2(.52,.53),Vector2(-.54,.53)]
+		"kiln": profile = [Vector2(-.88,.49),Vector2(-.84,-.23),Vector2(-.54,-.64),Vector2(-.47,-1.03),Vector2(-.06,-1.03),Vector2(-.06,-.67),Vector2(.55,-.62),Vector2(.84,-.18),Vector2(.88,.49)]
+		"terraces": profile = [Vector2(-1.08,.53),Vector2(-1.06,.23),Vector2(-.74,.23),Vector2(-.74,-.10),Vector2(-.42,-.10),Vector2(-.42,-.56),Vector2(.41,-.56),Vector2(.41,-.10),Vector2(.74,-.10),Vector2(.74,.23),Vector2(1.06,.23),Vector2(1.08,.53)]
+		"stacks": profile = [Vector2(-.73,.50),Vector2(-.85,-.78),Vector2(-.42,-.78),Vector2(-.35,-.41),Vector2(.02,-.38),Vector2(.19,-1.01),Vector2(.66,-.97),Vector2(.59,-.18),Vector2(.86,.52)]
+		"cage": profile = [Vector2(-.95,.40),Vector2(-.76,-.68),Vector2(-.50,-1.01),Vector2(-.30,-.64),Vector2(.28,-.65),Vector2(.53,-1.01),Vector2(.76,-.64),Vector2(.96,.40)]
+		"sunflower": profile = [Vector2(-.40,.55),Vector2(-.37,.17),Vector2(-.96,-.13),Vector2(-.70,-.46),Vector2(-.72,-.84),Vector2(-.27,-.74),Vector2(.04,-1.08),Vector2(.31,-.74),Vector2(.77,-.83),Vector2(.74,-.41),Vector2(.97,-.13),Vector2(.40,.17),Vector2(.43,.55)]
+		"trees": profile = [Vector2(-.92,.52),Vector2(-.84,-.24),Vector2(-.98,-.48),Vector2(-.71,-.78),Vector2(-.44,-.47),Vector2(-.26,-.26),Vector2(.02,-.81),Vector2(.52,-1.04),Vector2(.92,-.67),Vector2(.72,-.20),Vector2(.83,.52)]
+		"bridge": profile = [Vector2(-.94,.57),Vector2(-.97,-.62),Vector2(-.52,-.89),Vector2(-.46,-.39),Vector2(.48,-.39),Vector2(.53,-.69),Vector2(.94,-.52),Vector2(.91,.57),Vector2(.40,.57),Vector2(.28,-.06),Vector2(-.28,-.06),Vector2(-.41,.57)]
+		"obelisk": profile = [Vector2(-.69,.52),Vector2(-.56,-.19),Vector2(-.17,-1.13),Vector2(.14,-1.02),Vector2(.51,-.22),Vector2(.69,.52)]
+		"shutters": profile = [Vector2(-1.01,.46),Vector2(-.98,-.53),Vector2(-.72,-.83),Vector2(-.12,-.45),Vector2(.13,-.45),Vector2(.73,-.83),Vector2(.98,-.53),Vector2(1.00,.46)]
+		"mast": profile = [Vector2(-.76,.53),Vector2(-.27,-.35),Vector2(-.22,-1.1),Vector2(.16,-1.14),Vector2(.20,-.36),Vector2(.99,-.57),Vector2(.69,.05),Vector2(.54,.53)]
+		"shell": profile = [Vector2(-.88,.44),Vector2(-1.02,-.22),Vector2(-.71,-.60),Vector2(-.45,-.53),Vector2(-.13,-.91),Vector2(.30,-.69),Vector2(.52,-.71),Vector2(.91,-.26),Vector2(.72,.39)]
+		"tusks": profile = [Vector2(-.99,.51),Vector2(-1.01,-.45),Vector2(-.76,-.97),Vector2(-.55,-.35),Vector2(-.33,-.06),Vector2(.35,-.06),Vector2(.60,-.35),Vector2(.75,-.97),Vector2(1.01,-.45),Vector2(.99,.51)]
+		"icicle": profile = [Vector2(-.74,.56),Vector2(-.77,-.48),Vector2(-.44,-.38),Vector2(-.25,-1.15),Vector2(.19,-.75),Vector2(.47,-1.06),Vector2(.52,-.32),Vector2(.77,-.14),Vector2(.73,.56)]
+		"sail": profile = [Vector2(-.80,.49),Vector2(-.83,-.40),Vector2(.13,-1.10),Vector2(.28,-.53),Vector2(.94,-.46),Vector2(.72,.14),Vector2(.46,.50)]
+		"moonspires": profile = [Vector2(-1.0,.51),Vector2(-.78,-1.11),Vector2(-.52,-.73),Vector2(-.36,-.20),Vector2(.11,-.10),Vector2(.62,-.57),Vector2(.84,-.90),Vector2(.99,.51)]
+		"arch": profile = [Vector2(-.95,.57),Vector2(-.95,-.38),Vector2(-.5,-.88),Vector2(0,-1.05),Vector2(.55,-.88),Vector2(.95,-.38),Vector2(.95,.57),Vector2(.58,.57),Vector2(.58,-.31),Vector2(0,-.64),Vector2(-.58,-.31),Vector2(-.58,.57)]
+		"thornring": profile = [Vector2(-.82,.44),Vector2(-1.04,.08),Vector2(-.73,-.02),Vector2(-.82,-.64),Vector2(-.38,-.42),Vector2(0,-.84),Vector2(.35,-.46),Vector2(.78,-.65),Vector2(.75,-.05),Vector2(1.02,.07),Vector2(.82,.44)]
+		"orchid": profile = [Vector2(-.52,.51),Vector2(-.37,.03),Vector2(-.99,-.32),Vector2(-.85,-.75),Vector2(-.43,-.65),Vector2(0,-1.07),Vector2(.30,-.64),Vector2(.93,-.71),Vector2(1.01,-.34),Vector2(.37,.07),Vector2(.53,.51)]
+		"hourglass": profile = [Vector2(-.76,.48),Vector2(-.73,.19),Vector2(-.36,-.09),Vector2(-.68,-.47),Vector2(-.74,-.85),Vector2(.75,-.85),Vector2(.66,-.49),Vector2(.36,-.09),Vector2(.72,.19),Vector2(.76,.48)]
+	if profile.is_empty():
+		return
+	_poly(canvas, p, r, profile, INK)
+	_poly(canvas, p, r * .86, profile, stone)
+	var edge := PackedVector2Array()
+	for point: Vector2 in profile:
+		edge.append(p + point * r * .86)
+	edge.append(edge[0])
+	canvas.draw_polyline(edge, Color(trim, .69), r * .058, true)
+	canvas.draw_line(p + Vector2(-.44, .40) * r, p + Vector2(.44, .40) * r,
+		Color(trim.lightened(.22), .58 + pulse * .35), r * .08, true)
 
 static func _flame(canvas: CanvasItem, p: Vector2, r: float, tint: Color, sway: float) -> void:
 	_poly(canvas, p, r, [Vector2(0,-1.22),Vector2(.19 + sway * .39,-.61),Vector2(.53,-.43),Vector2(.65,.13),

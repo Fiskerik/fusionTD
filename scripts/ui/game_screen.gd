@@ -66,21 +66,23 @@ var enemy_signature: String = ""
 var enemy_detail_metrics: Label
 var enemy_detail_rows: VBoxContainer
 var enemy_detail_signature: String = ""
+var tower_detail_stats: HFlowContainer
+var tower_detail_support := Vector3.ZERO
 var leaderboard_rows: VBoxContainer
 var leaderboard_signature: String = ""
 var leaderboard_next_refresh: int = 0
 
 func _ready() -> void:
 	if sim == null:
-		sim = Sim.new(int(randi()))
+		sim = Sim.campaign(int(randi())) if persistence_enabled else Sim.new(int(randi()))
 	profile = SaveStore.profile() if persistence_enabled else {"seen": [], "haptics": false, "best_wave": 0, "sound": false, "music": false, "speed": 1}
 	speed = clampi(int(profile.speed), 1, 4)
 	wide = _is_wide()
 	_build_layout()
 	_hint(0)
 	_checkpoint()
-	if sim.state.selection_pending:
-		_show_selection()
+	if not sim.state.boon_queue.is_empty() or sim.state.selection_pending:
+		_show_intermission_choice()
 	elif sim.state.phase == "build" and not sim.state.trial.is_empty():
 		_apply({"type": "start_wave"})
 	resized.connect(_resized)
@@ -96,6 +98,8 @@ func _resized() -> void:
 	_build_layout()
 	match previous:
 		"select": _show_selection()
+		"boon_choice": _show_boon_choice()
+		"boons": _show_boons()
 		"pause": _show_pause()
 		"end": _show_game_over()
 		"preview": _show_preview(overlay_wave, overlay_bonus)
@@ -325,7 +329,7 @@ func _process(delta: float) -> void:
 		_update_hud()
 
 func _count_down(delta: float) -> void:
-	if sim.state.selection_pending or not sim.state.trial.is_empty():
+	if not sim.state.boon_queue.is_empty() or sim.state.selection_pending or not sim.state.trial.is_empty():
 		return
 	sim.intermission_left = maxf(0.0, sim.intermission_left - delta)
 	if sim.intermission_left == 0.0:
@@ -338,7 +342,7 @@ func _count_down(delta: float) -> void:
 			audio.play("countdown")
 
 func _update_countdown() -> void:
-	if not is_instance_valid(start_button) or sim.state.selection_pending or not sim.state.trial.is_empty():
+	if not is_instance_valid(start_button) or not sim.state.boon_queue.is_empty() or sim.state.selection_pending or not sim.state.trial.is_empty():
 		return
 	last_countdown = ceili(sim.intermission_left)
 	start_button.text = DataDB.text("start_countdown") % last_countdown
@@ -403,10 +407,11 @@ func _refresh() -> void:
 	inspector_panel.visible = sim.state.phase != "game_over"
 	round_controls.visible = building
 	if building:
-		var choose: bool = sim.state.selection_pending
-		var action: Callable = _show_selection if choose else _apply.bind({"type": "start_wave"})
+		var boon: bool = not sim.state.boon_queue.is_empty()
+		var choose: bool = boon or sim.state.selection_pending
+		var action: Callable = _show_intermission_choice if choose else _apply.bind({"type": "start_wave"})
 		var start_key: String = "choose_spirit" if choose else ("start_bonus" if not sim.state.trial.is_empty() else "start_wave")
-		start_button = UIKit.button(DataDB.text(start_key), action, true, 54)
+		start_button = UIKit.button("Choose a boon" if boon else DataDB.text(start_key), action, true, 54)
 		round_controls.add_child(start_button)
 		var style: StyleBoxFlat = start_button.get_theme_stylebox("normal")
 		var pulse: Tween = start_button.create_tween().set_loops()
@@ -467,6 +472,7 @@ func _update_hud(refresh_upgrades: bool = false) -> void:
 		if is_instance_valid(overview):
 			overview.refresh_purchase()
 	_update_tower_history()
+	_update_tower_detail_stats()
 	if overlay_type == "leaderboard":
 		_update_leaderboard()
 
@@ -495,6 +501,7 @@ func _render_element_status() -> void:
 
 func _render_wave_heading() -> void:
 	var wave: int = int(sim.state.wave)
+	wave_label.tooltip_text = sim.track.title
 	wave_label.text = ("Current wave %d" if sim.state.phase == "wave" else "Upcoming wave %d") % wave
 	UIKit.clear(wave_effects)
 	var summary: Dictionary = sim.preview(wave)
@@ -579,6 +586,14 @@ func _render_preview() -> void:
 			if group.props.has("phasing") and not icons.has("phasing"):
 				icons.append("phasing")
 				descriptions.append(StatusInfo.title("phasing"))
+			for prop: String in group.props:
+				if DataDB.read("mobs").specials.has(prop):
+					var trait_icon: String = StatusInfo.TRAITS[prop][2]
+					if not icons.has(trait_icon):
+						icons.append(trait_icon)
+					var trait_name: String = StatusInfo.trait_title(prop, group)
+					if not descriptions.has(trait_name):
+						descriptions.append(trait_name)
 		for enemy: Dictionary in preview.bosses + preview.groups:
 			var weakness: String = Damage.weakness(enemy)
 			if not weakness.is_empty() and not weaknesses.has(weakness):
@@ -634,7 +649,8 @@ func _render_site() -> void:
 		_render_palette()
 		return
 
-	info.text = TowerRules.display_name(tower) if tower.kind == "ascended" else DataDB.text("tower_level") % [TowerRules.display_name(tower), tower.level, ""]
+	var rank: int = TowerRules.PURE_DISPLAY_LEVEL if tower.kind == "ascended" else int(tower.level)
+	info.text = DataDB.text("tower_level") % [TowerRules.display_name(tower), rank, ""]
 	inspector_portrait.tower = tower
 	inspector_portrait.show()
 	inspector_portrait.queue_redraw()
@@ -643,12 +659,14 @@ func _render_site() -> void:
 		var tier: int = TowerRules.infusion_tier(tower.level, sim.state.tiers[tower.infusion])
 		tower_composition.add_child(UIKit.label(TowerRules.roman(tier), 15, UIKit.MUTED))
 	tower_composition.show()
-	TowerInspector.fill_metrics(tower_stats, tower, sim.spirit_victories())
+	TowerInspector.fill_metrics(tower_stats, tower, sim.spirit_victories(), 17, UIKit.MINT, false, Vector3.ZERO, sim.tower_boon(tower))
 	tower_stats.show()
 	tower_history.show()
 	_update_tower_history()
 	_add_tower_effects(tower_effects, tower)
-	tower_effects.tooltip_text = "\n".join(TowerInspector.effects(tower, sim.state.tiers))
+	if tower.get("sabotaged", false):
+		_effect_chip(tower_effects, "Jammed", UIKit.WARN, "electric", "Upgrade or fuse this tower to restore it.")
+	tower_effects.tooltip_text = "\n".join(TowerInspector.effects(tower, sim.state.tiers, sim.tower_boon(tower)))
 	var upgrade: Dictionary = _tower_upgrade_action(tower)
 	var quote: Dictionary = sim.describe(upgrade, true)
 	if not quote.ok:
@@ -735,7 +753,10 @@ func _render_tower_toolbar(tower: Dictionary, upgrade: Dictionary, quote: Dictio
 	upgrade_button.disabled = not quote.ok
 	upgrade_button.tooltip_text = quote.reason
 	if quote.ok:
-		upgrade_button.tooltip_text = "Preview a permanent damage boost from one Pure Crystal." if use_crystal else DataDB.text("upgrade_preview_tip")
+		if use_crystal:
+			upgrade_button.tooltip_text = "Preview ascension to a level-7 Pure tower." if tower.kind == "pure" else "Preview the damage gained from another crystal."
+		else:
+			upgrade_button.tooltip_text = DataDB.text("upgrade_preview_tip")
 	elif not use_crystal:
 		upgrade_button.text = "Max level" if quote.reason == DataDB.text("max_level") else "Upgrade\nTier locked"
 	if previewing:
@@ -801,7 +822,7 @@ func _target_pressed() -> void:
 	_apply({"type": "set_target", "slot": selected, "mode": mode})
 
 func _add_tower_effects(row: HBoxContainer, tower: Dictionary) -> void:
-	var labels: PackedStringArray = TowerInspector.effect_labels(tower, sim.state.tiers)
+	var labels: PackedStringArray = TowerInspector.effect_labels(tower, sim.state.tiers, sim.tower_boon(tower))
 	for i: int in range(mini(2, labels.size())):
 		_effect_chip(row, labels[i], StatusInfo.accent(labels[i]))
 	if labels.size() > 2:
@@ -930,13 +951,13 @@ func _update_enemy_inspector() -> void:
 	var stopped: bool = int(enemy.root_time) > 0 or int(enemy.freeze_time) > 0 or enemy.has("corner")
 	var metrics: String = "%d / %d HP   ·   %s armor   ·   %s tiles/s" % [
 		ceili(enemy.hp), ceili(enemy.max_hp), TowerInspector.number(maxf(0.0, float(enemy.armor) - float(enemy.shred))),
-		TowerInspector.number(0.0 if stopped else float(enemy.speed) * (1.0 - float(enemy.slow)) * Effects.slip_speed(enemy))]
+		TowerInspector.number(0.0 if stopped else float(enemy.speed) * (1.0 - float(enemy.slow)) * Effects.slip_speed(enemy) * (1.2 if enemy.get("bannered", false) else 1.0))]
 	tower_metrics.text = metrics
 	tower_metrics.show()
 	if is_instance_valid(enemy_detail_metrics):
 		enemy_detail_metrics.text = metrics
 		_render_enemy_details(enemy, traits, active)
-	var signature: String = enemy.element + "|" + " / ".join(traits) + "|" + " / ".join(active)
+	var signature: String = enemy.element + "|" + String(enemy.get("immune_element", "")) + "|" + " / ".join(traits) + "|" + " / ".join(active)
 	if enemy_signature == signature:
 		return
 	enemy_signature = signature
@@ -960,6 +981,10 @@ func _update_enemy_inspector() -> void:
 			break
 		var title: String = StatusInfo.title(key)
 		_effect_chip(tower_effects, title, StatusInfo.accent(title), StatusInfo.ICONS[key])
+		remaining -= 1
+	var immune: String = enemy.get("immune_element", "")
+	if remaining > 0 and not immune.is_empty() and EnemyRules.property(enemy, "chameleon"):
+		_effect_chip(tower_effects, "Immune to " + immune.capitalize(), UIKit.WARN, immune)
 		remaining -= 1
 	for key: String in traits:
 		if remaining == 0:
@@ -1008,7 +1033,7 @@ func _render_enemy_details(enemy: Dictionary, traits: PackedStringArray, active:
 	var lines := PackedStringArray()
 	for id: String in active:
 		lines.append("%s  ·  %s" % [StatusInfo.title(id), StatusInfo.state_value(enemy, id, sim.state.tick, sim.hz)])
-	var signature: String = enemy.element + "|" + "\n".join(lines)
+	var signature: String = enemy.element + "|" + String(enemy.get("immune_element", "")) + "|" + "\n".join(lines)
 	if signature == enemy_detail_signature and enemy_detail_rows.get_child_count() > 0:
 		return
 	enemy_detail_signature = signature
@@ -1019,6 +1044,9 @@ func _render_enemy_details(enemy: Dictionary, traits: PackedStringArray, active:
 	if not weakness.is_empty():
 		_enemy_detail_line(StatusInfo.weakness_title(weakness), StatusInfo.weakness_description(weakness, Damage.weakness_multiplier(enemy)),
 			StatusInfo.weakness_icon(weakness))
+	var immune: String = enemy.get("immune_element", "")
+	if not immune.is_empty() and EnemyRules.property(enemy, "chameleon"):
+		_enemy_detail_line("Immune to " + immune.capitalize(), "Adapted after the last elemental hit.", immune)
 	for id: String in traits:
 		var property_info: Array = StatusInfo.TRAITS[id]
 		_enemy_detail_line(StatusInfo.trait_title(id, enemy), StatusInfo.trait_description(id), property_info[2])
@@ -1094,7 +1122,7 @@ func _apply(action: Dictionary) -> void:
 		_update_hud()
 		return
 	message = ""
-	if action.type in ["select_element", "fuse", "infuse", "remove_infusion"]:
+	if action.type in ["select_element", "choose_boon", "fuse", "infuse", "remove_infusion"]:
 		_close_overlay()
 	if action.type in ["upgrade", "empower_pure", "sell", "fuse"]:
 		upgrade_slot = ""
@@ -1127,12 +1155,19 @@ func _apply(action: Dictionary) -> void:
 		audio.play("sell")
 	elif action.type == "start_wave" and not sim.state.towers.has(selected):
 		selected = ""
+	elif action.type == "choose_boon":
+		message = DataDB.read("run_boons")[action.id].name
+		audio.play("unlock")
+		Haptics.play(26, profile.haptics)
+		field.animate({"type": "boon_chosen", "data": {}})
 	elif action.type == "select_element":
 		message = DataDB.text("trial_queued") % [String(action.element).capitalize(), TowerRules.roman(int(action.tier))]
 		sim.apply({"type": "start_wave"})
 	_checkpoint()
 	_take_events()
 	_refresh()
+	if action.type == "choose_boon":
+		_show_intermission_choice()
 
 func _take_events() -> void:
 	for event: Dictionary in sim.events:
@@ -1153,7 +1188,7 @@ func _take_events() -> void:
 				_refresh()
 				if sim.state.selection_pending:
 					_hint(3)
-					_show_selection()
+				_show_intermission_choice()
 			"special_spawned":
 				if event.data.kind == "spirit":
 					_hint(4)
@@ -1162,6 +1197,7 @@ func _take_events() -> void:
 			"bonus_finished":
 				_checkpoint()
 				_refresh()
+				_show_intermission_choice()
 			"element_unlocked":
 				audio.play("unlock")
 				Haptics.play(36, profile.haptics)
@@ -1175,6 +1211,13 @@ func _take_events() -> void:
 				_hint(5)
 				if _unlocked().size() >= 2:
 					_hint(6)
+			"tower_sabotaged":
+				message = "Tower jammed · Upgrade or fuse it"
+				_render_site()
+				Haptics.play(24, profile.haptics)
+			"gold_stolen":
+				if int(event.data.gold) > 0:
+					message = "Thief stole %d gold" % int(event.data.gold)
 			"mob_leaked":
 				audio.play("gate")
 				Haptics.play(50, profile.haptics)
@@ -1268,12 +1311,78 @@ func _close_overlay() -> void:
 	overview = null
 	enemy_detail_metrics = null
 	enemy_detail_rows = null
+	tower_detail_stats = null
 	leaderboard_rows = null
 	if is_instance_valid(overlay):
 		overlay.hide()
 		overlay.queue_free()
 	overlay = null
 	overlay_type = ""
+
+func _show_intermission_choice() -> void:
+	if paused or sim.state.phase != "build":
+		return
+	if not sim.state.boon_queue.is_empty():
+		_show_boon_choice()
+	elif sim.state.selection_pending:
+		_show_selection()
+
+func _boon_tint(tags: PackedStringArray) -> Color:
+	for tag: String in tags:
+		if DataDB.ELEMENTS.has(tag):
+			return Glyphs.hue(tag)
+	return UIKit.GOLD
+
+func _show_boon_choice() -> void:
+	var options: PackedStringArray = sim.boon_choices()
+	if options.is_empty():
+		return
+	var encounter: Dictionary = sim.state.boon_queue[0]
+	var body: VBoxContainer = _dialog("Choose a run boon", 600)
+	overlay_type = "boon_choice"
+	body.add_child(UIKit.label("%s reward · Wave %d" % [String(encounter.source).capitalize(), int(encounter.wave)], 19, UIKit.MUTED))
+	var library: Dictionary = DataDB.read("run_boons")
+	for id: String in options:
+		var boon: Dictionary = library[id]
+		var tags: PackedStringArray = RunBoons.tags(boon)
+		var tint: Color = _boon_tint(tags)
+		var button: Button = UIKit.button(boon.name + "\n" + RunBoons.describe(boon, int(encounter.wave)),
+			_apply.bind({"type": "choose_boon", "id": id}), false, 72)
+		button.add_theme_font_size_override("font_size", 19)
+		button.add_theme_stylebox_override("normal", UIKit.raised(UIKit.SURFACE.lerp(tint, .19), tint.lerp(UIKit.BORDER, .52)))
+		button.add_theme_stylebox_override("hover", UIKit.raised(UIKit.SURFACE.lerp(tint, .32), tint))
+		body.add_child(button)
+
+func _show_boons() -> void:
+	var body: VBoxContainer = _dialog("Run boons", 600)
+	overlay_type = "boons"
+	body.add_child(UIKit.label(sim.track.title, 19, UIKit.MUTED))
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y = minf(440.0, get_viewport_rect().size.y * .57) if not sim.state.boons.is_empty() else 72.0
+	body.add_child(scroll)
+	var list: VBoxContainer = UIKit.column(8)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	var library: Dictionary = DataDB.read("run_boons")
+	for pick: Dictionary in sim.state.boons:
+		var boon: Dictionary = library[pick.id]
+		var tags: PackedStringArray = RunBoons.tags(boon)
+		var tag_names := PackedStringArray()
+		for tag: String in tags:
+			tag_names.append(RunBoons.tag_name(tag))
+		var panel := PanelContainer.new()
+		var tint: Color = _boon_tint(tags)
+		panel.add_theme_stylebox_override("panel", UIKit.style(UIKit.SURFACE.lerp(tint, .16), UIKit.BORDER, 12, 8))
+		list.add_child(panel)
+		var card: VBoxContainer = UIKit.column(3)
+		panel.add_child(card)
+		card.add_child(UIKit.label(boon.name, 21, UIKit.INK))
+		card.add_child(UIKit.label(" / ".join(tag_names) + " · Wave %d" % int(pick.wave), 15, UIKit.MUTED, true))
+		card.add_child(UIKit.label(RunBoons.describe(boon, int(pick.wave)), 18, UIKit.INK, true))
+	if sim.state.boons.is_empty():
+		list.add_child(UIKit.label("Boons are earned after boss and spirit encounters.", 19, UIKit.MUTED, true))
+	body.add_child(UIKit.button(DataDB.text("close"), _close_reference, true, 48))
 
 func _show_selection() -> void:
 	var body: VBoxContainer = _dialog(DataDB.text("choose_spirit"), 820 if wide else 670)
@@ -1449,14 +1558,15 @@ func _show_tower_details() -> void:
 	body.add_child(UIKit.composition(tower, 29))
 	body.add_child(UIKit.label(TowerInspector.history(tower), 17, UIKit.MINT, true))
 	var profile_data: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers)
-	var stat_row := HFlowContainer.new()
-	body.add_child(stat_row)
-	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), 20, UIKit.MINT, true)
+	tower_detail_stats = HFlowContainer.new()
+	tower_detail_stats.add_theme_constant_override("h_separation", 11)
+	body.add_child(tower_detail_stats)
+	_update_tower_detail_stats()
 	var boost: float = TowerRules.spirit_multiplier(tower, sim.spirit_victories()) - 1.0
 	if boost > 0.0:
 		body.add_child(UIKit.label("Spirit victories   ·   +%s damage" % TowerInspector.percent(boost), 17, UIKit.UPGRADE))
 	body.add_child(UIKit.label(DataDB.text("tower_damage_type") % TowerInspector.damage_type(tower, profile_data), 19, UIKit.MUTED, true))
-	var lines: PackedStringArray = TowerInspector.effects(tower, sim.state.tiers)
+	var lines: PackedStringArray = TowerInspector.effects(tower, sim.state.tiers, sim.tower_boon(tower))
 	var effects: VBoxContainer = body
 	if lines.size() > 3:
 		var scroll := ScrollContainer.new()
@@ -1470,6 +1580,20 @@ func _show_tower_details() -> void:
 		effects.add_child(UIKit.label(line, 20, StatusInfo.accent(line), true))
 	body.add_child(UIKit.label(DataDB.text("base_stats"), 17, UIKit.MUTED, true))
 	body.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true))
+
+func _update_tower_detail_stats() -> void:
+	if not is_instance_valid(tower_detail_stats):
+		return
+	var tower: Dictionary = sim.state.towers.get(selected, {})
+	if tower.is_empty():
+		return
+	var sources: Array[Dictionary] = TowerRules.support_sources(sim.state.towers.values())
+	var support: Vector3 = sim.support_bonuses(tower, sources)
+	if tower_detail_stats.get_child_count() > 0 and support.is_equal_approx(tower_detail_support):
+		return
+	tower_detail_support = support
+	UIKit.clear(tower_detail_stats)
+	TowerInspector.fill_metrics(tower_detail_stats, tower, sim.spirit_victories(), 20, UIKit.MINT, true, support, sim.tower_boon(tower))
 
 func _show_upgrade_preview() -> void:
 	var tower: Dictionary = sim.state.towers.get(selected, {})
@@ -1491,7 +1615,7 @@ func _render_upgrade(tower: Dictionary) -> void:
 	tower_comparison.show()
 	var future: Dictionary = tower.duplicate()
 	if TowerRules.can_socket_crystal(tower):
-		future.crystals = int(tower.get("crystals", 0)) + 1
+		TowerRules.empower_pure(future)
 	else:
 		future.level += 1
 	_comparison_card(tower_comparison, tower, DataDB.text("upgrade_current"), false)
@@ -1509,10 +1633,8 @@ func _comparison_card(parent: HBoxContainer, tower: Dictionary, caption: String,
 	var heading: Color = UIKit.UPGRADE if upgraded else UIKit.INK
 	var font_size: int = 17 if fusion else 15
 	var crystals: int = int(tower.get("crystals", 0))
-	var rank: String = "Lv %d" % int(tower.level)
-	if tower.kind == "ascended":
-		rank = "◈ %d" % crystals
-	elif crystals > 0:
+	var rank: String = "Pure ★%d" % TowerRules.PURE_DISPLAY_LEVEL if tower.kind == "ascended" else "Lv %d" % int(tower.level)
+	if crystals > 0:
 		rank += " · ◈ %d" % crystals
 	var level: Label = UIKit.label(caption + " · " + rank, font_size, heading, true)
 	level.add_theme_font_override("font", UIKit.heading())
@@ -1523,12 +1645,12 @@ func _comparison_card(parent: HBoxContainer, tower: Dictionary, caption: String,
 
 	var stat_row := HFlowContainer.new()
 	column.add_child(stat_row)
-	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), font_size, heading, true)
+	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), font_size, heading, true, Vector3.ZERO, sim.tower_boon(tower))
 	if fusion:
 		var profile_traits: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers)
 		column.add_child(UIKit.label(TowerInspector.damage_type(tower, profile_traits), font_size, UIKit.MINT, true))
 		column.add_child(UIKit.label(TowerInspector.history(tower), 14, UIKit.MUTED, true))
-	for entry: Dictionary in TowerInspector.effect_entries(tower, sim.state.tiers):
+	for entry: Dictionary in TowerInspector.effect_entries(tower, sim.state.tiers, sim.tower_boon(tower)):
 		var effect: Label = UIKit.label(entry.detail if fusion else entry.label, 16 if fusion else 14, entry.tint, true)
 		effect.mouse_filter = Control.MOUSE_FILTER_STOP
 		effect.tooltip_text = entry.detail
@@ -1622,7 +1744,7 @@ func _show_infusion() -> void:
 		_update_action_button(button, action)
 		var infused: Dictionary = tower.duplicate()
 		infused.infusion = element
-		var entries: Array[Dictionary] = TowerInspector.effect_entries(infused, sim.state.tiers)
+		var entries: Array[Dictionary] = TowerInspector.effect_entries(infused, sim.state.tiers, sim.tower_boon(infused))
 		_add_element_choice(grid, button, entries, hint)
 	if tower.infusion != "":
 		body.add_child(UIKit.button(DataDB.text("remove_infusion"), _apply.bind({"type": "remove_infusion", "slot": selected}), false, 48))
@@ -1717,7 +1839,7 @@ func _show_fusion(partner: String) -> void:
 		body.add_child(UIKit.label(DataDB.text("fusion_matchup") % " / ".join(matchups), 16, UIKit.MUTED, true))
 	var controls: HBoxContainer = UIKit.row()
 	controls.add_child(UIKit.button(DataDB.text("cancel"), _cancel_fusion))
-	var cost: int = TowerRules.fusion_cost(first, second)
+	var cost: int = sim.fusion_fee(first, second)
 	var confirm: Button = UIKit.button(DataDB.text("fusion_confirm") % cost, _apply.bind(action), true)
 	overlay_actions[confirm] = action
 	_update_action_button(confirm, action)
@@ -1741,7 +1863,8 @@ func _show_pause() -> void:
 	references.add_child(UIKit.icon_button("info", DataDB.text("status_help"), _show_status_help))
 	references.add_child(UIKit.icon_button("book", DataDB.text("legend"), _show_legend))
 	body.add_child(references)
-	body.add_child(UIKit.button(DataDB.text("resume"), _resume, true, 76))
+	body.add_child(UIKit.button(DataDB.text("resume"), _resume, true, 65))
+	body.add_child(UIKit.button("Run boons · %d" % sim.state.boons.size(), _show_boons, false, 46))
 	body.add_child(UIKit.toggle_row("Music", profile.music, _toggle_music))
 	body.add_child(UIKit.toggle_row("Sound effects", profile.sound, _toggle_sound))
 	body.add_child(UIKit.toggle_row("Haptics", profile.haptics, _toggle_haptics))
@@ -1755,8 +1878,7 @@ func _resume() -> void:
 	paused = false
 	field.animation_paused = false
 	_close_overlay()
-	if sim.state.selection_pending:
-		_show_selection()
+	_show_intermission_choice()
 
 func _confirm_restart() -> void:
 	var body: VBoxContainer = _dialog(DataDB.text("restart_title"), 510)
@@ -1770,7 +1892,7 @@ func _confirm_restart() -> void:
 func _restart() -> void:
 	_close_overlay()
 	paused = false
-	sim = Sim.new(int(randi()))
+	sim = Sim.campaign(int(randi()))
 	selected = ""
 	upgrade_slot = ""
 	pure_palette = false

@@ -49,6 +49,7 @@ const PATH: Color = Color("#ecd0a5")
 const GOLD: Color = Color("#f5c57c")
 const REWARD: Color = Color("#ffdc64")
 const WALKER: Color = Color("#ffc4a0")
+const BOSS_RADIUS: float = .475
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -146,6 +147,19 @@ func animate(event: Dictionary) -> void:
 			shake = 5
 			if int(data.absorbed) > 0:
 				_gate_pulse(Color("#86ddff"))
+		"chameleon_adapted":
+			bursts.append({"at": sim.track.at(data.s), "color": Glyphs.hue(data.element), "time": .38, "max": .38, "radius": .43})
+		"gold_stolen":
+			if int(data.gold) > 0:
+				rewards.append({"at": sim.track.at(data.s), "time": 1.35, "max": 1.35, "gold": -int(data.gold), "offset": 0.0})
+				_gate_pulse(Color("#e88972"))
+		"tower_sabotaged":
+			var site: Vector2 = sim.track.slots[data.slot].position
+			bursts.append({"at": site, "color": Color("#b582d4"), "time": .72, "max": .72, "radius": .77})
+			fusion_trails.append({"from": sim.track.at(data.s), "to": site, "elements": ["dark", "electric"], "time": .78})
+		"boon_chosen":
+			_gate_pulse(Color("#ffd579"))
+			bursts.append({"at": sim.track.at(sim.track.total * .36), "color": Color("#ffe7a3"), "time": .65, "max": .65, "radius": 1.08})
 		"gate_restored":
 			_gate_pulse(Color("#86ddff") if int(data.barrier) > 0 else Color("#c3f094"))
 		"boss_healed":
@@ -209,7 +223,7 @@ func _fire(data: Dictionary) -> void:
 	shots.append({"from": source, "to": target, "style": style, "color": tint,
 		"target_id": data.target_id, "contact": contact, "landed": contact == 0.0,
 		"element": TowerRules.primary_element(tower), "time": duration, "max": duration,
-		"range": float(TowerRules.stats(tower).range)})
+		"range": float(data.get("range", TowerRules.stats(tower).range))})
 
 func _track_aim(delta: float) -> void:
 	if aim_by_slot.is_empty() and shots.is_empty():
@@ -227,6 +241,7 @@ func _track_aim(delta: float) -> void:
 			shot.landed = true
 			if not victim.is_empty():
 				hit_times[int(victim.id)] = .15
+	var support_sources: Array[Dictionary] = TowerRules.support_sources(sim.state.towers.values())
 	for slot: String in aim_by_slot.keys():
 		var aim: Dictionary = aim_by_slot[slot]
 		var tower: Dictionary = sim.state.towers.get(slot, {})
@@ -237,7 +252,8 @@ func _track_aim(delta: float) -> void:
 		var base: Vector2 = sim.track.slots[slot].position
 		if not enemy.is_empty() and int(tower.stun) == 0:
 			var target: Vector2 = _enemy_position(enemy)
-			if base.distance_to(_enemy_position(enemy, true)) <= TowerRules.attack_range(tower):
+			var support: Vector3 = sim.support_bonuses(tower, support_sources)
+			if base.distance_to(_enemy_position(enemy, true)) <= float(sim.tower_profile(tower).range) * (1.0 + support.z):
 				aim.point = target
 		var point: Vector2 = aim.point
 		aim.angle = rotate_toward(float(aim.angle), (point - base).angle(), delta * 15.0)
@@ -348,6 +364,11 @@ func _draw() -> void:
 			var site: Vector2 = sim.track.slots[enemy.telegraph.slot].position
 			draw_arc(site, .4 + absf(sin(elapsed * 14)) * .12, 0, TAU, 32, Color("#ff8d70"), .065, false)
 			var caster: Vector2 = _enemy_position(enemy)
+			if enemy.boss_type == "warlock":
+				var distance: float = lerpf(enemy.prev_s, enemy.s, fraction)
+				var heading: Vector2 = _enemy_heading(enemy, distance)
+				var offset: Vector2 = MobArt.warlock_staff_offset(heading, BOSS_RADIUS, distance)
+				caster += -offset if gate_on_top else offset
 			draw_line(caster, site, Color("#b95a82", .48 + sin(elapsed * 17) * .18), .06)
 			Glyphs.draw(self, "dark", site - Vector2(0,.51), .17, Color("#ad3479"))
 		_draw_enemy(enemy)
@@ -386,7 +407,8 @@ func _draw_field(bounds: Vector2) -> void:
 		draw_line(Vector2(0, y), Vector2(bounds.x, y), ink, .018)
 	var track: Track = sim.track
 	var road_points := PackedVector2Array(track.points)
-	road_points[0] = track.at(.90)
+	var portal_offset: float = .90 if track.layout_id == Track.LEGACY else 1.12
+	road_points[0] = track.at(portal_offset)
 	_road(road_points, .94, Color("#a4af83"))
 	_road(road_points, .84, Color("#fff0c9"))
 	_road(road_points, .73, PATH)
@@ -402,7 +424,7 @@ func _draw_field(bounds: Vector2) -> void:
 		if index % 8 == 5:
 			draw_polyline(PackedVector2Array([pos - side * .10 - direction * .07,
 				pos + direction * .05, pos + side * .10 - direction * .07]), Color("#bc9371"), .040)
-	var entrance: Vector2 = track.at(.9)
+	var entrance: Vector2 = track.at(portal_offset)
 	_set_upright(entrance)
 	TowerArt.draw_landmark(self, "portal", entrance - Vector2(0, .04), Vector2(1.20, 1.20))
 	draw_arc(entrance + Vector2(0,.035), .18, elapsed, elapsed + PI * 1.5, 20, Color("#f8ffe1", .8), .027, true)
@@ -490,11 +512,15 @@ func _draw_selection() -> void:
 	var tint: Color = _tower_color(tower) if not tower.is_empty() else Color("#338477")
 	var radius: float = 0
 	if not tower.is_empty():
-		radius = TowerRules.attack_range(tower)
+		var support_sources: Array[Dictionary] = TowerRules.support_sources(sim.state.towers.values())
+		var slot: String = selected if source == p else hover_slot
+		var support: Vector3 = sim.support_bonuses(tower, support_sources, slot)
+		var rule: Dictionary = TowerRules.stats(tower)
+		radius = float(sim.tower_profile(tower).range) * (1.0 + support.z) if float(rule.rate) > 0.0 else TowerRules.attack_range(tower)
 		if TowerRules.is_fusion(tower):
-			var effect: Dictionary = TowerRules.stats(tower).effect
-			if effect.has("aura_speed") or effect.has("aura_damage"):
-				_draw_aura_tiles(tower, p, radius, tint)
+			var effect: Dictionary = rule.effect
+			if effect.has("aura_speed") or effect.has("aura_damage") or effect.has("aura_range"):
+				_draw_aura_tiles(tower, p, TowerRules.attack_range(tower), tint)
 	elif hover_kind != "":
 		var rule: Dictionary = DataDB.read("towers")[hover_kind]
 		radius = INF if rule.get("global_range", false) else float(rule.range)
@@ -547,7 +573,9 @@ func _draw_build_tiles() -> void:
 
 func _draw_placement_preview() -> void:
 	var p: Vector2 = sim.track.slots[hover_slot].position
-	var radius: float = TowerRules.attack_range(placement_preview)
+	var support_sources: Array[Dictionary] = TowerRules.support_sources(sim.state.towers.values())
+	var support: Vector3 = sim.support_bonuses(placement_preview, support_sources, hover_slot)
+	var radius: float = float(sim.tower_profile(placement_preview).range) * (1.0 + support.z)
 	var color: Color = _tower_color(placement_preview)
 	if is_inf(radius):
 		draw_rect(Rect2(Vector2.ZERO, sim.track.bounds).grow(-.04), Color(color, .65), false, .08)
@@ -613,12 +641,15 @@ func _draw_tower(tower: Dictionary) -> void:
 		draw_circle(emblem, .115, rim)
 		Glyphs.draw(self, tower.infusion, emblem, .075, tint.lightened(.37))
 	var badge: Vector2 = p + Vector2(.27, .28)
-	draw_circle(badge, .126, Color("#506658"))
-	var badge_fill: Color = REWARD if level >= 4 else Color("#fcf0d2")
-	if int(tower.get("crystals", 0)) > 0:
-		badge_fill = Color("#acf0ff")
-	draw_circle(badge - Vector2(0,.013), .096, badge_fill)
-	_caption("◆" if ascended else str(level), badge + Vector2(0,.059), .17, Color("#493e32"))
+	if ascended:
+		_draw_pure_badge(badge)
+	else:
+		draw_circle(badge, .126, Color("#506658"))
+		var badge_fill: Color = REWARD if level >= 4 else Color("#fcf0d2")
+		if int(tower.get("crystals", 0)) > 0:
+			badge_fill = Color("#acf0ff")
+		draw_circle(badge - Vector2(0,.013), .096, badge_fill)
+		_caption(str(level), badge + Vector2(0,.059), .17, Color("#493e32"))
 	if upgrade_ready.has(tower.slot):
 		var marker: Vector2 = p + Vector2(-.31, -.27)
 		draw_circle(marker, .132, Color("#f5ffce"), true, -1, true)
@@ -627,9 +658,24 @@ func _draw_tower(tower: Dictionary) -> void:
 			marker + Vector2(.062, .027)]), Color("#e0ff9a"), .038, true)
 	if partners.has(tower.slot):
 		draw_arc(p, .49 + sin(elapsed * 7) * .045, 0, TAU, 27, Color("#fff1a0"), .065)
+	if tower.get("sabotaged", false):
+		var lock: Vector2 = p + Vector2(.29, -.27)
+		draw_circle(lock, .16, Color("#514067"), true, -1, true)
+		Glyphs.draw(self, "electric", lock, .12, Color("#ffe399"))
+		draw_arc(p, .49, elapsed * 2, elapsed * 2 + PI * .7, 18, Color("#bb8de4"), .05, true)
 	if int(tower.stun) > 0:
 		Glyphs.draw(self, "electric", p + Vector2(.30, -.30), .19, Color("#aa64c6"))
 	_set_board_transform()
+
+func _draw_pure_badge(p: Vector2) -> void:
+	var star := PackedVector2Array()
+	for point: int in range(10):
+		var arm: float = .194 if point % 2 == 0 else .114
+		star.append(p + Vector2.from_angle(-PI * .5 + TAU * point / 10.0) * arm)
+	draw_colored_polygon(star, REWARD)
+	star.append(star[0])
+	draw_polyline(star, Color("#79512d"), .033, true)
+	_caption(str(TowerRules.PURE_DISPLAY_LEVEL), p + Vector2(0, .064), .185, Color("#49351f"))
 
 func _draw_foundation(p: Vector2, level: int, color: Color, rim: Color) -> void:
 	var top: Vector2 = p - Vector2(0,.055 + (level - 1) * .013)
@@ -704,27 +750,53 @@ func _enemy_position(enemy: Dictionary, ground_only: bool = false) -> Vector2:
 func _flight_height() -> float:
 	return .32 + .075 * sin(elapsed * 8.0)
 
-func _travel_direction(distance: float) -> Vector2:
-	var direction: Vector2 = sim.track.at(distance + .065) - sim.track.at(distance - .065)
+func _travel_direction(distance: float, sample: float = .065) -> Vector2:
+	var direction: Vector2 = sim.track.at(distance + sample) - sim.track.at(distance - sample)
 	return direction.normalized()
+
+func _enemy_heading(enemy: Dictionary, distance: float, turn: float = -1.0) -> Vector2:
+	var direction: Vector2
+	if turn >= 0.0:
+		var corner: int = enemy.corner
+		var from: Vector2 = sim.track.points[corner] - sim.track.points[corner - 1]
+		var to: Vector2 = sim.track.points[corner + 1] - sim.track.points[corner]
+		direction = from.normalized().rotated(from.angle_to(to) * smoothstep(.12, 1.0, turn))
+	elif enemy.has("turn_seconds"):
+		direction = _travel_direction(minf(distance + .001, sim.track.total), .001)
+	else:
+		# Read across the bend so larger sprites can begin turning before their centers reach it.
+		direction = _travel_direction(distance, .32 if enemy.kind == "boss" else .065)
+	return -direction if gate_on_top else direction
+
+func _draw_boss_wake(enemy: Dictionary, p: Vector2, direction: Vector2, distance: float, tint: Color) -> void:
+	if float(enemy.s) <= float(enemy.prev_s) or distance <= .2:
+		return
+	var color: Color
+	match enemy.boss_type:
+		"warlock": color = Color("#bd609a")
+		"necromancer": color = Color("#559f8d")
+		"prismheart": color = tint if enemy.element != "none" else Color("#8bc7ad")
+		_: return
+	var center: Vector2 = sim.track.at(distance)
+	var polarity: float = -1.0 if gate_on_top else 1.0
+	for index: int in range(3):
+		var phase: float = fposmod(distance * 1.45 + float(index) / 3.0, 1.0)
+		var past: float = maxf(0.0, distance - lerpf(.33, .99, phase))
+		var offset: Vector2 = (sim.track.at(past) - center) * polarity
+		var sway: Vector2 = direction.orthogonal() * sin(distance * 6.0 + index * 2.7) * .11
+		var mote: Vector2 = p + offset + sway + Vector2(0.0, -.08)
+		draw_circle(mote, lerpf(.077, .029, phase), Color(color, .70 * (1.0 - phase)), true, -1, true)
+		draw_circle(mote, lerpf(.037, .012, phase), Color(color.lightened(.48), .84 * (1.0 - phase)), true, -1, true)
 
 func _draw_enemy(enemy: Dictionary) -> void:
 	var p: Vector2 = _enemy_position(enemy, true)
 	_set_upright(p)
 	var distance: float = lerpf(enemy.prev_s, enemy.s, fraction)
-	var direction: Vector2 = _travel_direction(distance)
-	if enemy.has("turn_seconds"):
-		direction = (sim.track.at(distance + .002) - sim.track.at(distance)).normalized()
 	var turn: float = -1.0
 	if enemy.has("corner"):
-		var corner: int = enemy.corner
 		var turn_ticks: float = Effects.ticks(enemy.turn_seconds, sim.hz)
 		turn = clampf(1.0 - (float(enemy.turn_left) - fraction) / turn_ticks, 0.0, 1.0)
-		var from: Vector2 = sim.track.points[corner] - sim.track.points[corner - 1]
-		var to: Vector2 = sim.track.points[corner + 1] - sim.track.points[corner]
-		direction = from.normalized().rotated(from.angle_to(to) * smoothstep(.12, 1.0, turn))
-	if gate_on_top:
-		direction = -direction
+	var direction: Vector2 = _enemy_heading(enemy, distance, turn)
 	var spirit: bool = enemy.kind == "spirit"
 	var boss: bool = enemy.kind == "boss"
 	var prismheart: bool = enemy.boss_type == "prismheart"
@@ -733,7 +805,7 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	if spirit:
 		radius = spirit_radius(enemy.tier)
 	elif boss:
-		radius = .475
+		radius = BOSS_RADIUS
 	elif enemy.kind in ["splitling", "husk"] or enemy.props.has("swarm"):
 		radius = .205
 	var variant: Dictionary = DataDB.read("mobs").families.get(enemy.get("family", "acorn"), {})
@@ -761,6 +833,8 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	var airborne: bool = EnemyRules.airborne(enemy)
 	_draw_oval(p + Vector2(.035, radius * .53), Vector2(radius, radius * .42), Color("#614f42", .23 if airborne or prismheart else .34))
 	_draw_status_ground(enemy, p, direction, radius)
+	if boss:
+		_draw_boss_wake(enemy, p, direction, distance, tint)
 	var previous_form: String = ""
 	var morph_progress: float = 1.0
 	if enemy.boss_type == "ram" and enemy.has("turn_seconds"):
@@ -797,10 +871,14 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	if spirit:
 		p.y -= .08 + sin(elapsed * 5.5) * .065
 		_draw_spirit(p, direction, radius, tint, enemy.element, enemy.tier)
+	elif EnemyRules.burrowed(enemy, sim.track.total):
+		_draw_burrow(p, direction)
 	elif prismheart:
-		MobArt.draw_prismheart(self, enemy.element, p - direction * impact * .045, radius, elapsed, previous_form, morph_progress)
+		var drift: float = .06 if float(enemy.s) > float(enemy.prev_s) else 0.0
+		MobArt.draw_prismheart(self, enemy.element, p + direction * (drift - impact * .045), radius, elapsed, previous_form, morph_progress)
 	else:
 		MobArt.draw(self, enemy, p, direction, radius, tint, distance, elapsed, impact)
+	_draw_special_enemy(enemy, p, direction, radius)
 	_draw_status_glints(enemy, p, radius)
 	if shielded:
 		var shield_radius: float = radius + .10
@@ -826,9 +904,40 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	if not enemy.props.is_empty():
 		var badges: String = ""
 		for prop: String in enemy.props:
-			badges += DataDB.read("mobs").properties[prop].badge
-		_caption(badges, p + Vector2(radius + .13, .15), .19, Color("#fff7e2"), Color("#65534c"))
+			badges += String(DataDB.read("mobs").properties.get(prop, {}).get("badge", ""))
+		if not badges.is_empty():
+			_caption(badges, p + Vector2(radius + .13, .15), .19, Color("#fff7e2"), Color("#65534c"))
 	_set_board_transform()
+
+func _draw_burrow(p: Vector2, direction: Vector2) -> void:
+	_draw_oval(p + Vector2(0, .13), Vector2(.36, .17), Color("#ae865c"))
+	_draw_oval(p + Vector2(0, .07), Vector2(.27, .11), Color("#d4aa72"))
+	for i: int in range(4):
+		var phase: float = fposmod(elapsed * 2.6 + i * .25, 1.0)
+		var dust: Vector2 = p - direction * (.13 + phase * .52) + Vector2(0, -.18 * sin(phase * PI))
+		draw_circle(dust, .041 + phase * .036, Color("#d9b88b", 1.0 - phase), true, -1, true)
+
+func _draw_special_enemy(enemy: Dictionary, p: Vector2, direction: Vector2, radius: float) -> void:
+	var immune: String = enemy.get("immune_element", "")
+	if not immune.is_empty() and EnemyRules.property(enemy, "chameleon"):
+		var tint: Color = Glyphs.hue(immune)
+		draw_arc(p, radius * 1.25, elapsed * 4, elapsed * 4 + PI * 1.38, 22, tint, .058, true)
+		Glyphs.draw(self, immune, p + Vector2(radius + .17, -.13), .11, tint.darkened(.37))
+	if EnemyRules.property(enemy, "banner"):
+		var pole: Vector2 = p - direction * .21
+		draw_line(pole + Vector2(0, .16), pole - Vector2(0, .49), Color("#664737"), .058, true)
+		var tip: Vector2 = pole - Vector2(0, .49)
+		var ripple: float = .048 * sin(elapsed * 12)
+		draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(.37, .065 + ripple),
+			tip + Vector2(.28, .21), tip + Vector2(0, .26)]), Color("#efd376"))
+		draw_arc(p, 1.5, elapsed * 1.8, elapsed * 1.8 + PI * 1.4, 40, Color("#e6be63", .48), .045, true)
+	elif enemy.get("bannered", false):
+		draw_arc(p, radius * 1.22, .22, PI - .22, 18, Color("#f6ce72", .81), .05, true)
+	if enemy.props.has("thief") or enemy.props.has("saboteur"):
+		var token: Vector2 = p + Vector2(radius + .10, -.14)
+		var thief: bool = enemy.props.has("thief")
+		draw_circle(token, .128, Color("#614737") if thief else Color("#533f72"), true, -1, true)
+		Glyphs.draw(self, "gold" if thief else "electric", token, .087, Color("#ffdf79"))
 
 func _draw_status_icons(enemy: Dictionary, p: Vector2, radius: float) -> void:
 	var statuses: PackedStringArray = StatusInfo.active(enemy, sim.state.tick, sim.hz)
@@ -1126,7 +1235,9 @@ func _draw_reward(reward: Dictionary) -> void:
 	p.y = minf(sim.track.bounds.y - .44, p.y + rise) if gate_on_top else maxf(.44, p.y - rise)
 	var fade: float = 1.0 - smoothstep(.74, 1.0, progress)
 	var pop: float = .45 + sin(minf(progress * 6.0, 1.0) * PI) * .10
-	_caption("+%d" % reward.gold, p, pop, Color(REWARD, fade), Color("#51402c", fade))
+	var loss: bool = int(reward.gold) < 0
+	_caption(("−" if loss else "+") + str(absi(int(reward.gold))), p, pop,
+		Color(Color("#ff9a87") if loss else REWARD, fade), Color("#51402c", fade))
 
 func _tower_color(tower: Dictionary) -> Color:
 	if TowerRules.is_fusion(tower):

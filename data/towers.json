@@ -122,8 +122,9 @@
   },
   "ascended_levels": {
     "damage": [15.5],
-    "rate": [1.35],
-    "potency": [1.23],
+    "rate": [1.6875],
+    "range": [1.5],
+    "potency": [1.534],
     "upgrade": []
   },
   "dual_levels": {

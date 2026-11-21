@@ -29,18 +29,33 @@ static func blend(split: Dictionary, defender: String, rolled_weakness: String =
 	return result
 
 static func against(split: Dictionary, enemy: Dictionary, adaptive: bool) -> float:
-	if has_special_resistances(enemy):
-		if adaptive:
-			return maxf(special_matchup("light", enemy), special_matchup("dark", enemy))
-		var multiplier: float = 0.0
-		for element: String in split:
-			multiplier += float(split[element]) * special_matchup(element, enemy)
-		return multiplier
-	var defender: String = enemy.element
-	var rolled_weakness: String = enemy.get("weakness", "")
 	if adaptive:
-		return maxf(matchup("light", defender, rolled_weakness), matchup("dark", defender, rolled_weakness))
-	return blend(split, defender, rolled_weakness)
+		return maxf(against_element("light", enemy), against_element("dark", enemy))
+	var multiplier: float = 0.0
+	for element: String in split:
+		multiplier += float(split[element]) * against_element(element, enemy)
+	return multiplier
+
+static func against_element(element: String, enemy: Dictionary) -> float:
+	if element == enemy.get("immune_element", "") and int(enemy.get("silence_time", 0)) == 0:
+		return 0.0
+	if has_special_resistances(enemy):
+		return special_matchup(element, enemy)
+	return matchup(element, enemy.element, enemy.get("weakness", ""))
+
+static func adapt(enemy: Dictionary, split: Dictionary, adaptive: bool) -> void:
+	if not EnemyRules.property(enemy, "chameleon"):
+		return
+	var options: Dictionary = {"light": 1.0, "dark": 1.0} if adaptive else split
+	var strongest: float = 0.0
+	var last: String = ""
+	for element: String in options:
+		var hit: float = float(options[element]) * against_element(element, enemy)
+		if element != "normal" and hit > strongest:
+			last = element
+			strongest = hit
+	if not last.is_empty():
+		enemy.immune_element = last
 
 static func has_special_resistances(enemy: Dictionary) -> bool:
 	return enemy.get("boss_type", "") in ["prismheart", "ironwood"]

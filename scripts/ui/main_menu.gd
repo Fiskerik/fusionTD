@@ -166,7 +166,7 @@ func _close() -> void:
 
 func _open_game(saved: Sim = null) -> void:
 	var game: Control = GAME.instantiate()
-	game.sim = saved if saved != null else Sim.new(int(randi()))
+	game.sim = saved if saved != null else Sim.campaign(int(randi()))
 	get_tree().root.add_child(game)
 	get_tree().current_scene = game
 	queue_free()

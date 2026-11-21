@@ -44,8 +44,8 @@ func configure(run: Sim, active_element: String, landscape: bool, viewport_heigh
 	add_child(attributes)
 	var panes: BoxContainer = UIKit.row(9) if landscape else UIKit.column(7)
 	add_child(panes)
-	var gallery_height: float = minf(450, viewport_height * .59) if landscape else minf(340, viewport_height * .30)
-	var detail_height: float = gallery_height if landscape else minf(280, viewport_height * .32)
+	var gallery_height: float = minf(560, viewport_height * .66) if landscape else minf(545, viewport_height * .43)
+	var detail_height: float = gallery_height if landscape else minf(330, viewport_height * .29)
 	gallery_scroll = _pane(panes, gallery_height, 1.25 if landscape else 1.0)
 	gallery = UIKit.column(6)
 	gallery.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -227,7 +227,7 @@ func _render_detail() -> void:
 	var missing: String = _requirements(tower)
 	if not missing.is_empty():
 		details.add_child(UIKit.label("Requires " + missing + (" Tier III" if tower.kind == "ascended" else " Tier I"), 15, UIKit.WARN, true))
-	var profile: Dictionary = TowerRules.attack_profile(tower, sim.spirit_victories())
+	var profile: Dictionary = sim.tower_profile(tower)
 	var role: String = TowerRules.stats(tower).get("role", DataDB.read("elements").get(tower.element, {}).get("role", ""))
 	if not role.is_empty():
 		details.add_child(UIKit.label(role, 15, UIKit.MUTED, true))
@@ -246,7 +246,7 @@ func _render_detail() -> void:
 			details.add_child(UIKit.label(rank_requirement, 15, UIKit.WARN, true))
 	var stat_row := HFlowContainer.new()
 	details.add_child(stat_row)
-	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), 16, UIKit.INK, true)
+	TowerInspector.fill_metrics(stat_row, tower, sim.spirit_victories(), 16, UIKit.INK, true, Vector3.ZERO, sim.tower_boon(tower))
 	var all_tiers: Dictionary = sim.state.tiers.duplicate()
 	for id: String in DataDB.ELEMENTS:
 		all_tiers[id] = 3
@@ -256,7 +256,7 @@ func _render_detail() -> void:
 		var matchup: HFlowContainer = HFlowContainer.new()
 		details.add_child(matchup)
 		_add_matchups(matchup, TowerRules.damage_split(tower), traits.has("adaptive"))
-	for effect: Dictionary in TowerInspector.effect_entries(tower, all_tiers):
+	for effect: Dictionary in TowerInspector.effect_entries(tower, all_tiers, sim.tower_boon(tower)):
 		var line: Label = UIKit.label(effect.detail, 15, effect.tint, true)
 		details.add_child(line)
 	if not TowerRules.is_fusion(tower) and missing.is_empty():

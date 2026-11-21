@@ -227,6 +227,22 @@ func test_wave_48_caps_seeded_formation_spikes() -> void:
 			original_hp += float(group.hp) * int(group.count)
 		check(tuned_hp <= original_hp * .9, "Wave 48 has lower total HP on seed %d" % seed_value)
 
+func test_wave_44_has_fewer_enemies_across_campaign_seeds() -> void:
+	var adjustments: Dictionary = DataDB.read("waves").adjustments
+	var tuning: Dictionary = adjustments["44"]
+	for seed_value: int in range(1, 33):
+		var tuned: Dictionary = Waves.generate(seed_value, 44)
+		adjustments.erase("44")
+		var original: Dictionary = Waves.generate(seed_value, 44)
+		adjustments["44"] = tuning
+		var before: int = 0
+		var after: int = 0
+		for group: Dictionary in original.groups:
+			before += int(group.count)
+		for group: Dictionary in tuned.groups:
+			after += int(group.count)
+		check(after <= before * .70, "Wave 44 reduces enemy count on seed %d" % seed_value)
+
 func test_economy_and_undo() -> void:
 	var sim := Sim.new()
 	var original: int = sim.state_hash()
@@ -708,6 +724,11 @@ func test_tier_three_pure_towers_share_three_slots_across_elements() -> void:
 	equal(TowerRules.display_name(pure), "Pure Fire")
 	check(float(TowerRules.attack_profile(pure).damage) > 2.0 * float(TowerRules.attack_profile(base).damage))
 	check(not TowerRules.can_fuse(pure) and not sim.apply({"type":"upgrade", "slot":"s1"}).ok)
+	sim.state.wave = 30
+	check(sim.apply({"type": "build", "slot": "s5", "kind": "fire"}).ok)
+	sim.state.towers.s5.level = 6
+	check(not sim.apply({"type": "empower_pure", "slot": "s5"}).ok)
+	equal(sim.pure_crystals(), 1, "A full Pure roster does not consume the crystal")
 	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	check(not restored.apply(fourth).ok and restored.pure_count() == 3)
 	check(restored.apply({"type":"sell", "slot":"s2"}).ok)
@@ -742,7 +763,7 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 	sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	equal(sim.pure_crystals(), 3)
 	var elemental_action: Dictionary = {"type": "empower_pure", "slot": "s2"}
-	var elemental_hit: float = TowerRules.attack_profile(sim.state.towers.s2).damage
+	var elemental: Dictionary = TowerRules.attack_profile(sim.state.towers.s2)
 	sim.state.tiers.fire = 2
 	check(not sim.apply(elemental_action).ok, "A legacy level-6 elemental tower still needs Tier III")
 	sim.state.tiers.fire = 3
@@ -751,9 +772,18 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 	sim.state.towers.s2.level = 6
 	check(sim.apply(elemental_action).ok)
 	equal(sim.pure_crystals(), 2)
-	near(TowerRules.attack_profile(sim.state.towers.s2).damage, elemental_hit * 1.25)
+	var ascended: Dictionary = sim.state.towers.s2
+	equal(ascended.kind, "ascended")
+	equal(sim.pure_count(), 2)
+	var profile: Dictionary = TowerRules.attack_profile(ascended)
+	near(profile.damage, base_hit)
+	check(float(profile.damage) >= float(elemental.damage) * 2.0)
+	near(profile.range, float(elemental.range) * 1.5)
+	near(profile.rate, float(elemental.rate) * 1.25)
+	near(profile.potency, float(elemental.potency) * 1.3)
 	check(sim.apply({"type": "undo"}).ok)
 	equal(sim.pure_crystals(), 3)
+	equal(sim.state.towers.s2.kind, "pure")
 	check(sim.apply(action).ok)
 	equal(sim.pure_crystals(), 2)
 	near(TowerRules.attack_profile(sim.state.towers.s1).damage, base_hit * 1.25)
@@ -771,7 +801,7 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 	equal(loaded.state.towers.s3.crystals, 3)
 	near(TowerRules.attack_profile(loaded.state.towers.s3).damage, base_hit * 1.75)
 
-func test_fusion_carries_socketed_crystal_without_counting_its_bonus_twice() -> void:
+func test_ascended_towers_cannot_fuse_in_either_slot() -> void:
 	var sim := Sim.new()
 	sim.state.gold = 10000
 	sim.state.wave = 30
@@ -781,12 +811,28 @@ func test_fusion_carries_socketed_crystal_without_counting_its_bonus_twice() -> 
 	check(sim.apply({"type": "build", "slot": "s2", "kind": "nature"}).ok)
 	sim.state.towers.s1.level = 6
 	sim.state.towers.s2.level = 2
+	var id: int = sim.state.towers.s1.id
+	sim.state.towers.s1.kills = 15
 	check(sim.apply({"type": "empower_pure", "slot": "s1"}).ok)
-	var empowered_hit: float = TowerRules.attack_profile(sim.state.towers.s1).damage
-	check(sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s2"}).ok)
-	equal(sim.state.towers.s1.crystals, 1)
+	check(not sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s2"}).ok)
+	check(not sim.apply({"type": "fuse", "slot_a": "s2", "slot_b": "s1"}).ok)
+	equal(sim.state.towers.s1.id, id)
+	equal(sim.state.towers.s1.kills, 15)
 	equal(sim.pure_crystals(), 0)
-	near(TowerRules.attack_profile(sim.state.towers.s1).damage, empowered_hit)
+
+func test_existing_crystal_powered_level_six_towers_ascend_on_load() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 60
+	sim.state.stats.pure_crystals_spent = 2
+	var legacy: Dictionary = TowerRules.create(sim.next_id(), "s1", "pure", "water", "", 1000)
+	legacy.level = 6
+	legacy.crystals = 2
+	sim.state.towers.s1 = legacy
+	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	equal(restored.state.towers.s1.kind, "ascended")
+	equal(restored.state.towers.s1.crystals, 1)
+	equal(restored.pure_crystals(), 0)
+	check(not TowerRules.can_fuse(restored.state.towers.s1))
 
 func test_spirit_damage_bonuses_reward_victories_and_follow_damage_elements() -> void:
 	var sim := Sim.new()
@@ -833,3 +879,102 @@ func _finish(sim: Sim) -> void:
 		sim.step()
 		sim.events.clear()
 	check(false, "Wave exceeded the simulation budget")
+
+func test_campaign_layouts_are_centered_and_replay_uses_the_same_route() -> void:
+	var library: Dictionary = DataDB.read("campaign_maps")
+	equal(library.size(), 10)
+	var fingerprints: Dictionary = {}
+	for key: String in library:
+		var track := Track.new(key)
+		equal(track.points[0].x, track.bounds.x * .5)
+		equal(track.points[-1].x, track.bounds.x * .5)
+		check(track.total >= 32 and track.total <= 36)
+		check(track.slots.size() > 60)
+		fingerprints[str(track.points)] = true
+	equal(fingerprints.size(), 10)
+	var drawn: Dictionary = {}
+	for seed_value: int in range(1, 80):
+		drawn[Track.campaign_layout(seed_value)] = true
+	equal(drawn.size(), 10)
+	var sim := Sim.campaign(92)
+	var slots: Array = sim.track.slots.keys()
+	slots.sort_custom(func(a: String, b: String) -> bool:
+		var coverage_a: int = sim.track.reachable_road(a, 3.7).size()
+		var coverage_b: int = sim.track.reachable_road(b, 3.7).size()
+		return coverage_a > coverage_b if coverage_a != coverage_b else a < b)
+	var slot_index: int = 0
+	for wave: int in range(1, 5):
+		while int(sim.state.gold) >= 50 and slot_index < slots.size() and slot_index < 3 + wave:
+			check(sim.apply({"type": "build", "slot": slots[slot_index], "kind": "arrow"}).ok)
+			slot_index += 1
+		check(sim.apply({"type": "start_wave"}).ok)
+		for tick: int in range(5000):
+			if sim.state.phase != "wave":
+				break
+			sim.step()
+	check(sim.apply({"type": "select_element", "element": "fire", "tier": 1}).ok)
+	check(sim.apply({"type": "start_wave"}).ok)
+	for tick: int in range(5000):
+		if sim.state.phase != "wave":
+			break
+		sim.step()
+	var choices: PackedStringArray = sim.boon_choices()
+	check(choices.size() == 3)
+	if not choices.is_empty():
+		check(sim.apply({"type": "choose_boon", "id": choices[0]}).ok)
+	var replay := Replay.from_data({"seed": sim.state.seed, "map_id": sim.track.layout_id,
+		"actions": sim.history, "final_tick": sim.state.tick})
+	check(replay != null)
+	if replay != null:
+		equal(replay.state_hash(), sim.state_hash())
+
+func test_campaign_boons_queue_one_seeded_choice_per_encounter() -> void:
+	var sim := Sim.campaign(7)
+	var library: Dictionary = DataDB.read("run_boons")
+	equal(library.size(), 50)
+	sim.state.wave = 70
+	sim.state.phase = "wave"
+	sim.step()
+	equal(sim.state.boon_queue.size(), 2)
+	var choices: PackedStringArray = sim.boon_choices()
+	equal(choices.size(), 3)
+	check(choices[0] != choices[1] and choices[0] != choices[2] and choices[1] != choices[2])
+	check(not sim.describe({"type": "start_wave"}).ok)
+	check(not sim.apply({"type": "choose_boon", "id": "bogus"}).ok)
+	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	equal(restored.track.layout_id, sim.track.layout_id)
+	equal(restored.boon_choices(), choices)
+	check(restored.apply({"type": "choose_boon", "id": choices[0]}).ok)
+	equal(restored.state.boons, [{"id": choices[0], "wave": 70}])
+	check(not restored.boon_choices().has(choices[0]))
+	check(restored.apply({"type": "choose_boon", "id": restored.boon_choices()[0]}).ok)
+	restored.state.trial = {"element": "fire", "tier": 1}
+	restored.state.phase = "wave"
+	restored.step()
+	equal(restored.state.boon_queue[0].source, "spirit")
+	equal(restored.boon_choices().size(), 3)
+	var late_mod: Dictionary = library.fire_damage.mods[0]
+	check(RunBoons.amount(late_mod, 80) > RunBoons.amount(late_mod, 10))
+	var fire: Dictionary = TowerRules.create(1, "tile_0_0", "pure", "fire", "", 100)
+	var water: Dictionary = TowerRules.create(2, "tile_0_1", "pure", "water", "", 100)
+	sim.state.boons = [{"id": "fire_damage", "wave": 70}, {"id": "fusion_discount", "wave": 90}]
+	sim.refresh_boons()
+	check(float(sim.tower_profile(fire).damage) > float(TowerRules.attack_profile(fire).damage))
+	near(sim.tower_profile(water).damage, TowerRules.attack_profile(water).damage)
+	equal(sim.fusion_fee(fire, water), ceili(TowerRules.fusion_cost(fire, water) * .75))
+
+func test_special_enemies_replace_regular_spawns() -> void:
+	var sim := Sim.campaign(3)
+	for id: String in DataDB.read("mobs").specials:
+		var wave: int = DataDB.read("mobs").specials[id].first
+		var generated: Dictionary = sim.preview(wave)
+		var saw_type: bool = false
+		var total: int = 0
+		for group: Dictionary in generated.groups:
+			total += int(group.count)
+			saw_type = saw_type or group.props.has(id)
+		check(saw_type, id + " arrives on its introduction wave")
+		var baseline: int = 0
+		for group: Dictionary in Waves.generate(sim.state.seed, wave).groups:
+			baseline += int(group.count)
+		equal(total, baseline)

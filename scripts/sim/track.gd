@@ -1,6 +1,9 @@
 class_name Track
 extends RefCounted
 
+const LEGACY: String = "greenmarch"
+var layout_id: String
+var title: String
 var points: PackedVector2Array
 var slots: Dictionary = {}
 var slot_by_tile: Dictionary = {}
@@ -11,17 +14,27 @@ var lengths: PackedFloat64Array
 var total: float = 0.0
 var bounds: Vector2
 
-func _init() -> void:
-	var map: Dictionary = DataDB.read("map_greenmarch")
-	bounds = Vector2(map.width, map.height)
+static func campaign_layout(seed_value: int) -> String:
+	var choices: Array = DataDB.read("campaign_maps").keys()
+	var rng := SimRng.new(seed_value ^ 0x3f525e)
+	return choices[rng.take(choices.size())]
+
+func _init(layout: String = LEGACY) -> void:
+	var legacy: Dictionary = DataDB.read("map_greenmarch")
+	var maps: Dictionary = DataDB.read("campaign_maps")
+	layout_id = layout if maps.has(layout) else LEGACY
+	var map: Dictionary = maps.get(layout_id, legacy)
+	title = map.name
+	bounds = Vector2(legacy.width, legacy.height)
 	for raw: Array in map.path:
 		var point := Vector2(raw[0], raw[1])
 		if not points.is_empty():
 			total += points[-1].distance_to(point)
 		points.append(point)
 		lengths.append(total)
-	for index: int in range(map.slots.size()):
-		var raw: Array = map.slots[index]
+	var references: Array = map.get("slots", [])
+	for index: int in range(references.size()):
+		var raw: Array = references[index]
 		var id: String = "s%d" % (index + 1)
 		reference_slots.append(id)
 		_add_slot(id, Vector2i(raw[0], raw[1]), int(raw[2]))

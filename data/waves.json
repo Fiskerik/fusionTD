@@ -15,6 +15,7 @@
   "mixed_elements_from": 11,
   "mixed_elemental_fraction": 0.65,
   "adjustments": {
+    "44": {"count_scale": 0.65},
     "48": {"pattern": "raiders", "hp_scale": 0.78, "count_scale": 0.92}
   },
   "health_boost": {"from": 10, "multiplier": 1.20},

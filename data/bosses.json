@@ -30,8 +30,8 @@
     "element": "electric",
     "hp_mult": 8.5,
     "armor": 25,
-    "speed": 1.4,
-    "turn_seconds": 3.0
+    "speed": 1.05,
+    "turn_seconds": 4.0
   },
   "necromancer": {
     "name": "Necromancer",

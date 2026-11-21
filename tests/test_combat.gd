@@ -31,6 +31,23 @@ func test_support_auras_buff_tiles_at_the_edge_of_the_circle() -> void:
 		near(outside.damage_dealt, base.damage, recipe + " leaves damage outside the circle unchanged")
 		equal(outside.cooldown, ceili(sim.hz / float(base.rate)), recipe + " leaves attack speed outside the circle unchanged")
 
+func test_support_range_bonus_reaches_enemies_outside_base_range() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	var spring: Dictionary = TowerRules.fusion_result("spring", "s2", sim.next_id())
+	var arrow: Dictionary = TowerRules.create(sim.next_id(), "tile_3_0", "arrow", "normal", "", 50)
+	sim.state.towers = {spring.slot: spring, arrow.slot: arrow}
+	var spring_effect: Dictionary = TowerRules.stats(spring).effect
+	spring_effect.aura_range = .13
+	Combat.spawn(sim, _enemy(), 15.0)
+	sim.step()
+	near(arrow.damage_dealt, TowerRules.attack_profile(arrow).damage, "Range support reaches behind the first bend")
+	arrow.cooldown = 0
+	spring.stun = 2
+	sim.step()
+	near(arrow.damage_dealt, TowerRules.attack_profile(arrow).damage, "A stunned support tower stops extending range")
+	spring_effect.erase("aura_range")
+
 func test_live_move_retargets_pending_warlock_hex_and_preserves_cooldown() -> void:
 	var sim := Sim.new()
 	sim.state.phase = "wave"
@@ -106,6 +123,27 @@ func test_root_upgrades_increase_hold_time_and_frequency() -> void:
 	var upgraded: Dictionary = EnemyRules.create(2, _enemy(), 0.0, 0)
 	Effects.apply(upgraded, {"root": root}, TowerRules.attack_profile(tower).potency, false, 2, 0.0, sim.hz)
 	equal(upgraded.root_time, 57)
+
+func test_ascended_water_uses_the_bonus_range_attack_rate_and_slow_in_combat() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 30
+	sim.state.phase = "wave"
+	sim.state.tiers.water = 3
+	var tower: Dictionary = TowerRules.create(sim.next_id(), "s1", "pure", "water", "", 1000)
+	tower.level = 6
+	sim.state.towers.s1 = tower
+	Combat.spawn(sim, _enemy(), 4.0)
+	sim.step()
+	near(tower.damage_dealt, 0.0, "The target starts outside level-six range")
+	check(sim.apply({"type": "empower_pure", "slot": "s1"}).ok)
+	sim.step()
+	var ascended: Dictionary = TowerRules.attack_profile(tower)
+	near(tower.damage_dealt, ascended.damage)
+	equal(tower.cooldown, ceili(sim.hz / float(ascended.rate)))
+	var slow: Array = TowerRules.trait_profile(tower, sim.state.tiers).slow
+	var enemy: Dictionary = sim.state.mobs[0]
+	near(enemy.slow, minf(float(enemy.slow_cap), Effects.slow_strength(slow[0], ascended.potency)))
+	equal(enemy.slow_time, Effects.ticks(Effects.slow_duration(slow[1], ascended.potency), sim.hz))
 
 func test_spirit_victories_apply_to_actual_hits() -> void:
 	var sim := Sim.new()
@@ -343,7 +381,7 @@ func test_gilded_courier_payout_and_travel_time() -> void:
 		return
 	equal(courier.count, 1)
 	near(courier.hp, float(ordinary.hp) * 2.0)
-	near(courier.armor, float(ordinary.armor) * .5)
+	near(courier.armor, float(ordinary.armor) * 2.0)
 	equal(courier.gold, int(ordinary.gold) + 250)
 	var sim := Sim.new()
 	sim.state.phase = "wave"
@@ -499,8 +537,18 @@ func test_ram_stops_at_every_bend_and_resumes_its_charge() -> void:
 	equal(ram.corner, 1)
 	near(ram.s, sim.track.lengths[1])
 	var turn_ticks: int = ram.turn_left
+	near(ram.speed, 1.05)
+	equal(turn_ticks, Effects.ticks(4.0, sim.hz))
 	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	equal(restored.state.mobs[0].turn_left, turn_ticks)
+	var old_save: Dictionary = SaveStore.encode(sim).duplicate(true)
+	var old_ram: Dictionary = old_save.state.mobs[0]
+	old_ram.turn_seconds = 3.0
+	old_ram.speed = 1.4
+	old_ram.turn_left = Effects.ticks(1.5, sim.hz)
+	var updated: Sim = SaveStore.decode(old_save)
+	near(updated.state.mobs[0].speed, 1.05)
+	equal(updated.state.mobs[0].turn_left, Effects.ticks(2.0, sim.hz), "An active turn keeps its progress when retuned")
 	for index: int in range(turn_ticks - 1):
 		sim.step()
 	near(ram.s, sim.track.lengths[1])
@@ -573,3 +621,36 @@ func test_stormwing_ignores_ground_control_and_ironwood_resists_elements() -> vo
 func _enemy(properties: Array = []) -> Dictionary:
 	return {"kind": "grunt", "element": "none", "props": properties, "hp": 1000.0,
 		"speed": 0.0, "armor": 0.0, "gold": 0, "leak": 1, "slow_cap": .7}
+
+func test_campaign_enemy_behaviors_trigger_on_the_road() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	sim.state.wave = 25
+	var adaptive: Dictionary = EnemyRules.create(1, _enemy(["chameleon"]), 5.0, 0)
+	Damage.adapt(adaptive, {"fire": 1.0}, false)
+	near(Damage.against({"fire": 1.0}, adaptive, false), 0.0)
+	near(Damage.against({"normal": 1.0}, adaptive, false), 1.0)
+	Damage.adapt(adaptive, {"water": 1.0}, false)
+	equal(adaptive.immune_element, "water")
+	near(Damage.against({"fire": 1.0}, adaptive, false), 1.0)
+	var runner_group: Dictionary = _enemy()
+	runner_group.speed = 1.0
+	Combat.spawn(sim, runner_group, 5.0)
+	Combat.spawn(sim, _enemy(["banner"]), 5.4)
+	sim.step()
+	var rallied: Dictionary = sim.state.mobs[0]
+	near(rallied.s, 5.0 + 1.2 / sim.hz)
+	check(EnemyRules.burrowed(EnemyRules.create(9, _enemy(["burrower"]), sim.track.total * .3, 0), sim.track.total))
+	var thief: Dictionary = EnemyRules.create(10, _enemy(["thief"]), sim.track.total, 0)
+	var gold: int = sim.state.gold
+	sim.lose_lives(thief)
+	equal(sim.state.gold, gold - 95)
+	var capped: Dictionary = TowerRules.create(sim.next_id(), "s2", "arrow", "normal", "", 1000)
+	capped.level = 6
+	var target: Dictionary = TowerRules.create(sim.next_id(), "s4", "arrow", "normal", "", 50)
+	sim.state.towers = {capped.slot: capped, target.slot: target}
+	Combat.spawn(sim, _enemy(["saboteur"]), sim.track.total * .5)
+	sim.step()
+	check(not capped.has("sabotaged") and target.get("sabotaged", false))
+	check(sim.apply({"type": "upgrade", "slot": target.slot}).ok)
+	check(not target.has("sabotaged"))

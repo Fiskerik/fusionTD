@@ -1,5 +1,51 @@
 extends "res://tests/test_base.gd"
 
+func test_boss_heading_eases_into_bends_and_follows_the_inverted_board() -> void:
+	var field := BattlefieldView.new()
+	field.sim = Sim.new()
+	var boss: Dictionary = field.sim.preview(10).boss
+	var bend: float = field.sim.track.lengths[1]
+	equal(field._enemy_heading(boss, bend - .4), Vector2.RIGHT)
+	var approaching: Vector2 = field._enemy_heading(boss, bend - .16)
+	check(approaching.x > approaching.y and approaching.y > 0.0)
+	var turning: Vector2 = field._enemy_heading(boss, bend)
+	near(turning.x, turning.y)
+	equal(field._enemy_heading(boss, bend + .4), Vector2.DOWN)
+	var ram: Dictionary = field.sim.preview(20).boss
+	ram.corner = 1
+	equal(field._enemy_heading(ram, bend, 0.1), Vector2.RIGHT)
+	near(field._enemy_heading(ram, bend, 1.0).angle_to(Vector2.DOWN), 0.0)
+	field.gate_on_top = true
+	equal(field._enemy_heading(boss, bend - .4), Vector2.LEFT)
+	equal(field._enemy_heading(boss, bend + .4), Vector2.UP)
+	field.free()
+
+func test_tower_details_show_active_support_bonuses() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	game.sim = Sim.new()
+	runner.root.add_child(game)
+	game.set_process(false)
+	var arrow: Dictionary = TowerRules.create(game.sim.next_id(), "s1", "arrow", "normal", "", 50)
+	var forge: Dictionary = TowerRules.fusion_result("forge", "s2", game.sim.next_id())
+	var spring: Dictionary = TowerRules.fusion_result("spring", "tile_6_2", game.sim.next_id())
+	game.sim.state.towers = {arrow.slot: arrow, forge.slot: forge, spring.slot: spring}
+	var spring_effect: Dictionary = TowerRules.stats(spring).effect
+	spring_effect.aura_range = .13
+	game._site_pressed("s1")
+	game._show_tower_details()
+	var row: HFlowContainer = game.tower_detail_stats
+	var expected := {"Damage": "+3.25", "Speed": "+25%", "Range": "+13%"}
+	for stat: String in expected:
+		var badge: Label = row.get_node_or_null(stat + "/SupportBonus")
+		check(badge != null and badge.text == expected[stat], "Shows the " + stat.to_lower() + " support bonus")
+	forge.stun = 10
+	game._update_hud()
+	check(not row.has_node("Damage/SupportBonus") and row.has_node("Speed/SupportBonus"))
+	spring_effect.erase("aura_range")
+	game.queue_free()
+	await runner.process_frame
+
 func test_palette_placement_commits_on_release() -> void:
 	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
 	game.persistence_enabled = false
@@ -214,12 +260,18 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	check(game.upgrade_button.text.begins_with("Use Crystal") and not game.upgrade_button.disabled)
 	game._upgrade_pressed()
 	check(game.tower_comparison.visible and game.upgrade_button.text.begins_with("Confirm"))
+	var after: Control = game.tower_comparison.get_child(1)
+	var after_labels: PackedStringArray = []
+	for label: Label in after.find_children("*", "Label", true, false):
+		after_labels.append(label.text)
+	check(after_labels.has("After upgrade · Pure ★7"))
+	check(after_labels.has("418.5") and after_labels.has("4.5") and after_labels.has("0.93/s"))
 	equal(sim.pure_crystals(), 1)
 	game._upgrade_pressed()
 	check(game.upgrade_button.disabled and not game.field.upgrade_ready.has("s3"))
-	equal(sim.state.towers.s3.level, 6)
-	equal(sim.state.towers.s3.crystals, 1)
-	check(game.stats.text.contains("◈ 0") and game.tower_effects.tooltip_text.contains("damage by 25%"))
+	equal(sim.state.towers.s3.kind, "ascended")
+	check(not game.tower_special.visible)
+	check(game.stats.text.contains("◈ 0") and game.info.text.contains("Pure Nature") and game.info.text.contains("7"))
 	game.queue_free()
 	await runner.process_frame
 

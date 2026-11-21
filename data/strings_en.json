@@ -49,7 +49,7 @@
   "spirit_remaining": "1 spirit left",
   "tower_details": "Details",
   "tower_damage_type": "Damage type · %s",
-  "base_stats": "Base stats before enemy defenses and nearby tower buffs. Range is in tiles.",
+  "base_stats": "Green + values show active support bonuses. Range is in tiles.",
   "tower_price": "%s · %d",
   "tower_level": "%s  ·  Lv %d%s",
   "upgrade": "Upgrade · %d",

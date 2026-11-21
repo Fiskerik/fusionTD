@@ -46,7 +46,8 @@ static func move(enemy: Dictionary, track: Track, hz: float, skid: float) -> voi
 	if int(enemy.freeze_time) > 0 or int(enemy.root_time) > 0:
 		return
 	var from: float = enemy.s
-	var to: float = from + float(enemy.speed) * (1.0 - float(enemy.slow)) * skid / hz
+	var pace: float = 1.20 if enemy.get("bannered", false) else 1.0
+	var to: float = from + float(enemy.speed) * (1.0 - float(enemy.slow)) * skid * pace / hz
 	if enemy.has("turn_seconds"):
 		var corner: int = track.corner_crossed(from, to)
 		if corner >= 0:
@@ -72,6 +73,14 @@ static func apply_wave_traits(enemy: Dictionary, wave: int) -> void:
 		enemy.control_resistance = control_resistance(wave)
 	if enemy.kind == "boss":
 		var bosses: Dictionary = DataDB.read("bosses")
+		if enemy.boss_type == "ram" and enemy.has("turn_seconds"):
+			var previous: float = enemy.turn_seconds
+			var duration: float = bosses.ram.turn_seconds
+			if enemy.has("turn_left") and not is_equal_approx(previous, duration):
+				var hz: float = DataDB.read("balance").sim_hz
+				enemy.turn_left = ceili(float(enemy.turn_left) * Effects.ticks(duration, hz) / maxi(1, Effects.ticks(previous, hz)))
+			enemy.speed = float(bosses.ram.speed)
+			enemy.turn_seconds = duration
 		if enemy.element == "none":
 			enemy.element = bosses[enemy.boss_type].element
 			enemy.slow_cap = float(DataDB.read("mobs").slow_cap)
@@ -91,6 +100,12 @@ static func phased(enemy: Dictionary, tick: int, hz: float) -> bool:
 	var age: int = tick - int(enemy.born)
 	var cycle: int = Effects.ticks(data.cycle, hz)
 	return age >= cycle and age % cycle < Effects.ticks(data.duration, hz)
+
+static func burrowed(enemy: Dictionary, road_length: float) -> bool:
+	if not property(enemy, "burrower"):
+		return false
+	var progress: float = float(enemy.s) / road_length
+	return (progress >= .24 and progress < .38) or (progress >= .65 and progress < .77)
 
 static func property(enemy: Dictionary, key: String) -> bool:
 	return int(enemy.silence_time) == 0 and enemy.props.has(key)

@@ -35,7 +35,10 @@ static func _tick_dot(mob: Dictionary, type: String, dot: Dictionary, hz: float,
 	var owners: Array = dot.get("owners", [])
 	var stacks: int = int(dot.stacks)
 	var first: int = -1 if owners.is_empty() else int(owners[0])
-	var per_stack: float = float(dot.dps) / hz * Damage.special_matchup("fire" if type == "burn" else "nature", mob)
+	var element: String = "fire" if type == "burn" else "nature"
+	if mob.get("immune_element", "") == element and EnemyRules.property(mob, "chameleon"):
+		return
+	var per_stack: float = float(dot.dps) / hz * Damage.special_matchup(element, mob)
 	if owners.is_empty() or owners.count(first) == stacks:
 		Damage.deal(mob, per_stack * stacks, towers.get(first, {}), at_tick)
 		return

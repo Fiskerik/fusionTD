@@ -68,6 +68,8 @@ class ForecastPortrait extends Control:
 			if enemy.kind == "bonus":
 				draw_circle(center, side * .44, Color("#fff0ae"), true, -1, true)
 			var direction: Vector2 = Vector2.UP if enemy.kind == "boss" else Vector2.RIGHT
+			if enemy.get("boss_type", "") in ["warlock", "necromancer"]:
+				direction = Vector2.DOWN
 			MobArt.draw(self, enemy, center, direction, side * (.31 if enemy.kind == "boss" else .38), Color.WHITE, 0, 1.3)
 
 class UtilityIcon extends Control:
@@ -125,7 +127,8 @@ class UtilityIcon extends Control:
 			for side: float in [-1.0, 1.0]:
 				draw_line(p + Vector2(side * 3,-3), p + Vector2(side * 7,-5), ink, 1.5, true)
 
-static func stat_value(kind: String, value: String, hint: String, font_size: int, tint: Color) -> HBoxContainer:
+static func stat_value(kind: String, value: String, hint: String, font_size: int, tint: Color,
+		support: String = "") -> HBoxContainer:
 	var item: HBoxContainer = row(3)
 	item.name = kind.capitalize()
 	item.tooltip_text = hint
@@ -137,6 +140,16 @@ static func stat_value(kind: String, value: String, hint: String, font_size: int
 	var amount: Label = label(value, font_size, tint)
 	amount.name = "Value"
 	item.add_child(amount)
+	if not support.is_empty():
+		var bonus: Label = label(support, font_size, Color("#28754f"))
+		bonus.name = "SupportBonus"
+		bonus.add_theme_font_override("font", heading())
+		var background: StyleBoxFlat = style(Color("#ecf5df"), Color("#ccdfbd"), 7, 1)
+		background.content_margin_left = 4
+		background.content_margin_right = 4
+		bonus.add_theme_stylebox_override("normal", background)
+		item.add_child(bonus)
+		item.tooltip_text += " · Support " + support
 	return item
 
 static func icon_button(kind: String, hint: String, callback: Callable, height: int = 45) -> Button:

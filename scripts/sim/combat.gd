@@ -9,11 +9,16 @@ static func spawn(sim: RefCounted, group: Dictionary, distance: float) -> void:
 
 static func advance(sim: RefCounted) -> void:
 	var towers: Array = sim.ordered_towers()
+	var support_sources: Array[Dictionary] = TowerRules.support_sources(towers)
 	var points: Dictionary = {}
 	var by_id: Dictionary = {}
 	for tower: Dictionary in towers:
 		by_id[tower.id] = tower
 	var enemies: Array = sim.state.mobs
+	var banners: Array[Vector2] = []
+	for enemy: Dictionary in enemies:
+		if float(enemy.hp) > 0.0 and EnemyRules.property(enemy, "banner"):
+			banners.append(sim.track.at(enemy.s))
 	var ice: Dictionary = sim.ice_tiles()
 	var cutoff: int = int(sim.state.tick) - Effects.ticks(sim.cfg.disease_lookback, sim.hz)
 	for enemy: Dictionary in enemies:
@@ -23,27 +28,41 @@ static func advance(sim: RefCounted) -> void:
 			if enemy.element != previous_form:
 				sim.emit_event("boss_morphed")
 		var phased: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
+		var hidden: bool = EnemyRules.burrowed(enemy, sim.track.total)
+		enemy.erase("bannered")
+		if not banners.is_empty() and not enemy.props.has("banner"):
+			var origin: Vector2 = sim.track.at(enemy.s)
+			for banner: Vector2 in banners:
+				if banner.distance_squared_to(origin) <= 2.25:
+					enemy.bannered = true
+					break
 		Damage.expire_history(enemy, cutoff)
-		Effects.tick(enemy, sim.hz, phased, by_id, sim.state.tick)
+		Effects.tick(enemy, sim.hz, phased or hidden, by_id, sim.state.tick)
 		var old: float = enemy.s
 		enemy.prev_s = old
 		var skid: float = 1.0
 		if not ice.is_empty() or enemy.has("on_ice"):
 			var tile := Vector2i(sim.track.at(old).floor())
-			skid = Effects.ice_speed(enemy, {} if phased else ice.get(tile, {}))
+			skid = Effects.ice_speed(enemy, {} if phased or hidden else ice.get(tile, {}))
 		EnemyRules.move(enemy, sim.track, sim.hz, skid)
 		points[enemy.id] = sim.track.at(enemy.s)
+		if float(enemy.hp) > 0.0 and EnemyRules.property(enemy, "saboteur") and not enemy.get("sabotage_used", false) and float(enemy.s) >= sim.track.total * .45:
+			_sabotage(sim, enemy, points[enemy.id], towers)
 		if enemy.kind == "boss" and float(enemy.hp) > 0:
 			_boss(sim, enemy, points[enemy.id], towers)
 	var ready: Array = []
+	var exposed: Array = []
 	for enemy: Dictionary in enemies:
-		if float(enemy.hp) > 0 and not EnemyRules.phased(enemy, sim.state.tick, sim.hz):
+		if float(enemy.hp) <= 0.0 or EnemyRules.burrowed(enemy, sim.track.total):
+			continue
+		exposed.append(enemy)
+		if not EnemyRules.phased(enemy, sim.state.tick, sim.hz):
 			ready.append(enemy)
 	for tower: Dictionary in towers:
 		tower.stun = maxi(0, int(tower.stun) - 1)
 		tower.cooldown = maxi(0, int(tower.cooldown) - 1)
-		if int(tower.stun) == 0 and int(tower.cooldown) == 0:
-			_attack(sim, tower, towers, enemies if tower.dual == "null" else ready, points)
+		if int(tower.stun) == 0 and int(tower.cooldown) == 0 and not tower.get("sabotaged", false):
+			_attack(sim, tower, support_sources, exposed if tower.dual == "null" else ready, points)
 	var survivors: Array[Dictionary] = []
 	for enemy: Dictionary in enemies:
 		if float(enemy.hp) <= 0.0:
@@ -56,21 +75,22 @@ static func advance(sim: RefCounted) -> void:
 			break
 	sim.state.mobs = survivors
 
-static func _attack(sim: RefCounted, tower: Dictionary, towers: Array, candidates: Array, points: Dictionary) -> void:
+static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[Dictionary], candidates: Array, points: Dictionary) -> void:
 	var stats: Dictionary = TowerRules.stats(tower)
 	if float(stats.rate) == 0.0:
 		return
-	var trait_profile: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers)
+	var boon: Dictionary = sim.tower_boon(tower)
+	var trait_profile: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers, boon)
+	var profile: Dictionary = TowerRules.attack_profile(tower, sim.spirit_victories(), boon)
 	var at: Vector2 = sim.track.slots[tower.slot].position
-	var radius: float = TowerRules.attack_range(tower)
+	var aura: Vector3 = sim.support_bonuses(tower, support_sources)
+	var radius: float = float(profile.range) * (1.0 + aura.z)
 	var target: Dictionary = _best(candidates, points, at, radius, tower.target)
 	if target.is_empty():
 		tower.beam_target = -1
 		return
 	var infused: bool = tower.infusion != ""
-	var profile: Dictionary = TowerRules.attack_profile(tower, sim.spirit_victories())
 	var potency: float = profile.potency
-	var aura: Vector2 = _auras(sim, tower, towers, at)
 	var raw: float = float(profile.damage) * (1.0 + aura.x)
 	if trait_profile.has("ramp"):
 		if int(tower.beam_target) != int(target.id):
@@ -118,8 +138,14 @@ static func _attack(sim: RefCounted, tower: Dictionary, towers: Array, candidate
 		if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
 			victim.silence_time = Effects.ticks(trait_profile.silence, sim.hz)
 		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick)
-		var effect_base: float = raw * scale if Damage.has_special_resistances(victim) else adjusted
-		Effects.apply(victim, trait_profile, potency, infused, tower.hits, effect_base, sim.hz, tower.id)
+		if adjusted > 0.0:
+			var effect_base: float = raw * scale if Damage.has_special_resistances(victim) else adjusted
+			Effects.apply(victim, trait_profile, potency, infused, tower.hits, effect_base, sim.hz, tower.id)
+			var previous_immunity: String = victim.get("immune_element", "")
+			Damage.adapt(victim, split, adaptive)
+			var immunity: String = victim.get("immune_element", "")
+			if immunity != previous_immunity and not immunity.is_empty():
+				sim.emit_event("chameleon_adapted", {"s": victim.s, "element": immunity})
 		var style: String = "bolt"
 		if pulse:
 			style = "pulse" if previous.is_empty() else "impact"
@@ -135,8 +161,24 @@ static func _attack(sim: RefCounted, tower: Dictionary, towers: Array, candidate
 			"slot": tower.slot, "s": victim.s, "target_id": victim.id, "primary": previous.is_empty(), "style": style,
 			"from_s": float(target.s if index == area_count else previous.s) if style == "chain" else -1.0,
 			"area": radius if pulse else float(profile.splash), "core": float(profile.splash_core),
+			"range": radius if is_finite(radius) else float(stats.range),
 		})
 		previous = victim
+
+static func _sabotage(sim: RefCounted, enemy: Dictionary, position: Vector2, towers: Array) -> void:
+	enemy.sabotage_used = true
+	var chosen: Dictionary = {}
+	var nearest: float = INF
+	for tower: Dictionary in towers:
+		if tower.get("sabotaged", false) or not TowerRules.level_requirement(tower, sim.state.tiers).is_empty():
+			continue
+		var distance: float = position.distance_squared_to(sim.track.slots[tower.slot].position)
+		if distance < nearest:
+			nearest = distance
+			chosen = tower
+	if not chosen.is_empty():
+		chosen.sabotaged = true
+		sim.emit_event("tower_sabotaged", {"slot": chosen.slot, "s": enemy.s})
 
 static func _best(candidates: Array, points: Dictionary, at: Vector2, radius: float, mode: String, excluded: Array = []) -> Dictionary:
 	var best: Dictionary = {}
@@ -155,22 +197,6 @@ static func _best(candidates: Array, points: Dictionary, at: Vector2, radius: fl
 			best = enemy
 			score = value
 	return best
-
-static func _auras(sim: RefCounted, tower: Dictionary, towers: Array, at: Vector2) -> Vector2:
-	var buffs := Vector2.ZERO
-	for source: Dictionary in towers:
-		if not TowerRules.is_fusion(source) or source.dual == tower.dual or int(source.stun) > 0:
-			continue
-		var rule: Dictionary = TowerRules.stats(source)
-		var effect: Dictionary = rule.effect
-		if not effect.has("aura_damage") and not effect.has("aura_speed"):
-			continue
-		var origin: Vector2 = sim.track.slots[source.slot].position
-		if TowerRules.aura_reaches_tile(origin, at, float(rule.range)):
-			var potency: float = TowerRules.progression(source).potency[int(source.level) - 1]
-			buffs.x = maxf(buffs.x, float(effect.get("aura_damage", 0.0)) * potency)
-			buffs.y = maxf(buffs.y, float(effect.get("aura_speed", 0.0)) * potency)
-	return buffs
 
 static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dictionary) -> void:
 	var rules: Dictionary = DataDB.read("mobs").properties
@@ -265,11 +291,11 @@ static func _stun(sim: RefCounted, target: Dictionary, towers: Array, duration: 
 	var resistance: float = 0.0
 	var at: Vector2 = sim.track.slots[target.slot].position
 	for tower: Dictionary in towers:
-		if tower.kind in ["pure", "ascended"] and tower.element == "light":
+		if tower.kind in ["pure", "ascended"] and tower.element == "light" and not tower.get("sabotaged", false):
 			var cleanse: Array = TowerRules.trait_profile(tower, sim.state.tiers).get("cleanse", [])
 			var source: Vector2 = sim.track.slots[tower.slot].position
 			if not cleanse.is_empty() and at.distance_to(source) <= float(cleanse[1]):
-				resistance = maxf(resistance, minf(1.0, float(cleanse[0]) * float(TowerRules.attack_profile(tower).potency)))
+				resistance = maxf(resistance, minf(1.0, float(cleanse[0]) * float(sim.tower_profile(tower).potency)))
 	var ticks: int = roundi(duration * (1.0 - resistance))
 	if ticks > 0:
 		target.stun = maxi(int(target.stun), ticks + 1)

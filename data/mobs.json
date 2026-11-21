@@ -32,6 +32,13 @@
   "hp": 30,
   "speed": 1,
   "slow_cap": 0.7,
+  "specials": {
+    "chameleon": {"first": 6, "family": "drake", "hp": 0.78, "speed": 1.0},
+    "banner": {"first": 9, "family": "guard", "hp": 1.1, "speed": 0.88},
+    "burrower": {"first": 12, "family": "beetle", "hp": 0.82, "speed": 1.04},
+    "thief": {"first": 14, "family": "hare", "hp": 0.74, "speed": 1.15},
+    "saboteur": {"first": 18, "family": "cap", "hp": 0.86, "speed": 1.0}
+  },
   "properties": {
     "swift": {
       "badge": "S",

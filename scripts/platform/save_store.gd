@@ -24,11 +24,18 @@ static func decode(payload: Variant) -> Sim:
 		if not state.has(key):
 			state = state.duplicate()
 			state[key] = false
-	var sim := Sim.new(int(state.seed))
+	state = state.duplicate()
+	state.map_id = String(state.get("map_id", Track.LEGACY))
+	state.boons = state.get("boons", [])
+	state.boon_queue = state.get("boon_queue", [])
+	var sim := Sim.new(int(state.seed), state.map_id)
+	state.map_id = sim.track.layout_id
 	for key: String in sim.state:
 		if not state.has(key) or typeof(state[key]) != typeof(sim.state[key]):
 			return null
 	sim.state = state
+	sim.refresh_boons()
+	_ascend_legacy_towers(state.towers)
 	for enemy: Dictionary in state.mobs:
 		EnemyRules.apply_wave_traits(enemy, int(state.wave))
 	for entry: Dictionary in state.spawn_queue:
@@ -36,12 +43,22 @@ static func decode(payload: Variant) -> Sim:
 	sim.intermission_left = clampf(float(payload.get("intermission_left", sim.cfg.intermission_seconds)), 0, float(sim.cfg.intermission_seconds))
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
+		restored.map_id = state.map_id
+		restored.boons = restored.get("boons", [])
+		restored.boon_queue = restored.get("boon_queue", [])
 		restored.barrier = int(restored.get("barrier", 0))
 		restored.wave_has_rolled_weaknesses = bool(restored.get("wave_has_rolled_weaknesses", false))
 		restored.wave_uses_expanded_boss_roster = bool(restored.get("wave_uses_expanded_boss_roster", false))
+		_ascend_legacy_towers(restored.get("towers", {}))
 		sim.undo_stack.append(restored)
 	sim.history.assign(payload.get("history", []))
 	return sim
+
+static func _ascend_legacy_towers(towers: Dictionary) -> void:
+	for tower: Dictionary in towers.values():
+		if tower.kind == "pure" and int(tower.get("crystals", 0)) > 0 and TowerRules.can_socket_crystal(tower):
+			TowerRules.empower_pure(tower)
+			tower.crystals -= 1
 
 static func checkpoint(sim: Sim, path: String = CHECKPOINT) -> Error:
 	if sim.state.phase not in ["build", "wave"]:
@@ -90,7 +107,7 @@ static func finish(sim: Sim, values: Dictionary) -> void:
 	values.runs = int(values.runs) + 1
 	values.total_kills = int(values.total_kills) + int(sim.state.stats.kills)
 	write_profile(values)
-	_write_json(REPLAY, {"seed": sim.state.seed, "final_tick": sim.state.tick, "actions": sim.history})
+	_write_json(REPLAY, {"seed": sim.state.seed, "map_id": sim.track.layout_id, "final_tick": sim.state.tick, "actions": sim.history})
 	clear()
 
 static func record_run(sim: Sim, values: Dictionary) -> void:

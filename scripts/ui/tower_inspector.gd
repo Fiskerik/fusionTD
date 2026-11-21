@@ -2,15 +2,21 @@ class_name TowerInspector
 extends RefCounted
 
 static func fill_metrics(row: Container, tower: Dictionary, victories: Dictionary, font_size: int = 17,
-		tint: Color = UIKit.MINT, show_splash: bool = false) -> void:
-	var attack: Dictionary = TowerRules.attack_profile(tower, victories)
+		tint: Color = UIKit.MINT, show_splash: bool = false, support: Vector3 = Vector3.ZERO, boon: Dictionary = {}) -> void:
+	var attack: Dictionary = TowerRules.attack_profile(tower, victories, boon)
 	var attacking: bool = float(attack.rate) > 0.0
 	if attacking:
-		row.add_child(UIKit.stat_value("damage", number(attack.damage), "Damage per hit", font_size, tint))
-	var reach: String = DataDB.text("whole_map") if is_inf(float(attack.range)) else number(attack.range)
-	row.add_child(UIKit.stat_value("range", reach, "Attack range in tiles" if attacking else "Support radius in tiles", font_size, tint))
+		var added_damage: float = float(attack.damage) * support.x
+		var damage_bonus: String = "+" + number(added_damage) if added_damage >= .005 else ""
+		row.add_child(UIKit.stat_value("damage", number(attack.damage), "Damage per hit", font_size, tint, damage_bonus))
+	var global_range: bool = is_inf(float(attack.range))
+	var reach: String = DataDB.text("whole_map") if global_range else number(attack.range)
+	var range_bonus: String = "+" + percent(support.z) if attacking and not global_range and support.z > 0.0 else ""
+	row.add_child(UIKit.stat_value("range", reach, "Attack range in tiles" if attacking else "Support radius in tiles",
+		font_size, tint, range_bonus))
 	if attacking:
-		row.add_child(UIKit.stat_value("speed", "%s/s" % number(attack.rate), "Attacks per second", font_size, tint))
+		var speed_bonus: String = "+" + percent(support.y) if support.y > 0.0 else ""
+		row.add_child(UIKit.stat_value("speed", "%s/s" % number(attack.rate), "Attacks per second", font_size, tint, speed_bonus))
 	if show_splash and float(attack.splash) > 0.0:
 		row.add_child(UIKit.stat_value("splash", number(attack.splash), "Splash radius in tiles", font_size, tint))
 
@@ -28,9 +34,9 @@ static func damage_type(tower: Dictionary, traits: Dictionary) -> String:
 		names.append(element.capitalize() + share)
 	return " / ".join(names)
 
-static func effects(tower: Dictionary, tiers: Dictionary) -> PackedStringArray:
-	var attack: Dictionary = TowerRules.attack_profile(tower)
-	var traits: Dictionary = TowerRules.trait_profile(tower, tiers)
+static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {}) -> PackedStringArray:
+	var attack: Dictionary = TowerRules.attack_profile(tower, {}, boon)
+	var traits: Dictionary = TowerRules.trait_profile(tower, tiers, boon)
 	var potency: float = attack.potency
 	var infused: bool = tower.infusion != ""
 	var lines := PackedStringArray()
@@ -61,7 +67,7 @@ static func effects(tower: Dictionary, tiers: Dictionary) -> PackedStringArray:
 		lines.append("Spreading burn · Burning enemies spread stacks on defeat within %s tiles." % number(traits.spread))
 	if traits.has("slow"):
 		lines.append("Slow · Reduces movement by up to %s for %s s. Spirits and bosses resist slows." % [
-			percent(Effects.slow_strength(traits.slow[0], potency)), number(Effects.slow_duration(traits.slow[1], potency))])
+			percent(_display_slow(traits.slow[0], potency)), number(Effects.slow_duration(traits.slow[1], potency))])
 	for cc: String in ["freeze", "root"]:
 		if traits.has(cc):
 			lines.append("%s · Stops ordinary enemies for %s s every %d attacks." % [
@@ -81,6 +87,8 @@ static func effects(tower: Dictionary, tiers: Dictionary) -> PackedStringArray:
 		lines.append("Damage aura · Towers on tiles touched by the aura gain %s damage." % percent(float(traits.aura_damage) * potency))
 	if traits.has("aura_speed"):
 		lines.append("Attack-speed aura · Towers on tiles touched by the aura fire %s faster." % percent(float(traits.aura_speed) * potency))
+	if traits.has("aura_range"):
+		lines.append("Range aura · Towers on tiles touched by the aura gain %s attack range." % percent(float(traits.aura_range) * potency))
 	if traits.has("cleanse") and not infused:
 		lines.append("Stun protection · Reduces stun duration by %s for towers within %s tiles." % [
 			percent(minf(1.0, float(traits.cleanse[0]) * potency)), number(traits.cleanse[1])])
@@ -103,20 +111,20 @@ static func effects(tower: Dictionary, tiers: Dictionary) -> PackedStringArray:
 static func effect_values(tower: Dictionary, tiers: Dictionary) -> String:
 	return " · ".join(effect_labels(tower, tiers))
 
-static func effect_labels(tower: Dictionary, tiers: Dictionary) -> PackedStringArray:
+static func effect_labels(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {}) -> PackedStringArray:
 	var labels := PackedStringArray()
-	for entry: Dictionary in effect_entries(tower, tiers):
+	for entry: Dictionary in effect_entries(tower, tiers, boon):
 		labels.append(entry.label)
 	return labels
 
-static func effect_entries(tower: Dictionary, tiers: Dictionary) -> Array[Dictionary]:
-	var traits: Dictionary = TowerRules.trait_profile(tower, tiers)
-	var potency: float = TowerRules.attack_profile(tower).potency
+static func effect_entries(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {}) -> Array[Dictionary]:
+	var traits: Dictionary = TowerRules.trait_profile(tower, tiers, boon)
+	var potency: float = TowerRules.attack_profile(tower, {}, boon).potency
 	var labels: Dictionary = {}
 	if int(tower.get("crystals", 0)) > 0:
 		labels["Pure Crystal"] = "◈ +%s damage" % percent(TowerRules.crystal_damage_bonus(tower))
 	if traits.has("slow"):
-		labels["Slow"] = "Slow %s · %ss" % [percent(Effects.slow_strength(traits.slow[0], potency)),
+		labels["Slow"] = "Slow %s · %ss" % [percent(_display_slow(traits.slow[0], potency)),
 			number(Effects.slow_duration(traits.slow[1], potency))]
 	if traits.has("curse"):
 		labels["Curse"] = "Curse %s" % percent(float(traits.curse[0]) * potency)
@@ -139,16 +147,21 @@ static func effect_entries(tower: Dictionary, tiers: Dictionary) -> Array[Dictio
 		labels["Damage aura"] = "Damage aura +%s" % percent(float(traits.aura_damage) * potency)
 	if traits.has("aura_speed"):
 		labels["Attack-speed aura"] = "Rate aura +%s" % percent(float(traits.aura_speed) * potency)
+	if traits.has("aura_range"):
+		labels["Range aura"] = "Range aura +%s" % percent(float(traits.aura_range) * potency)
 	if traits.has("shred"):
 		labels["Armor shred"] = "Shred %s armor" % number(float(traits.shred[0]) * potency)
 	var entries: Array[Dictionary] = []
-	for line: String in effects(tower, tiers):
+	for line: String in effects(tower, tiers, boon):
 		var title: String = line.get_slice(" · ", 0)
 		entries.append({"label": labels.get(title, title), "detail": line, "tint": StatusInfo.accent(title)})
 	return entries
 
 static func history(tower: Dictionary) -> String:
 	return "%s damage dealt   ·   %d kills" % [number(float(tower.get("damage_dealt", 0))), int(tower.get("kills", 0))]
+
+static func _display_slow(base: float, potency: float) -> float:
+	return minf(float(DataDB.read("mobs").slow_cap), Effects.slow_strength(base, potency))
 
 static func number(value: float) -> String:
 	var rounded: float = snappedf(value, .01)

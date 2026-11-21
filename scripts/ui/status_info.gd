@@ -16,13 +16,18 @@ const TRAITS: Dictionary = {
 	"phasing": ["Phasing", "", "phasing"],
 	"revenant": ["Revenant", "Revives once with partial health unless healing is blocked.", "dark"],
 	"warlock": ["Hex", "Marks a tower, then temporarily stuns it.", "dark"],
-	"ram": ["Corner charge", "Rushes along straights, bounces at each bend, then pivots before the next charge.", "speed"],
+	"ram": ["Corner charge", "Rushes along straights, bounces at each bend, then spends %s seconds pivoting.", "speed"],
 	"necromancer": ["Raise husks", "Summons two husks every 10 seconds, up to four alive at once.", "dark"],
 	"prismheart": ["Shapeshifter", "Cycles through your unlocked elements every 5 seconds. Each form resists its own element and the element it counters.", "light"],
 	"tempest": ["Airborne", "Flies over roots and ice puddles. Slows and freezes still work.", "water"],
 	"ironwood": ["Elemental plating", "Takes half damage from elemental attacks. Uninfused Arrow and Cannon towers deal double damage.", "armor"],
 	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
 	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
+	"chameleon": ["Chameleon", "Adapts to the last element that damaged it. Neutral hits always work.", "nature"],
+	"banner": ["Banner Bearer", "Nearby enemies move 20% faster. Banners do not stack.", "light"],
+	"burrower": ["Burrower", "Burrows beneath two sections of the road and cannot be targeted underground.", "normal"],
+	"thief": ["Thief", "Steals gold if it reaches the gate.", "gold"],
+	"saboteur": ["Saboteur", "Jams the closest upgradeable tower mid-route. Upgrade or fuse the tower to repair it.", "electric"],
 	"bonus": ["Unstoppable", "Immune to slowing, roots, and freezes. Reaches the gate in 12 seconds and grants 250 extra gold on defeat.", "light"],
 }
 const ACCENTS: Dictionary = {
@@ -72,6 +77,10 @@ static func accent(label: String) -> Color:
 	return Color(ACCENTS.get(label.get_slice(" ", 0), "#387861"))
 
 static func enemy_name(enemy: Dictionary) -> String:
+	var specials: Dictionary = DataDB.read("mobs").specials
+	for prop: String in enemy.props:
+		if specials.has(prop):
+			return TRAITS[prop][0]
 	match enemy.kind:
 		"boss": return DataDB.read("bosses")[enemy.boss_type].name
 		"spirit": return "%s Spirit %s" % [String(enemy.element).capitalize(), TowerRules.roman(enemy.tier)]
@@ -101,6 +110,8 @@ static func trait_title(id: String, enemy: Dictionary) -> String:
 	return TRAITS[id][0]
 
 static func trait_description(id: String) -> String:
+	if id == "ram":
+		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").ram.turn_seconds)
 	return description(id) if id == "phasing" else TRAITS[id][1]
 
 static func state_value(enemy: Dictionary, id: String, tick: int, hz: float) -> String:
@@ -138,6 +149,11 @@ static func describe_enemy(enemy: Dictionary, tick: int, hz: float) -> String:
 	var weakness: String = Damage.weakness(enemy)
 	if not weakness.is_empty():
 		lines.append(weakness_description(weakness, Damage.weakness_multiplier(enemy)))
+	var immune: String = enemy.get("immune_element", "")
+	if not immune.is_empty() and int(enemy.get("silence_time", 0)) == 0:
+		lines.append("Immune to " + immune.capitalize())
+	if enemy.get("bannered", false):
+		lines.append("Banner rally · +20% movement speed")
 	for property_info: String in enemy_traits(enemy):
 		lines.append("%s · %s" % [trait_title(property_info, enemy), trait_description(property_info)])
 	for id: String in active(enemy, tick, hz):

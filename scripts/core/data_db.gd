@@ -2,7 +2,7 @@ class_name DataDB
 extends RefCounted
 
 const ELEMENTS: Array[String] = ["fire", "water", "nature", "electric", "light", "dark"]
-const TABLES: Array[String] = ["balance", "elements", "towers", "duals", "triples", "mobs", "spirits", "bosses", "waves", "map_greenmarch", "strings_en"]
+const TABLES: Array[String] = ["balance", "elements", "towers", "duals", "triples", "mobs", "spirits", "bosses", "waves", "map_greenmarch", "campaign_maps", "run_boons", "strings_en"]
 static var tables: Dictionary = {}
 
 static func read(key: String) -> Dictionary:

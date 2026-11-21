@@ -1,6 +1,8 @@
 class_name TowerRules
 extends RefCounted
 
+const PURE_DISPLAY_LEVEL: int = 7
+
 static func create(id: int, slot: String, kind: String, element: String, dual: String, invested: int) -> Dictionary:
 	return {
 		"id": id, "slot": slot, "kind": kind, "element": element, "dual": dual, "level": 1,
@@ -23,7 +25,7 @@ static func progression(tower: Dictionary) -> Dictionary:
 	var key: String = tower.kind + "_levels" if tower.kind in ["pure", "dual", "triple", "ascended"] else "normal_levels"
 	return DataDB.read("towers")[key]
 
-static func attack_profile(tower: Dictionary, victories: Dictionary = {}) -> Dictionary:
+static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: Dictionary = {}) -> Dictionary:
 	var rule: Dictionary = stats(tower)
 	var levels: Dictionary = progression(tower)
 	var level: int = int(tower.level) - 1
@@ -41,10 +43,13 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}) -> Dic
 		potency = float(config.infusion.potency) * (1.0 + .14 * float(level - 1))
 	var boost: float = spirit_multiplier(tower, victories)
 	var damage: float = maxf(base_hit * float(levels.damage[level]), float(tower.get("fusion_damage_floor", 0.0)))
-	damage *= boost * (1.0 + crystal_damage_bonus(tower))
+	damage *= boost * (1.0 + crystal_damage_bonus(tower)) * (1.0 + float(boon.get("damage", 0.0)))
+	potency *= 1.0 + float(boon.get("effect", 0.0))
 	var splash_level: int = 5 if tower.kind == "ascended" else level
 	var splash: float = float(rule.get("splash", 0.0)) + float(rule.get("splash_per_level", 0.0)) * splash_level
-	return {"damage": damage, "rate": float(rule.rate) * float(levels.rate[level]), "range": attack_range(tower),
+	splash *= 1.0 + float(boon.get("splash", 0.0))
+	return {"damage": damage, "rate": float(rule.rate) * float(levels.rate[level]) * (1.0 + float(boon.get("rate", 0.0))),
+		"range": attack_range(tower, float(boon.get("range", 0.0))),
 		"potency": potency, "splash": splash, "splash_core": splash * float(config.splash_core_ratio),
 		"splash_fringe": float(config.splash_fringe_damage)}
 
@@ -69,9 +74,42 @@ static func aura_reaches_tile(origin: Vector2, tile_center: Vector2, radius: flo
 	var radius_squared: float = radius * radius
 	return distance_squared <= radius_squared or is_equal_approx(distance_squared, radius_squared)
 
-static func attack_range(tower: Dictionary) -> float:
+static func support_sources(towers: Array) -> Array[Dictionary]:
+	var sources: Array[Dictionary] = []
+	for tower: Dictionary in towers:
+		if not is_fusion(tower):
+			continue
+		var effect: Dictionary = stats(tower).effect
+		if effect.has("aura_damage") or effect.has("aura_speed") or effect.has("aura_range"):
+			sources.append(tower)
+	return sources
+
+static func support_bonuses(tower: Dictionary, sources: Array[Dictionary], track: Track, slot: String = "", scopes: Dictionary = {}) -> Vector3:
+	# Damage, attack rate, and attack range each use the strongest active aura.
+	var bonuses := Vector3.ZERO
+	if sources.is_empty():
+		return bonuses
+	var at: Vector2 = track.slots[tower.slot if slot.is_empty() else slot].position
+	for source: Dictionary in sources:
+		if source.dual == tower.dual or int(source.stun) > 0 or source.get("sabotaged", false):
+			continue
+		var rule: Dictionary = stats(source)
+		var origin: Vector2 = track.slots[source.slot].position
+		if aura_reaches_tile(origin, at, float(rule.range)):
+			var effect: Dictionary = rule.effect
+			var potency: float = float(progression(source).potency[int(source.level) - 1]) * (1.0 + float(RunBoons.for_tower(source, scopes).get("effect", 0)))
+			bonuses.x = maxf(bonuses.x, float(effect.get("aura_damage", 0.0)) * potency)
+			bonuses.y = maxf(bonuses.y, float(effect.get("aura_speed", 0.0)) * potency)
+			bonuses.z = maxf(bonuses.z, float(effect.get("aura_range", 0.0)) * potency)
+	return bonuses
+
+static func attack_range(tower: Dictionary, support_bonus: float = 0.0) -> float:
 	var rule: Dictionary = stats(tower)
-	return INF if rule.get("global_range", false) else float(rule.range)
+	if rule.get("global_range", false):
+		return INF
+	var range_levels: Array = progression(tower).get("range", [])
+	var scale: float = 1.0 if range_levels.is_empty() else float(range_levels[int(tower.level) - 1])
+	return float(rule.range) * scale * (1.0 + support_bonus)
 
 static func level_requirement(tower: Dictionary, tier_by_element: Dictionary) -> String:
 	var next: int = int(tower.level) + 1
@@ -98,6 +136,13 @@ static func _require_tier(element: String, tier: int, tier_by_element: Dictionar
 static func can_socket_crystal(tower: Dictionary) -> bool:
 	return tower.get("kind", "") in ["pure", "ascended"] and int(tower.level) >= progression(tower).damage.size()
 
+static func empower_pure(tower: Dictionary) -> void:
+	if tower.kind == "pure":
+		tower.kind = "ascended"
+		tower.level = 1
+	else:
+		tower.crystals = int(tower.get("crystals", 0)) + 1
+
 static func upgrade_cost(tower: Dictionary) -> int:
 	var prices: Array = stats(tower).upgrade if tower.kind in ["arrow", "cannon"] else progression(tower).upgrade
 	return int(prices[int(tower.level) - 1]) if int(tower.level) <= prices.size() else 0
@@ -113,7 +158,22 @@ static func infusion_tier(level: int, unlocked: int) -> int:
 static func infusion_cost(tier: int) -> int:
 	return Economy.scaled(DataDB.read("balance").infusion.cost, tier)
 
-static func trait_profile(tower: Dictionary, unlocked: Dictionary) -> Dictionary:
+static func trait_profile(tower: Dictionary, unlocked: Dictionary, boon: Dictionary = {}) -> Dictionary:
+	var traits: Dictionary = _base_traits(tower, unlocked)
+	if boon.is_empty():
+		return traits
+	traits = traits.duplicate(true)
+	if traits.has("burn"):
+		traits.burn[0] = maxi(1, int(traits.burn[0]) + roundi(float(boon.get("burn_stacks", 0))))
+	if traits.has("slow"):
+		traits.slow[0] *= 1.0 + float(boon.get("slow", 0))
+	if traits.has("chain"):
+		traits.chain[0] = maxi(1, int(traits.chain[0]) + roundi(float(boon.get("chain", 0))))
+	if boon.has("pierce"):
+		traits.pierce = float(traits.get("pierce", 0)) + float(boon.pierce)
+	return traits
+
+static func _base_traits(tower: Dictionary, unlocked: Dictionary) -> Dictionary:
 	if is_fusion(tower):
 		return stats(tower).effect
 	if tower.kind == "ascended":
@@ -186,8 +246,8 @@ static func ingredients(tower: Dictionary) -> PackedStringArray:
 static func fusion_result(id: String, slot: String = "", tower_id: int = 0, invested: int = 0) -> Dictionary:
 	return create(tower_id, slot, "triple" if DataDB.read("triples").has(id) else "dual", "", id, invested)
 
-static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Dictionary, victories: Dictionary, tower_id: int = 0) -> Dictionary:
-	var invested: int = int(first.invested) + int(second.invested) + fusion_cost(first, second)
+static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Dictionary, victories: Dictionary, tower_id: int = 0, fee: int = -1) -> Dictionary:
+	var invested: int = int(first.invested) + int(second.invested) + (fusion_cost(first, second) if fee < 0 else fee)
 	var result: Dictionary = fusion_result(id, first.slot, tower_id, invested)
 	var desired_level: int = mini(_fusion_level(first), _fusion_level(second))
 	while int(result.level) < desired_level and level_requirement(result, tiers).is_empty():

@@ -2,7 +2,7 @@ class_name Waves
 extends RefCounted
 
 static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_weaknesses: bool = true,
-		expanded_roster: bool = true) -> Dictionary:
+		expanded_roster: bool = true, campaign_track: Track = null) -> Dictionary:
 	if not trial.is_empty():
 		return {"wave": wave, "groups": [], "boss": {}, "bosses": [], "spirit": spirit_group(trial.element, int(trial.tier), wave)}
 	var rules: Dictionary = DataDB.read("waves")
@@ -102,13 +102,15 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 		courier.kind = "bonus"
 		courier.family = "hare"
 		courier.hp *= 2.0
-		courier.armor *= .5
+		courier.armor *= 2.0
 		courier.gold += int(bonus.extra_gold)
-		courier.speed = Track.new().total / float(bonus.travel_seconds)
+		courier.speed = (campaign_track.total if campaign_track != null else Track.new().total) / float(bonus.travel_seconds)
 		courier.slow_cap = 0.0
 		courier.control_resistance = 0.0
 		courier.interval = int(rules.interval)
 		groups.insert(maxi(1, groups.size() / 2), courier)
+	if campaign_track != null:
+		_add_specials(groups, wave, SimRng.new((seed_value * 65537 + wave * 1879) ^ 0x6d1da1))
 	if roll_weaknesses and wave >= int(rules.elemental_from):
 		var weaknesses: Dictionary = {}
 		for group: Dictionary in groups:
@@ -117,6 +119,34 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 				weaknesses[affinity] = _roll_weakness(weakness_rng, affinity)
 			group.weakness = weaknesses[affinity]
 	return {"wave": wave, "groups": groups, "boss": {}, "bosses": [], "spirit": {}}
+
+static func _add_specials(groups: Array[Dictionary], wave: int, rng: SimRng) -> void:
+	var types: Dictionary = DataDB.read("mobs").specials
+	var available: Array[String] = []
+	var picks: Array[String] = []
+	for id: String in types:
+		if wave == int(types[id].first):
+			picks.append(id)
+		elif wave > int(types[id].first):
+			available.append(id)
+	if picks.is_empty() and not available.is_empty() and (wave >= 20 or rng.take(3) == 0):
+		picks.append(available.pop_at(rng.take(available.size())))
+		if wave >= 30 and not available.is_empty() and rng.take(3) == 0:
+			picks.append(available[rng.take(available.size())])
+	for id: String in picks:
+		var candidates: Array[Dictionary] = groups.filter(func(group: Dictionary) -> bool: return group.kind == "grunt" and int(group.count) > 1)
+		if candidates.is_empty():
+			return
+		var source: Dictionary = candidates[rng.take(candidates.size())]
+		source.count -= 1
+		var special: Dictionary = source.duplicate()
+		var rule: Dictionary = types[id]
+		special.count = 1
+		special.props = [id]
+		special.family = rule.family
+		special.hp *= float(rule.hp)
+		special.speed *= float(rule.speed)
+		groups.insert(groups.find(source) + 1, special)
 
 static func _roll_weakness(rng: SimRng, affinity: String) -> String:
 	var pool: Array[String] = []

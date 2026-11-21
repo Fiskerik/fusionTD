@@ -4,7 +4,8 @@ extends RefCounted
 const CREATURES: Texture2D = preload("res://assets/woodland/creatures.png")
 const GRIM_CREATURES: Texture2D = preload("res://assets/woodland/grim_creatures.webp")
 const BOSSES: Texture2D = preload("res://assets/woodland/bosses.webp")
-const BOSS_CELLS: Dictionary = {"warlock": 0, "ram": 1, "necromancer": 2, "tempest": 3, "ironwood": 4}
+const CASTER_DIRECTIONS: Texture2D = preload("res://assets/woodland/boss-directions.webp")
+const BOSS_CELLS: Dictionary = {"ram": 1, "tempest": 3, "ironwood": 4}
 const BOSS_CELL: int = 192
 const PRISMHEART: Texture2D = preload("res://assets/woodland/prismheart.webp")
 const PRISMHEART_FORMS: Array[String] = ["none", "fire", "water", "nature", "electric", "light", "dark"]
@@ -90,23 +91,13 @@ static func _boss(canvas: CanvasItem, enemy: Dictionary, p: Vector2, r: float, f
 	if boss_type == "prismheart":
 		draw_prismheart(canvas, enemy.element, p, r, clock)
 		return
-	var up: Vector2 = forward if boss_type in ["ram", "tempest", "ironwood"] and forward != Vector2.ZERO else Vector2.UP
+	if boss_type in ["warlock", "necromancer"]:
+		_caster(canvas, enemy, p, r, forward, clock, distance)
+		return
+	var up: Vector2 = forward if forward != Vector2.ZERO else Vector2.UP
 	var center: Vector2 = p
 	var wing_span: float = 1.0
 	match boss_type:
-		"warlock":
-			center.y -= r * (.09 + sin(clock * 4.7) * .08)
-			if not enemy.get("telegraph", {}).is_empty():
-				var staff: Vector2 = center + Vector2(.93, -.88) * r
-				canvas.draw_circle(staff, r * (.19 + .06 * sin(clock * 13.0)), Color("#fa8dde", .44), true, -1, true)
-		"necromancer":
-			center.y -= r * (.12 + sin(clock * 3.6) * .10)
-			if distance > 0.0:
-				for i: int in range(2):
-					var orbit: Vector2 = Vector2.from_angle(clock * 1.65 + PI * i)
-					var wisp: Vector2 = center + orbit * Vector2(1.52, .88) * r
-					canvas.draw_circle(wisp, r * .11, Color("#8ecda8", .48), true, -1, true)
-					canvas.draw_circle(wisp, r * .045, Color("#e9ffbb"), true, -1, true)
 		"ram":
 			center -= up * (1.0 - cos(distance * 21.0)) * r * .026
 		"tempest":
@@ -119,6 +110,47 @@ static func _boss(canvas: CanvasItem, enemy: Dictionary, p: Vector2, r: float, f
 					var smoke: Vector2 = center - up * r * (.92 + drift * .85)
 					canvas.draw_circle(smoke, r * (.09 + drift * .15), Color("#aa886a", (1.0 - drift) * .34), true, -1, true)
 	_painted_boss(canvas, boss_type, center, r, up, wing_span)
+
+static func _caster(canvas: CanvasItem, enemy: Dictionary, p: Vector2, r: float, heading: Vector2,
+		clock: float, distance: float) -> void:
+	var warlock: bool = enemy.boss_type == "warlock"
+	var row: int = 0 if warlock else 1
+	var stride: float = distance * (10.5 if warlock else 8.5)
+	var center: Vector2 = p + _caster_drift(heading, r, stride)
+	var flutter: float = sin(stride) * .035
+	var span := Vector2(1.0 + flutter, 1.0 - flutter) * r * 3.18
+	var side: float = _caster_side_weight(heading)
+	if side < 1.0:
+		var column: int = 2 if heading.y < 0.0 else 0
+		_caster_pose(canvas, Rect2(center - span * .5, span), Vector2i(column, row), false, 1.0 - side)
+	if side > 0.0:
+		_caster_pose(canvas, Rect2(center - span * .5, span), Vector2i(1, row), heading.x < 0.0, side)
+	if warlock and not enemy.get("telegraph", {}).is_empty():
+		var staff: Vector2 = p + warlock_staff_offset(heading, r, distance)
+		canvas.draw_circle(staff, r * (.13 + .05 * sin(clock * 13.0)), Color("#ffade6", .48), true, -1, true)
+
+static func _caster_side_weight(heading: Vector2) -> float:
+	return smoothstep(.36, .85, absf(heading.x))
+
+static func _caster_drift(heading: Vector2, r: float, stride: float) -> Vector2:
+	return (heading * (.07 + .045 * sin(stride)) + Vector2(0.0, -.18 + .10 * cos(stride))) * r
+
+static func warlock_staff_offset(heading: Vector2, r: float, distance: float) -> Vector2:
+	var side: float = _caster_side_weight(heading)
+	var upright_x: float = -.89 if heading.y < 0.0 else .84
+	var side_x: float = -.86 if heading.x < 0.0 else .86
+	return _caster_drift(heading, r, distance * 10.5) + Vector2(lerpf(upright_x, side_x, side), -.85) * r
+
+static func _caster_pose(canvas: CanvasItem, target: Rect2, cell: Vector2i, mirror: bool, opacity: float) -> void:
+	var origin: Vector2 = Vector2(cell * BOSS_CELL) / CASTER_DIRECTIONS.get_size()
+	var size: Vector2 = Vector2.ONE * BOSS_CELL / CASTER_DIRECTIONS.get_size()
+	var left: float = origin.x + (size.x if mirror else 0.0)
+	var right: float = origin.x + (0.0 if mirror else size.x)
+	var points := PackedVector2Array([target.position, Vector2(target.end.x, target.position.y), target.end,
+		Vector2(target.position.x, target.end.y)])
+	var uv := PackedVector2Array([Vector2(left, origin.y), Vector2(right, origin.y),
+		Vector2(right, origin.y + size.y), Vector2(left, origin.y + size.y)])
+	canvas.draw_polygon(points, PackedColorArray([Color(1, 1, 1, opacity)]), uv, CASTER_DIRECTIONS)
 
 static func _painted_boss(canvas: CanvasItem, boss_type: String, center: Vector2, r: float, up: Vector2, wing_span: float) -> void:
 	var index: int = int(BOSS_CELLS.get(boss_type, 0))
