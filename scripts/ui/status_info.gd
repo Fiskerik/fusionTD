@@ -30,7 +30,7 @@ const TRAITS: Dictionary = {
 	"thief": ["Thief", "Steals gold if it reaches the gate.", "gold"],
 	"saboteur": ["Saboteur", "Jams the closest upgradeable tower mid-route. Upgrade or fuse the tower to repair it.", "electric"],
 	"bonus": ["Unstoppable", "Immune to slowing, roots, and freezes. Reaches the gate in 12 seconds. Its gold reward is %s of all other enemies' combined bounty.", "gold"],
-	"petrifier": ["Petrification", "Marks the two nearest towers on arrival. They turn to stone through the next wave, including its Spirit trial.", "armor"],
+	"petrifier": ["Petrification", "Marks two random towers on arrival. They turn to stone through the next wave, including its Spirit trial.", "armor"],
 	"wizard": ["Void step", "Stays at each stop for %s seconds, then disappears for %s seconds before appearing at the next corner. Cannot be hit in the void.", "dark"],
 }
 const ACCENTS: Dictionary = {

@@ -32,6 +32,11 @@ static func draw(canvas: CanvasItem, id: String, p: Vector2, r: float, tint: Col
 				canvas.draw_line(p + axis * r * .59, p + axis * r, tint, r * .14, r > 2.0)
 		"dark":
 			canvas.draw_arc(p, r * .72, -.8, 3.9, 24, tint, r * .35, r > 2.0)
+		"earth":
+			_shape(canvas, p, r, [Vector2(-.93,.53), Vector2(-.56,-.12), Vector2(-.11,-.80),
+				Vector2(.25,-.32), Vector2(.59,-.34), Vector2(.94,.53)], tint)
+			canvas.draw_polyline(PackedVector2Array([p + Vector2(-.47,.48) * r, p + Vector2(-.06,-.01) * r,
+				p + Vector2(.12,.21) * r, p + Vector2(.37,.05) * r]), tint.lightened(.52), r * .105, r > 2.0)
 		"arrow":
 			_shape(canvas, p, r, [Vector2(0,-.93), Vector2(.68,.5), Vector2(0,.24), Vector2(-.68,.5)], tint)
 			canvas.draw_line(p, p + Vector2(0,.83) * r, tint, r * .22, r > 2.0)

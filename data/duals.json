@@ -330,5 +330,147 @@
       "pierce": 0.5
     },
     "art": "eclipse"
+  },
+  "lavafault": {
+    "name": "Lava Fault",
+    "pair": [
+      "earth",
+      "fire"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.55,
+      "fire": 0.45
+    },
+    "damage": 51,
+    "rate": 0.59,
+    "range": 2.15,
+    "splash": 1.42,
+    "role": "Molten rocks splash and burn nearby enemies.",
+    "effect": {
+      "burn": [
+        6,
+        0.15,
+        4
+      ]
+    }
+  },
+  "siltbasin": {
+    "name": "Silt Basin",
+    "pair": [
+      "earth",
+      "water"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.55,
+      "water": 0.45
+    },
+    "damage": 53,
+    "rate": 0.57,
+    "range": 2.15,
+    "splash": 1.48,
+    "role": "A muddy impact slows the enemies it hits.",
+    "effect": {
+      "slow": [
+        0.28,
+        2.6
+      ]
+    }
+  },
+  "rootvault": {
+    "name": "Root Vault",
+    "pair": [
+      "earth",
+      "nature"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.55,
+      "nature": 0.45
+    },
+    "damage": 50,
+    "rate": 0.59,
+    "range": 2.08,
+    "splash": 1.51,
+    "role": "Rooted stones poison the pack and pin periodic targets.",
+    "effect": {
+      "poison": [
+        1,
+        0.2,
+        4
+      ],
+      "root": [
+        5,
+        0.95
+      ]
+    }
+  },
+  "faultcoil": {
+    "name": "Fault Coil",
+    "pair": [
+      "earth",
+      "electric"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.55,
+      "electric": 0.45
+    },
+    "damage": 48,
+    "rate": 0.66,
+    "range": 2.25,
+    "splash": 1.34,
+    "role": "Stone impacts release lightning that jumps to nearby enemies.",
+    "effect": {
+      "chain": [
+        2,
+        1.35,
+        0.62
+      ]
+    }
+  },
+  "sunstone": {
+    "name": "Sunstone",
+    "pair": [
+      "earth",
+      "light"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.55,
+      "light": 0.45
+    },
+    "damage": 58,
+    "rate": 0.54,
+    "range": 2.3,
+    "splash": 1.36,
+    "role": "A concentrated impact pierces armor.",
+    "effect": {
+      "pierce": 0.36
+    }
+  },
+  "gravemason": {
+    "name": "Gravemason",
+    "pair": [
+      "earth",
+      "dark"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.55,
+      "dark": 0.45
+    },
+    "damage": 50,
+    "rate": 0.68,
+    "range": 2.05,
+    "splash": 1.35,
+    "role": "Stone shards curse the enemies they hit.",
+    "effect": {
+      "curse": [
+        0.19,
+        2.8
+      ]
+    }
   }
 }

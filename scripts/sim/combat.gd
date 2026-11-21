@@ -5,7 +5,7 @@ static func spawn(sim: RefCounted, group: Dictionary, distance: float) -> void:
 	var enemy: Dictionary = EnemyRules.create(sim.next_id(), group, distance, sim.state.tick)
 	sim.state.mobs.append(enemy)
 	if enemy.kind == "petrifier":
-		_mark_towers(sim, distance)
+		_mark_towers(sim, enemy)
 	if enemy.kind in ["spirit", "boss"]:
 		sim.emit_event("special_spawned", {"kind": enemy.kind, "element": enemy.element})
 
@@ -90,18 +90,14 @@ static func advance(sim: RefCounted) -> void:
 static func _crossed_stone(stone: Dictionary, from: float, to: float) -> bool:
 	return not stone.is_empty() and from <= float(stone.stop) + .011 and to > float(stone.stop)
 
-static func _mark_towers(sim: RefCounted, distance: float) -> void:
+static func _mark_towers(sim: RefCounted, enemy: Dictionary) -> void:
 	var towers: Array = sim.ordered_towers()
-	var origin: Vector2 = sim.track.at(distance)
-	towers.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		var a_dist: float = origin.distance_squared_to(sim.track.slots[a.slot].position)
-		var b_dist: float = origin.distance_squared_to(sim.track.slots[b.slot].position)
-		return int(a.id) < int(b.id) if a_dist == b_dist else a_dist < b_dist)
+	var rng := SimRng.new((int(sim.state.seed) * 65537) ^ (int(sim.state.wave) * 7919) ^ (int(enemy.id) * 104729))
 	var targets: int = int(DataDB.read("waves").petrifier.targets)
 	for i: int in range(mini(targets, towers.size())):
-		var tower: Dictionary = towers[i]
+		var tower: Dictionary = towers.pop_at(rng.take(towers.size()))
 		tower.stone_pending = true
-		sim.emit_event("tower_stone_marked", {"slot": tower.slot, "s": distance})
+		sim.emit_event("tower_stone_marked", {"slot": tower.slot, "s": enemy.s})
 
 static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[Dictionary], candidates: Array, points: Dictionary) -> void:
 	var stats: Dictionary = TowerRules.stats(tower)

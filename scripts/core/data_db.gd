@@ -1,7 +1,7 @@
 class_name DataDB
 extends RefCounted
 
-const ELEMENTS: Array[String] = ["fire", "water", "nature", "electric", "light", "dark"]
+const ELEMENTS: Array[String] = ["fire", "water", "nature", "electric", "light", "dark", "earth"]
 const TABLES: Array[String] = ["balance", "elements", "towers", "duals", "triples", "mobs", "spirits", "bosses", "waves", "map_greenmarch", "campaign_maps", "run_boons", "strings_en"]
 static var tables: Dictionary = {}
 
@@ -29,8 +29,9 @@ static func validate() -> PackedStringArray:
 			continue
 		if elements[element].effects.size() != 3 or not elements.has(elements[element].weak):
 			errors.append("Invalid trait definition: " + element)
-	_validate_recipes("duals", "pair", 2, 15, errors)
-	_validate_recipes("triples", "elements", 3, 20, errors)
+	var count: int = ELEMENTS.size()
+	_validate_recipes("duals", "pair", 2, count * (count - 1) / 2, errors)
+	_validate_recipes("triples", "elements", 3, count * (count - 1) * (count - 2) / 6, errors)
 	for kind: String in ["arrow", "cannon"] + ELEMENTS:
 		if float(towers[kind].cost) <= 0 or float(towers[kind].range) <= 0 or float(towers[kind].rate) <= 0:
 			errors.append("Invalid tower stats: " + kind)

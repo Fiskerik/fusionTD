@@ -64,6 +64,7 @@ func _pane(parent: BoxContainer, height: float, stretch: float = 1.0) -> ScrollC
 	parent.add_child(panel)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.scroll_deadzone = 8
 	scroll.custom_minimum_size.y = height
 	panel.add_child(scroll)
 	return scroll

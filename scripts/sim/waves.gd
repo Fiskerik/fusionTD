@@ -38,6 +38,8 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 		if wave >= int(health_adjustment.from):
 			boss_hp *= float(health_adjustment.multiplier)
 		var boss_count: int = 1 if late_waves == 0 else (3 if wave >= int(late.third_boss_from) else 2)
+		boss_hp *= float(late.boss_health_scale_by_count[boss_count - 1])
+		var boss_armor_scale: float = late.boss_armor_scale_by_count[boss_count - 1]
 		var roster_size: int = bosses.order.size() if expanded_roster else 3
 		var first: int = (wave / int(balance.boss_every) - 1) % roster_size
 		for index: int in range(boss_count):
@@ -45,7 +47,7 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			var stats: Dictionary = bosses[boss_type]
 			bosses_in_wave.append({
 				"kind": "boss", "element": stats.element, "props": [], "count": 1, "interval": 0,
-				"hp": boss_hp * float(stats.hp_mult), "armor": float(stats.armor) + wave,
+				"hp": boss_hp * float(stats.hp_mult), "armor": (float(stats.armor) + wave) * boss_armor_scale,
 				"speed": float(stats.speed), "gold": Economy.scaled(bosses.gold, wave),
 				"leak": int(balance.leak.boss), "slow_cap": float(base.slow_cap),
 				"control_resistance": float(bosses.control_resistance),
@@ -109,7 +111,7 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	var encounter_rng := SimRng.new((seed_value * 43517 + wave * 9749) ^ 0x3b7af2)
 	if wave % int(balance.boss_every) == int(balance.boss_every) - 1 or encounter_rng.take(100) < int(rules.petrifier.chance_percent):
 		_replace_with_encounter(groups, "petrifier")
-	if encounter_rng.take(100) < int(rules.wizard.chance_percent):
+	if wave >= int(rules.wizard.first_wave) and encounter_rng.take(100) < int(rules.wizard.chance_percent):
 		_replace_with_encounter(groups, "wizard")
 	if include_bonus:
 		var courier: Dictionary = _group(wave, 1, [], hp, gold, false)
@@ -211,9 +213,10 @@ static func base_enemy_hp(wave: int) -> float:
 static func spirit_group(element: String, tier: int, wave: int) -> Dictionary:
 	var data: Dictionary = DataDB.read("spirits")
 	var stats: Dictionary = data.tiers[tier - 1]
+	var growth_waves: int = maxi(0, mini(wave, int(stats.get("until", wave))) - int(stats.get("from", wave)))
 	return {
 		"kind": "spirit", "element": element, "tier": tier, "props": [], "count": 1, "interval": 0,
-		"hp": float(stats.hp) * pow(float(stats.growth), maxi(0, wave - int(stats.from))),
+		"hp": float(stats.hp) * pow(float(stats.get("growth", 1.0)), growth_waves),
 		"armor": float(stats.armor), "speed": float(data.speed), "gold": Economy.scaled(data.gold, wave),
 		"leak": int(DataDB.read("balance").leak.spirit), "slow_cap": float(data.slow_cap),
 		"spawn": int(data.spawn_tick),

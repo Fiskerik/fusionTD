@@ -24,7 +24,7 @@
   "opening_seconds": 30,
   "intermission_seconds": 10,
   "stone_blocks": 3,
-  "stone_seconds": 3,
+  "stone_seconds": 5,
   "stone_cooldown_seconds": 60,
   "swap_tokens": 5,
   "infusion": {

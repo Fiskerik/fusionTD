@@ -159,5 +159,16 @@
     "rate": [1, 1.05, 1.12],
     "potency": [1.12, 1.38, 1.68],
     "upgrade": [340, 580]
+  },
+  "earth": {
+    "name": "Stonebreaker",
+    "pure_name": "Worldroot Bastion",
+    "cost": 125,
+    "damage": 44,
+    "rate": 0.56,
+    "range": 1.7,
+    "splash": 1.25,
+    "splash_per_level": 0.12,
+    "role": "Crushing splash at close range."
   }
 }

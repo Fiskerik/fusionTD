@@ -48,5 +48,50 @@
   "neutral_speed": {"name": "Quick Fletching","mods": [{"scope": "normal","stat": "rate","amount": 0.1}]},
   "neutral_reach": {"name": "Longshot","mods": [{"scope": "normal","stat": "range","amount": 0.1}]},
   "pure": {"name": "Crystal Temper","mods": [{"scope": "ascended","stat": "damage","amount": 0.1},{"scope": "ascended","stat": "effect","amount": 0.065}]},
-  "splash": {"name": "Wide Impact","mods": [{"scope": "fusion","stat": "splash","amount": 0.12},{"scope": "normal","stat": "splash","amount": 0.08}]}
+  "splash": {"name": "Wide Impact","mods": [{"scope": "fusion","stat": "splash","amount": 0.12},{"scope": "normal","stat": "splash","amount": 0.08}]},
+  "earth_damage": {
+    "name": "Bedrock Edge",
+    "mods": [
+      {
+        "scope": "earth",
+        "stat": "damage",
+        "amount": 0.1
+      }
+    ]
+  },
+  "earth_rate": {
+    "name": "Quicken the Fault",
+    "mods": [
+      {
+        "scope": "earth",
+        "stat": "rate",
+        "amount": 0.075
+      }
+    ]
+  },
+  "earth_splash": {
+    "name": "Aftershock",
+    "mods": [
+      {
+        "scope": "earth",
+        "stat": "splash",
+        "amount": 0.12
+      }
+    ]
+  },
+  "earth_trade": {
+    "name": "Heavy Fault",
+    "mods": [
+      {
+        "scope": "earth",
+        "stat": "damage",
+        "amount": 0.14
+      },
+      {
+        "scope": "earth",
+        "stat": "range",
+        "amount": -0.07
+      }
+    ]
+  }
 }

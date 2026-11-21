@@ -180,5 +180,22 @@
         ]
       }
     ]
+  },
+  "earth": {
+    "name": "Earth",
+    "color": "#dba15c",
+    "weak": "water",
+    "role": "Heavy, short-range splash and armor pierce",
+    "effects": [
+      {
+        "pierce": 0.08
+      },
+      {
+        "pierce": 0.16
+      },
+      {
+        "pierce": 0.24
+      }
+    ]
   }
 }

@@ -35,20 +35,32 @@ static func decode(payload: Variant) -> Sim:
 	for key: String in sim.state:
 		if not state.has(key) or typeof(state[key]) != typeof(sim.state[key]):
 			return null
+	state.tiers = state.tiers.duplicate()
+	state.tiers.merge(sim.state.tiers)
 	state.boon_queue = _boss_rewards(state.boon_queue, int(state.stats.get("bosses_defeated", 0)))
 	sim.state = state
 	sim.refresh_boon()
 	_ascend_legacy_towers(state.towers)
+	var bosses_by_type: Dictionary = {}
+	if int(state.wave) > int(DataDB.read("waves").late_game.after):
+		for boss: Dictionary in sim.preview(state.wave).bosses:
+			bosses_by_type[boss.boss_type] = boss
 	for enemy: Dictionary in state.mobs:
 		EnemyRules.apply_wave_traits(enemy, int(state.wave))
+		_retune_enemy(enemy, int(state.wave), bosses_by_type)
 	for entry: Dictionary in state.spawn_queue:
 		EnemyRules.apply_wave_traits(entry.group, int(state.wave))
+		_retune_enemy(entry.group, int(state.wave), bosses_by_type)
 	var countdown: float = float(sim.cfg.opening_seconds if int(state.wave) == 1 else sim.cfg.intermission_seconds)
 	sim.intermission_left = clampf(float(payload.get("intermission_left", countdown)), 0, countdown)
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
 		restored.map_id = state.map_id
 		restored.merge(sim.tactical_defaults())
+		restored.tiers = restored.get("tiers", {}).duplicate()
+		for element: String in DataDB.ELEMENTS:
+			if not restored.tiers.has(element):
+				restored.tiers[element] = 0
 		restored.active_boon = restored.get("active_boon", _legacy_boon(restored.get("boons", [])))
 		restored.erase("boons")
 		restored.boon_queue = _boss_rewards(restored.get("boon_queue", []), int(restored.get("stats", {}).get("bosses_defeated", 0)))
@@ -59,6 +71,21 @@ static func decode(payload: Variant) -> Sim:
 		sim.undo_stack.append(restored)
 	sim.history.assign(payload.get("history", []))
 	return sim
+
+static func _retune_enemy(enemy: Dictionary, wave: int, bosses: Dictionary) -> void:
+	var tuned: Dictionary = bosses.get(enemy.get("boss_type", ""), {})
+	if enemy.kind == "spirit":
+		tuned = Waves.spirit_group(enemy.element, int(enemy.tier), wave)
+	if tuned.is_empty():
+		return
+	if enemy.has("max_hp"):
+		if not is_equal_approx(float(enemy.max_hp), float(tuned.hp)):
+			var fraction: float = float(enemy.hp) / maxf(1.0, float(enemy.max_hp))
+			enemy.max_hp = float(tuned.hp)
+			enemy.hp = float(tuned.hp) * fraction
+	else:
+		enemy.hp = tuned.hp
+	enemy.armor = tuned.armor
 
 static func _legacy_boon(picks: Variant) -> Dictionary:
 	if not picks is Array or picks.is_empty():

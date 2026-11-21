@@ -47,6 +47,8 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: 
 	potency *= 1.0 + float(boon.get("effect", 0.0))
 	var splash_level: int = 5 if tower.kind == "ascended" else level
 	var splash: float = float(rule.get("splash", 0.0)) + float(rule.get("splash_per_level", 0.0)) * splash_level
+	if tower.infusion == "earth":
+		splash += .72 + .08 * level
 	splash *= 1.0 + float(boon.get("splash", 0.0))
 	return {"damage": damage, "rate": float(rule.rate) * float(levels.rate[level]) * (1.0 + float(boon.get("rate", 0.0))),
 		"range": attack_range(tower, float(boon.get("range", 0.0))),

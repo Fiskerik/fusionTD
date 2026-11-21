@@ -26,6 +26,7 @@ static func style(tower: Dictionary, attack: String) -> String:
 		"nature": return "thorn"
 		"dark": return "shadow"
 		"light": return "beam"
+		"earth": return "boulder"
 	return attack
 
 static func draw_stream(canvas: CanvasItem, shot: Dictionary, progress: float, life: float) -> void:
@@ -91,6 +92,11 @@ static func draw_missile(canvas: CanvasItem, shot: Dictionary, progress: float, 
 			var fletching: Vector2 = p - aim * .18
 			for sign_value: float in [-1.0, 1.0]:
 				canvas.draw_line(fletching, fletching - aim * .078 + side * .056 * sign_value, tint, .055)
+		"boulder":
+			for i: int in range(4):
+				var mote: Vector2 = p - aim * (.071 * i) + side * sin(progress * 15.0 + i * 2.0) * .052
+				canvas.draw_circle(mote, .062 - .009 * i, Color(tint.darkened(.29), life))
+			Glyphs.draw(canvas, "earth", p, .148, tint)
 		"ember":
 			for i: int in range(5):
 				var trail: Vector2 = p - aim * float(i) * .056 + side * sin(progress * 22.0 + float(i)) * .035

@@ -586,5 +586,436 @@
       "silence": 2.5,
       "pierce": 0.45
     }
+  },
+  "steamcrag": {
+    "name": "Steamcrag",
+    "elements": [
+      "earth",
+      "fire",
+      "water"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "fire": 0.25,
+      "water": 0.25
+    },
+    "damage": 115,
+    "rate": 0.57,
+    "range": 2.32,
+    "splash": 1.65,
+    "role": "Steam and molten debris slow and burn the pack.",
+    "effect": {
+      "burn": [
+        6,
+        0.16,
+        4
+      ],
+      "slow": [
+        0.27,
+        2.4
+      ]
+    }
+  },
+  "cinderroot": {
+    "name": "Cinderroot Bastion",
+    "elements": [
+      "earth",
+      "fire",
+      "nature"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "fire": 0.25,
+      "nature": 0.25
+    },
+    "damage": 120,
+    "rate": 0.55,
+    "range": 2.2,
+    "splash": 1.59,
+    "role": "Burning stones pin nearby enemies.",
+    "effect": {
+      "burn": [
+        5,
+        0.16,
+        4
+      ],
+      "root": [
+        4,
+        1.2
+      ]
+    }
+  },
+  "thunderfault": {
+    "name": "Thunderfault",
+    "elements": [
+      "earth",
+      "fire",
+      "electric"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "fire": 0.25,
+      "electric": 0.25
+    },
+    "damage": 109,
+    "rate": 0.62,
+    "range": 2.32,
+    "splash": 1.53,
+    "role": "Lava strikes arc through enemies and leave them burning.",
+    "effect": {
+      "burn": [
+        5,
+        0.15,
+        4
+      ],
+      "chain": [
+        3,
+        1.4,
+        0.7
+      ]
+    }
+  },
+  "sunforgecaldera": {
+    "name": "Sunforge Caldera",
+    "elements": [
+      "earth",
+      "fire",
+      "light"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "fire": 0.25,
+      "light": 0.25
+    },
+    "damage": 128,
+    "rate": 0.53,
+    "range": 2.37,
+    "splash": 1.58,
+    "role": "A solar eruption burns and pierces armor.",
+    "effect": {
+      "burn": [
+        5,
+        0.14,
+        4
+      ],
+      "pierce": 0.4
+    }
+  },
+  "obsidianmaw": {
+    "name": "Obsidian Maw",
+    "elements": [
+      "earth",
+      "fire",
+      "dark"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "fire": 0.25,
+      "dark": 0.25
+    },
+    "damage": 121,
+    "rate": 0.56,
+    "range": 2.25,
+    "splash": 1.58,
+    "role": "Obsidian shards curse and burn enemies caught in the blast.",
+    "effect": {
+      "burn": [
+        6,
+        0.16,
+        4
+      ],
+      "curse": [
+        0.2,
+        3.2
+      ]
+    }
+  },
+  "alluvialgrove": {
+    "name": "Alluvial Grove",
+    "elements": [
+      "earth",
+      "water",
+      "nature"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "water": 0.25,
+      "nature": 0.25
+    },
+    "damage": 102,
+    "rate": 0.57,
+    "range": 2.55,
+    "splash": 1.63,
+    "role": "Silt slows enemies while the grove speeds up nearby towers.",
+    "effect": {
+      "slow": [
+        0.3,
+        2.7
+      ],
+      "aura_speed": 0.28
+    }
+  },
+  "seismicsurge": {
+    "name": "Seismic Surge",
+    "elements": [
+      "earth",
+      "water",
+      "electric"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "water": 0.25,
+      "electric": 0.25
+    },
+    "damage": 110,
+    "rate": 0.64,
+    "range": 2.35,
+    "splash": 1.57,
+    "role": "Attacks chill crowds and send lightning through the pack.",
+    "effect": {
+      "slow": [
+        0.26,
+        2.5
+      ],
+      "chain": [
+        3,
+        1.4,
+        0.7
+      ]
+    }
+  },
+  "opalreservoir": {
+    "name": "Opal Reservoir",
+    "elements": [
+      "earth",
+      "water",
+      "light"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "water": 0.25,
+      "light": 0.25
+    },
+    "damage": 122,
+    "rate": 0.54,
+    "range": 2.43,
+    "splash": 1.62,
+    "role": "An armored wave pierces and slows enemies.",
+    "effect": {
+      "slow": [
+        0.32,
+        2.7
+      ],
+      "pierce": 0.35
+    }
+  },
+  "abyssalsilt": {
+    "name": "Abyssal Silt",
+    "elements": [
+      "earth",
+      "water",
+      "dark"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "water": 0.25,
+      "dark": 0.25
+    },
+    "damage": 115,
+    "rate": 0.59,
+    "range": 2.26,
+    "splash": 1.58,
+    "role": "Silt freezes periodic targets and makes them take more damage.",
+    "effect": {
+      "curse": [
+        0.23,
+        3
+      ],
+      "freeze": [
+        4,
+        1.05
+      ]
+    }
+  },
+  "stormroot": {
+    "name": "Stormroot Rampart",
+    "elements": [
+      "earth",
+      "nature",
+      "electric"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "nature": 0.25,
+      "electric": 0.25
+    },
+    "damage": 110,
+    "rate": 0.64,
+    "range": 2.38,
+    "splash": 1.57,
+    "role": "The impact roots enemies and sends lightning into nearby targets.",
+    "effect": {
+      "root": [
+        4,
+        1.15
+      ],
+      "chain": [
+        3,
+        1.45,
+        0.72
+      ]
+    }
+  },
+  "livingmenhir": {
+    "name": "Living Menhir",
+    "elements": [
+      "earth",
+      "nature",
+      "light"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "nature": 0.25,
+      "light": 0.25
+    },
+    "damage": 117,
+    "rate": 0.55,
+    "range": 2.4,
+    "splash": 1.64,
+    "role": "The menhir roots nearby enemies and restores the gate.",
+    "effect": {
+      "root": [
+        4,
+        1.15
+      ],
+      "pierce": 0.26,
+      "wall_heal": 2
+    }
+  },
+  "gravebloom": {
+    "name": "Gravebloom",
+    "elements": [
+      "earth",
+      "nature",
+      "dark"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "nature": 0.25,
+      "dark": 0.25
+    },
+    "damage": 117,
+    "rate": 0.59,
+    "range": 2.24,
+    "splash": 1.6,
+    "role": "Jagged petals poison and curse enemies near the impact.",
+    "effect": {
+      "poison": [
+        1,
+        0.28,
+        4.8
+      ],
+      "curse": [
+        0.21,
+        3.15
+      ]
+    }
+  },
+  "quartzrelay": {
+    "name": "Quartz Relay",
+    "elements": [
+      "earth",
+      "electric",
+      "light"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "electric": 0.25,
+      "light": 0.25
+    },
+    "damage": 115,
+    "rate": 0.62,
+    "range": 2.43,
+    "splash": 1.54,
+    "role": "Quartz conductors launch piercing chain lightning.",
+    "effect": {
+      "chain": [
+        3,
+        1.55,
+        0.71
+      ],
+      "pierce": 0.34
+    }
+  },
+  "blackstonedynamo": {
+    "name": "Blackstone Dynamo",
+    "elements": [
+      "earth",
+      "electric",
+      "dark"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "electric": 0.25,
+      "dark": 0.25
+    },
+    "damage": 112,
+    "rate": 0.65,
+    "range": 2.3,
+    "splash": 1.54,
+    "role": "Lightning jumps through the pack and strips armor.",
+    "effect": {
+      "chain": [
+        3,
+        1.44,
+        0.7
+      ],
+      "shred": [
+        4,
+        5,
+        3.2
+      ]
+    }
+  },
+  "eclipsecairn": {
+    "name": "Eclipse Cairn",
+    "elements": [
+      "earth",
+      "light",
+      "dark"
+    ],
+    "art": "earth",
+    "split": {
+      "earth": 0.5,
+      "light": 0.25,
+      "dark": 0.25
+    },
+    "damage": 120,
+    "rate": 0.57,
+    "range": 2.38,
+    "splash": 1.53,
+    "role": "Curses targets, pierces armor, and keeps enemies from healing.",
+    "effect": {
+      "curse": [
+        0.21,
+        3.2
+      ],
+      "pierce": 0.38,
+      "heal_block": 3.5
+    }
   }
 }

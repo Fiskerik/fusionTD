@@ -1,5 +1,29 @@
 extends "res://tests/test_base.gd"
 
+func test_tower_details_can_scroll_when_the_screen_is_short() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	runner.root.add_child(game)
+	game.set_process(false)
+	game.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	game.size = Vector2(850, 322)
+	game.sim.state.towers.s1 = TowerRules.fusion_result("moonglacier", "s1", game.sim.next_id())
+	game._site_pressed("s1")
+	game._show_tower_details()
+	await runner.process_frame
+	await runner.process_frame
+	var scroll: ScrollContainer = game.overlay.find_child("TowerDetailsScroll", true, false)
+	var scrollbar: VScrollBar = scroll.get_v_scroll_bar()
+	check(scrollbar.max_value > scrollbar.page, "Tower effects and stat rows extend below the visible scroll area")
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	wheel.position = scroll.get_global_rect().get_center()
+	runner.root.push_input(wheel, true)
+	check(scroll.scroll_vertical > 0, "Scrolling reveals more of the tower details")
+	game.queue_free()
+	await runner.process_frame
+
 func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() -> void:
 	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
 	game.persistence_enabled = false
@@ -312,6 +336,16 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	check(after_labels.has("418.5") and after_labels.has("4.5") and after_labels.has("0.93/s"))
 	equal(sim.pure_crystals(), 1)
 	game._upgrade_pressed()
+	equal(game.overlay_type, "ascend")
+	equal(sim.pure_crystals(), 1, "Opening confirmation never consumes the crystal")
+	equal(sim.state.towers.s3.kind, "pure")
+	for button: Button in game.overlay.find_children("*", "Button", true, false):
+		if button.text == DataDB.text("cancel"):
+			button.pressed.emit()
+	equal(sim.pure_crystals(), 1)
+	game._upgrade_pressed()
+	var use_crystal: Button = game.overlay.find_child("ConfirmPureCrystal", true, false)
+	use_crystal.pressed.emit()
 	check(game.upgrade_button.disabled and game.upgrade_button.text == DataDB.text("max_level"))
 	check(not game.field.upgrade_ready.has("s3"))
 	equal(sim.state.towers.s3.kind, "ascended")
@@ -380,14 +414,20 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	runner.root.push_input(pointer, true)
 	await runner.create_timer(.48).timeout
 	equal(game.overlay_type, "swap")
+	equal(game.swap_center, game.size * .5)
 	pointer.pressed = false
 	runner.root.push_input(pointer, true)
-	if game.overlay_type == "swap":
-		var choices: Array[Node] = game.overlay.find_children("*", "Button", true, false)
-		equal(choices.size(), 3)
-		for choice: Button in choices:
-			if choice.text == "Water":
-				choice.pressed.emit()
+	equal(game.overlay_type, "")
+	equal(game.sim.state.swap_tokens, 5, "Releasing at the center cancels the swap")
+	pointer.canceled = false
+	pointer.pressed = true
+	runner.root.push_input(pointer, true)
+	await runner.create_timer(.48).timeout
+	equal(game.overlay_type, "swap")
+	if game.swap_options.has("water"):
+		pointer.position += game.swap_options.water.direction * 80.0
+	pointer.pressed = false
+	runner.root.push_input(pointer, true)
 	equal(game.sim.state.wave_swaps.get("arrow"), "water")
 	check(game.swap_status.text.contains("4"))
 	game._show_matchups(59)
@@ -396,7 +436,12 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	game._close_overlay()
 	check(game.field.matchups.is_empty())
 	game._apply({"type": "start_wave"})
+	check(game.interest_toast.visible and game.interest_toast_text.text == "Interest: 16 gold")
+	game._show_selection()
+	check(game.interest_toast.visible and game.interest_toast.get_parent().layer > 0)
+	game._close_overlay()
 	var tile: Vector2i = game.sim.track.road_tiles.keys()[0]
+	pointer.canceled = false
 	pointer.position = game.field._board_transform() * game.sim.track.road_tiles[tile]
 	for tap: int in range(2):
 		pointer.pressed = true
@@ -412,7 +457,9 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	equal(game.sim.state.phase, "build")
 	game._process(.11)
 	equal(game.sim.state.phase, "wave")
-	check(game.sim.state.mobs.is_empty() and game.interest_status.text.begins_with("Interest +"))
+	check(game.sim.state.mobs.is_empty() and game.interest_toast_text.text.begins_with("Interest: "))
+	game._process(3.1)
+	check(not game.interest_toast.visible)
 	game.queue_free()
 	await runner.process_frame
 
@@ -465,7 +512,7 @@ func test_countdown_pauses_and_uses_real_time_at_quadruple_speed() -> void:
 	for entry: Button in game.overview.gallery.find_children("*", "Button", true, false):
 		if entry.has_meta("tower_name"):
 			titles.append(entry.get_meta("tower_name"))
-	equal(titles.size(), 17, "Elemental and Pure towers, five duals, and ten triples for each element")
+	equal(titles.size(), 23, "Elemental and Pure towers, six duals, and fifteen triples for each element")
 	check(titles.has("Sunspire"))
 	check(titles.has("Daystar") and titles.has("Daybloom") and not titles.has("Steamworks"))
 	game.overview._select_tower("bloom")

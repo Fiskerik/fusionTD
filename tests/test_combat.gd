@@ -15,7 +15,7 @@ func test_road_stone_pushes_occupants_and_stops_followers_until_it_expires() -> 
 	equal(sim.state.stone_blocks, 2)
 	equal(sim.stone_cooldown(), 60)
 	check(not sim.apply(block).ok)
-	for tick: int in range(89):
+	for tick: int in range(149):
 		sim.step()
 	near(sim.state.mobs[0].s, stop)
 	near(sim.state.mobs[1].s, stop)

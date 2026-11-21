@@ -16,6 +16,10 @@ static func _base_matchup(attacker: String, defender: String) -> float:
 		return 1.0
 	if attacker in ["light", "dark"] and defender in ["light", "dark"]:
 		return 0.75 if attacker == defender else WEAKNESS_MULTIPLIER
+	if (attacker == "water" and defender == "earth") or (attacker == "earth" and defender == "electric"):
+		return WEAKNESS_MULTIPLIER
+	if (attacker == "earth" and defender == "water") or (attacker == "electric" and defender == "earth"):
+		return .75
 	if RING.get(attacker) == defender:
 		return WEAKNESS_MULTIPLIER
 	if RING.get(defender) == attacker:

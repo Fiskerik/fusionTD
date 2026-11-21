@@ -232,7 +232,10 @@ static func _prismheart_sprite(canvas: CanvasItem, form: String, pivot: Vector2,
 	var breath: float = sin(clock * (3.7 if form == "water" else 5.7)) * .025
 	var span: Vector2 = Vector2(1.0 + breath, 1.0 - breath) * r * 3.4
 	var target := Rect2(pivot - span * Vector2(.5, 100.0 / PRISMHEART_CELL), span)
-	canvas.draw_texture_rect_region(PRISMHEART, target, source, Color(1.0, 1.0, 1.0, opacity))
+	var wash: Color = Glyphs.hue(form).lightened(.40) if form == "earth" else Color.WHITE
+	canvas.draw_texture_rect_region(PRISMHEART, target, source, Color(wash, opacity))
+	if form == "earth":
+		Glyphs.draw(canvas, "earth", pivot - Vector2(0, .27) * r, r * .42, Color("#ffe0a9", opacity))
 
 static func _shape(canvas: CanvasItem, p: Vector2, direction: Vector2, r: float, points: Array[Vector2], tint: Color) -> void:
 	var geometry := PackedVector2Array()
