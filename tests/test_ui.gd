@@ -241,7 +241,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	sim.state.gold = 3000
 	sim.state.tiers.fire = 3
 	game._apply({"type": "build", "slot": "s1", "kind": "arrow"})
-	game._apply({"type": "build_pure", "slot": "s2", "kind": "fire"})
+	sim.state.towers.s2 = TowerRules.create(sim.next_id(), "s2", "ascended", "fire", "", 1600)
 	sim.state.tiers.nature = 3
 	game._apply({"type": "build", "slot": "s3", "kind": "nature"})
 	sim.state.towers.s3.level = 6
@@ -271,7 +271,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	check(game.upgrade_button.disabled and not game.field.upgrade_ready.has("s3"))
 	equal(sim.state.towers.s3.kind, "ascended")
 	check(not game.tower_special.visible)
-	check(game.stats.text.contains("◈ 0") and game.info.text.contains("Pure Nature") and game.info.text.contains("7"))
+	check(game.stats.text.contains("◈ 0") and game.info.text.contains("Verdant Sanctum") and game.info.text.contains("7"))
 	game.queue_free()
 	await runner.process_frame
 
@@ -325,8 +325,8 @@ func test_countdown_pauses_and_uses_real_time_at_quadruple_speed() -> void:
 		if entry.has_meta("tower_name"):
 			titles.append(entry.get_meta("tower_name"))
 	equal(titles.size(), 17, "Elemental and Pure towers, five duals, and ten triples for each element")
-	check(titles.has("Pure Light"))
-	check(titles.has("Daystar Bloom") and titles.has("Bloom") and not titles.has("Steam"))
+	check(titles.has("Sunspire"))
+	check(titles.has("Daystar") and titles.has("Daybloom") and not titles.has("Steamworks"))
 	game.overview._select_tower("bloom")
 	check(game.overview.details.find_children("*", "Label", true, false).any(func(line: Label) -> bool:
 		return line.text.contains("Only the strongest repair applies") and line.text.contains("fills the barrier")))

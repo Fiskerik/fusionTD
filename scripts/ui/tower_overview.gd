@@ -263,7 +263,7 @@ func _render_detail() -> void:
 		build_kind = tower.element if tower.kind in ["pure", "ascended"] else tower.kind
 		build_pure = tower.kind == "ascended"
 		var cost: int = int(sim.cfg.pure_tower_cost) if build_pure else int(TowerRules.stats(tower).cost)
-		purchase = UIKit.button(("Place Pure tower · %d g" if build_pure else "Place level-1 tower · %d g") % cost, _request_build, true, 45)
+		purchase = UIKit.button(("Place Pure tower · %d g + ◈1" if build_pure else "Place level-1 tower · %d g") % cost, _request_build, true, 45)
 		purchase.tooltip_text = "Choose a build tile on the battlefield."
 		details.add_child(purchase)
 		refresh_purchase()
@@ -322,9 +322,11 @@ func refresh_purchase() -> void:
 	if not is_instance_valid(purchase):
 		return
 	var cost: int = int(sim.cfg.pure_tower_cost) if build_pure else int(DataDB.read("towers")[build_kind].cost)
-	purchase.disabled = int(sim.state.gold) < cost or (build_pure and sim.pure_count() >= int(sim.cfg.pure_tower_limit))
+	purchase.disabled = int(sim.state.gold) < cost or (build_pure and (sim.pure_crystals() == 0 or sim.pure_count() >= int(sim.cfg.pure_tower_limit)))
 	purchase.tooltip_text = "Requires %d gold." % cost if int(sim.state.gold) < cost else "Choose a build tile on the battlefield."
-	if build_pure and sim.pure_count() >= int(sim.cfg.pure_tower_limit):
+	if build_pure and sim.pure_crystals() == 0:
+		purchase.tooltip_text = "One Pure Crystal required."
+	elif build_pure and sim.pure_count() >= int(sim.cfg.pure_tower_limit):
 		purchase.tooltip_text = "All Pure slots are in use."
 
 func refresh_unlocks() -> void:

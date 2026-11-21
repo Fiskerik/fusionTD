@@ -1,6 +1,9 @@
 class_name Waves
 extends RefCounted
 
+static func unit_cap() -> int:
+	return int(DataDB.read("waves").unit_cap)
+
 static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_weaknesses: bool = true,
 		expanded_roster: bool = true, campaign_track: Track = null) -> Dictionary:
 	if not trial.is_empty():
@@ -28,8 +31,6 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	count = roundi(count * float(tuning.get("count_scale", 1.0)))
 	var bonus: Dictionary = rules.bonus_mob
 	var include_bonus: bool = bonus_rng.take(100) < int(bonus.chance_percent)
-	if late_waves > 0:
-		count = mini(count, int(late.unit_cap) - (1 if include_bonus else 0))
 	if wave % int(balance.boss_every) == 0:
 		var bosses_in_wave: Array[Dictionary] = []
 		var health_adjustment: Dictionary = bosses.health_adjustment
@@ -61,6 +62,8 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			elif roll_weaknesses and stats.element != "none":
 				bosses_in_wave[-1].weakness = _roll_weakness(weakness_rng, stats.element)
 		return {"wave": wave, "groups": [], "boss": bosses_in_wave[0], "bosses": bosses_in_wave, "spirit": {}}
+	var veterans: Dictionary = rules.veterans
+	hp *= 1.0 + maxi(0, wave - int(veterans.from) + 1) * float(veterans.hp_per_wave)
 	var element: String = "none"
 	var secondary: String = "none"
 	var mixed: bool = wave >= int(rules.mixed_elements_from)
@@ -97,6 +100,8 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			var support: Dictionary = _group(wave, menders, ["mender"], hp, gold, false)
 			support.interval = int(rules.interval)
 			_add_group(groups, support, element, secondary, elemental_share, index + 1)
+	var scheduled_cap: int = floori(float(unit_cap()) * float(tuning.get("count_scale", 1.0)))
+	_limit_groups(groups, scheduled_cap - (1 if include_bonus else 0))
 	if include_bonus:
 		var courier: Dictionary = _group(wave, 1, [], hp, gold, false)
 		courier.kind = "bonus"
@@ -120,6 +125,20 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			group.weakness = weaknesses[affinity]
 	return {"wave": wave, "groups": groups, "boss": {}, "bosses": [], "spirit": {}}
 
+static func _limit_groups(groups: Array[Dictionary], limit: int) -> void:
+	var remaining: int = 0
+	for group: Dictionary in groups:
+		remaining += int(group.count)
+	if remaining <= limit:
+		return
+	for index: int in range(groups.size()):
+		var group: Dictionary = groups[index]
+		var old: int = int(group.count)
+		var reserve: int = groups.size() - index - 1
+		group.count = clampi(roundi(float(old) * limit / remaining), 1, limit - reserve)
+		remaining -= old
+		limit -= int(group.count)
+
 static func _add_specials(groups: Array[Dictionary], wave: int, rng: SimRng) -> void:
 	var types: Dictionary = DataDB.read("mobs").specials
 	var available: Array[String] = []
@@ -130,9 +149,11 @@ static func _add_specials(groups: Array[Dictionary], wave: int, rng: SimRng) -> 
 		elif wave > int(types[id].first):
 			available.append(id)
 	if picks.is_empty() and not available.is_empty() and (wave >= 20 or rng.take(3) == 0):
-		picks.append(available.pop_at(rng.take(available.size())))
-		if wave >= 30 and not available.is_empty() and rng.take(3) == 0:
-			picks.append(available[rng.take(available.size())])
+		var total: int = 3 if wave >= 80 else (2 if wave >= 50 else 1)
+		if wave >= 30 and wave < 50 and rng.take(3) == 0:
+			total += 1
+		for index: int in range(mini(total, available.size())):
+			picks.append(available.pop_at(rng.take(available.size())))
 	for id: String in picks:
 		var candidates: Array[Dictionary] = groups.filter(func(group: Dictionary) -> bool: return group.kind == "grunt" and int(group.count) > 1)
 		if candidates.is_empty():
@@ -216,6 +237,8 @@ static func _group(wave: int, count: int, props: Array, hp: float, gold: int, el
 	armor += harder_waves * float(pressure.armor_per_wave) * armor_scale
 	var late: Dictionary = DataDB.read("waves").late_game
 	armor += maxi(0, wave - int(late.after)) * float(late.armor_per_wave) * armor_scale
+	var veterans: Dictionary = DataDB.read("waves").veterans
+	armor += maxi(0, wave - int(veterans.from) + 1) * float(veterans.armor_per_wave) * armor_scale
 	if fast:
 		speed *= 1.0 + minf(float(pressure.speed_cap), harder_waves * float(pressure.speed_per_wave))
 	return {

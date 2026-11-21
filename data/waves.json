@@ -6,6 +6,7 @@
     "grunts",
     "armored"
   ],
+  "unit_cap": 48,
   "first_tick": 30,
   "interval": 27,
   "elemental_from": 6,
@@ -16,7 +17,7 @@
   "mixed_elemental_fraction": 0.65,
   "adjustments": {
     "44": {"count_scale": 0.65},
-    "48": {"pattern": "raiders", "hp_scale": 0.78, "count_scale": 0.92}
+    "48": {"hp_scale": 0.78, "count_scale": 0.92}
   },
   "health_boost": {"from": 10, "multiplier": 1.20},
   "bonus_mob": {"chance_percent": 5, "extra_gold": 250, "travel_seconds": 12},
@@ -30,7 +31,6 @@
   },
   "late_game": {
     "after": 60,
-    "unit_cap": 96,
     "hp_per_wave": 0.02,
     "armor_per_wave": 0.65,
     "third_boss_from": 90,
@@ -38,9 +38,10 @@
     "necromancer_heal": 0.10,
     "necromancer_radius": 3.0
   },
+  "veterans": {"from": 41, "hp_per_wave": 0.016, "armor_per_wave": 0.35},
   "control_resistance": {
     "from": 50,
-    "per_wave": 0.01,
+    "per_wave": 0.0125,
     "cap": 0.70
   },
   "patterns": {

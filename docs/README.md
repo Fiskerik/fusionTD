@@ -22,11 +22,13 @@ Portrait and landscape use the same controls. All six elements and both starter 
 
 Dual fusions cost 313 gold and triple fusions cost 638 gold. For fusion, elemental tower levels 2–3 count as rank 1, levels 4–5 as rank 2, and level 6 as rank 3. A dual contributes its own rank to a triple. The fusion uses the lower ingredient rank, capped by the lowest unlocked element tier in the recipe. That same tier cap applies to upgrades. An attacking result retains at least the stronger ingredient's damage per hit.
 
+Waves schedule up to 48 enemies, with a matching on-field cap. From wave 41, regular enemies gain extra health and armor.
+
 New campaigns draw one of ten centered Greenmarch routes from the run seed. The saved route, earned boons, and pending choices travel with the checkpoint. After a spirit or boss encounter, pick one of three boons. Boons offered later have stronger values up to a cap. Review your picks under **Run boons** in the pause menu.
 
 Chameleons adapt to elemental hits, Banner Bearers rally nearby enemies, Burrowers hide underground, Thieves steal gold at the gate, and Saboteurs jam the closest upgradeable tower. Upgrade or fuse a jammed tower to restore it.
 
-Reach waves 30, 60, 90, and so on to earn a **Pure Crystal** before the wave begins. Tap **Use Crystal** to ascend a Tier III level-6 elemental tower into a level-7 **Pure** tower. It shares the three-tower limit with Pure towers bought for gold and displays a gold star on the board. Pure towers are ineligible for fusion. Additional crystals add 25% damage per crystal to a Pure tower. A green chevron marks towers that can upgrade or use a crystal now.
+Reach waves 30, 60, 90, and so on to earn a **Pure Crystal** before the wave begins. Tap **Use Crystal** to ascend a Tier III level-6 elemental tower into a level-7 **Pure** tower. It shares the three-tower limit with Pure towers built for 1,500 gold plus one Pure Crystal and displays a gold star on the board. Pure towers are ineligible for fusion. Upgrading matched ingredients before a fusion credits their advance upgrade costs against the same final fusion rank. Additional crystals add 25% damage per crystal to a Pure tower. A green chevron marks towers that can upgrade or use a crystal now.
 
 The inspector tracks damage and kills for each tower. The chart icon ranks the five highest-damage towers on the field. Fusions inherit both towers' totals. Tap or hover an effect in the spirit or infusion picker to see its exact values. The main menu keeps detailed statistics for the three most recently finished runs.
 

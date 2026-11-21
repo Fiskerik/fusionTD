@@ -34,7 +34,7 @@ func step() -> void:
 	state.tick += 1
 	state.wave_tick += 1
 	state.rally_cd = maxi(0, int(state.rally_cd) - 1)
-	while not state.spawn_queue.is_empty() and int(state.spawn_queue[0].tick) <= int(state.wave_tick):
+	while not state.spawn_queue.is_empty() and int(state.spawn_queue[0].tick) <= int(state.wave_tick) and state.mobs.size() < Waves.unit_cap():
 		var next: Dictionary = state.spawn_queue.pop_front()
 		Combat.spawn(self, next.group, next.s)
 	Combat.advance(self)
@@ -78,7 +78,10 @@ func support_bonuses(tower: Dictionary, sources: Array[Dictionary], slot: String
 
 func fusion_fee(first: Dictionary, second: Dictionary) -> int:
 	var discount: float = RunBoons.limited("fusion_discount", float(_boon_totals.get("fusion", {}).get("fusion_discount", 0)))
-	return ceili(float(TowerRules.fusion_cost(first, second)) * (1.0 - discount) - .000001)
+	var base_fee: int = ceili(float(TowerRules.fusion_cost(first, second)) * (1.0 - discount) - .000001)
+	if TowerRules.fusion_recipe(first, second).is_empty():
+		return base_fee
+	return TowerRules.fusion_fee(first, second, state.tiers, base_fee)
 
 func _queue_boons(source: String, wave: int, count: int = 1) -> void:
 	if track.layout_id == Track.LEGACY:
@@ -149,6 +152,8 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = DataDB.text("requires_tier") % [kind.capitalize(), "III"]
 			elif pure_tower and pure_count() >= int(cfg.pure_tower_limit):
 				reason = "All %d Pure tower slots are in use." % int(cfg.pure_tower_limit)
+			elif pure_tower and pure_crystals() == 0:
+				reason = "Building a Pure tower also requires one Pure Crystal."
 			elif DataDB.ELEMENTS.has(kind) and int(state.tiers[kind]) == 0:
 				reason = DataDB.text("requires_spirit") % kind.capitalize()
 			else:
@@ -205,7 +210,8 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = DataDB.text("select_different")
 			elif (tower.kind == "pure" and int(tower.level) < int(cfg.fuse_min_level)) or (second.kind == "pure" and int(second.level) < int(cfg.fuse_min_level)):
 				reason = DataDB.text("requires_fuse_level") % int(cfg.fuse_min_level)
-			cost = fusion_fee(tower, second)
+			if reason.is_empty():
+				cost = fusion_fee(tower, second)
 		"sell", "set_target":
 			if tower.is_empty():
 				reason = DataDB.text("select_tower")
@@ -257,6 +263,7 @@ func apply(action: Dictionary) -> Dictionary:
 			state.towers[slot] = TowerRules.create(next_id(), slot, "pure" if pure else kind, kind if pure else "normal", "", result.cost)
 		"build_pure":
 			state.towers[slot] = TowerRules.create(next_id(), slot, "ascended", action.kind, "", result.cost)
+			state.stats.pure_crystals_spent = int(state.stats.get("pure_crystals_spent", 0)) + 1
 			state.stats.pure_built = int(state.stats.get("pure_built", 0)) + 1
 		"upgrade":
 			tower.level += 1
@@ -296,7 +303,7 @@ func apply(action: Dictionary) -> Dictionary:
 			state.towers[slot] = merged
 			state.towers.erase(action.slot_b)
 			state.stats.fusions += 1
-			emit_event("fused", {"slot": slot, "from": second.slot, "dual": dual, "elements": TowerRules.ingredients(merged)})
+			emit_event("fused", {"slot": slot, "from": second.slot, "dual": dual, "elements": TowerRules.ingredients(merged), "refund": maxi(0, -int(result.cost))})
 		"set_target":
 			tower.target = action.mode
 		"rally":

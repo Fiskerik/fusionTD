@@ -1,6 +1,6 @@
 {
   "arrow": {
-    "name": "Arrow",
+    "name": "Briar Bow",
     "cost": 50,
     "damage": 13,
     "rate": 1.2,
@@ -15,7 +15,7 @@
     "role": "Fast single-target fire"
   },
   "cannon": {
-    "name": "Cannon",
+    "name": "Flint Cannon",
     "cost": 80,
     "damage": 14,
     "rate": 0.6,
@@ -32,21 +32,24 @@
     "role": "Shells hit nearby enemies"
   },
   "fire": {
-    "name": "Fire",
+    "name": "Ember Shrine",
+    "pure_name": "Ember Crown",
     "cost": 110,
     "damage": 16,
     "rate": 1,
     "range": 2.8
   },
   "water": {
-    "name": "Water",
+    "name": "Tide Well",
+    "pure_name": "Tide Throne",
     "cost": 110,
     "damage": 10,
     "rate": 1.2,
     "range": 2.8
   },
   "nature": {
-    "name": "Nature",
+    "name": "Briarheart",
+    "pure_name": "Verdant Sanctum",
     "cost": 110,
     "damage": 27,
     "rate": 0.55,
@@ -55,14 +58,16 @@
     "splash_per_level": 0.065
   },
   "electric": {
-    "name": "Electric",
+    "name": "Storm Coil",
+    "pure_name": "Thunder Crown",
     "cost": 120,
     "damage": 14,
     "rate": 0.9,
     "range": 2.8
   },
   "light": {
-    "name": "Light",
+    "name": "Dawn Beacon",
+    "pure_name": "Sunspire",
     "cost": 130,
     "damage": 17,
     "rate": 0.8,
@@ -70,7 +75,8 @@
     "global_range": true
   },
   "dark": {
-    "name": "Dark",
+    "name": "Dusk Idol",
+    "pure_name": "Night Citadel",
     "cost": 120,
     "damage": 5,
     "rate": 2.2,

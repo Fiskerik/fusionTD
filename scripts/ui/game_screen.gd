@@ -643,7 +643,8 @@ func _render_site() -> void:
 	tower_effects.visible = not tower.is_empty()
 	if tower.is_empty():
 		if not catalog_build.is_empty():
-			info.text = "Place %s%s" % ["Pure " if catalog_build.type == "build_pure" else "", String(catalog_build.kind).capitalize()]
+			var build_rule: Dictionary = DataDB.read("towers")[catalog_build.kind]
+			info.text = "Place %s" % (build_rule.pure_name if catalog_build.type == "build_pure" else build_rule.name)
 			_site_button("Cancel placement", _cancel_catalog_build)
 			return
 		_render_palette()
@@ -710,7 +711,7 @@ func _render_palette() -> void:
 	pure_palette = pure_palette and eligible
 	pure_tab.visible = eligible
 	pure_tab.text = "Standard" if pure_palette else "Pure %d/%d" % [sim.pure_count(), int(sim.cfg.pure_tower_limit)]
-	pure_tab.tooltip_text = "Three shared Pure slots. Each build requires that element's Tier III."
+	pure_tab.tooltip_text = "Three shared Pure slots. Building requires Tier III, %d gold and one Pure Crystal." % int(sim.cfg.pure_tower_cost)
 	site_actions.columns = 3 if pure_palette else 4
 	info.text = "Pure towers · %d/%d" % [sim.pure_count(), int(sim.cfg.pure_tower_limit)] if pure_palette else ("Build a tower" if selected.is_empty() else "Build on this tile")
 	var kinds: Array = DataDB.ELEMENTS if pure_palette else ["arrow", "cannon"] + DataDB.ELEMENTS
@@ -724,9 +725,10 @@ func _render_palette() -> void:
 		var rule: Dictionary = DataDB.read("towers")[kind]
 		var locked: bool = int(sim.state.tiers.get(kind, 1)) < (3 if pure_palette else 1)
 		var price: int = int(sim.cfg.pure_tower_cost) if pure_palette else int(rule.cost)
-		var price_label: String = ("Tier III" if pure_palette else "Locked") if locked else "%d g" % price
+		var unlocked_price: String = "%d g + ◈1" % price if pure_palette else "%d g" % price
+		var price_label: String = ("Tier III" if pure_palette else "Locked") if locked else unlocked_price
 		var action: Dictionary = {"type": "build_pure" if pure_palette else "build", "slot": quote_slot, "kind": kind}
-		var title: String = "%s\n%s" % [rule.name, price_label]
+		var title: String = "%s\n%s" % [rule.pure_name if pure_palette else rule.name, price_label]
 		var button: Button
 		if selected.is_empty():
 			button = _site_button(title, _begin_catalog_build.bind(kind, pure_palette))
@@ -1638,10 +1640,16 @@ func _comparison_card(parent: HBoxContainer, tower: Dictionary, caption: String,
 		rank += " · ◈ %d" % crystals
 	var level: Label = UIKit.label(caption + " · " + rank, font_size, heading, true)
 	level.add_theme_font_override("font", UIKit.heading())
-	column.add_child(level)
 	if fusion:
+		column.add_child(level)
 		column.add_child(UIKit.portrait(tower, 44))
 		column.add_child(UIKit.composition(tower, 20, false))
+	else:
+		var header: HBoxContainer = UIKit.row(4)
+		column.add_child(header)
+		header.add_child(UIKit.portrait(tower, 32))
+		level.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		header.add_child(level)
 
 	var stat_row := HFlowContainer.new()
 	column.add_child(stat_row)
@@ -1793,7 +1801,8 @@ func _show_fusion(partner: String) -> void:
 	if id.is_empty():
 		_cancel_fusion()
 		return
-	var result: Dictionary = TowerRules.combine(id, first, second, sim.state.tiers, sim.spirit_victories())
+	var cost: int = sim.fusion_fee(first, second)
+	var result: Dictionary = TowerRules.combine(id, first, second, sim.state.tiers, sim.spirit_victories(), 0, cost)
 	var rule: Dictionary = TowerRules.stats(result)
 	var body: VBoxContainer = _dialog(DataDB.text("fusion_title") % String(rule.name), 780)
 	overlay_type = "fusion"
@@ -1839,8 +1848,8 @@ func _show_fusion(partner: String) -> void:
 		body.add_child(UIKit.label(DataDB.text("fusion_matchup") % " / ".join(matchups), 16, UIKit.MUTED, true))
 	var controls: HBoxContainer = UIKit.row()
 	controls.add_child(UIKit.button(DataDB.text("cancel"), _cancel_fusion))
-	var cost: int = sim.fusion_fee(first, second)
-	var confirm: Button = UIKit.button(DataDB.text("fusion_confirm") % cost, _apply.bind(action), true)
+	var quote: String = DataDB.text("fusion_confirm") % cost if cost >= 0 else "Fuse · Refund %d gold" % -cost
+	var confirm: Button = UIKit.button(quote, _apply.bind(action), true)
 	overlay_actions[confirm] = action
 	_update_action_button(confirm, action)
 	controls.add_child(confirm)

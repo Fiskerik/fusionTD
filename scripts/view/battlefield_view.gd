@@ -130,9 +130,13 @@ func animate(event: Dictionary) -> void:
 			bursts.append({"at": sim.track.slots[data.slot].position, "color": GOLD, "time": .42, "max": .42, "radius": .60})
 		"tower_upgraded", "infusion_changed":
 			place_times[data.slot] = .30
+			var tower: Dictionary = sim.state.towers[data.slot]
 			var element: String = data.get("element", "")
-			bursts.append({"at": sim.track.slots[data.slot].position, "color": GOLD if element.is_empty() else Glyphs.hue(element),
-				"time": .58, "max": .58, "radius": .66, "action": event.type, "element": element})
+			var rank: int = TowerRules.PURE_DISPLAY_LEVEL if tower.kind == "ascended" else int(tower.level)
+			var lifetime: float = .82 if event.type == "tower_upgraded" else .58
+			var color: Color = _tower_color(tower).lerp(GOLD, .30) if element.is_empty() else Glyphs.hue(element)
+			bursts.append({"at": sim.track.slots[data.slot].position, "color": color, "time": lifetime, "max": lifetime,
+				"radius": .78 if rank >= 4 else .66, "action": event.type, "element": element, "rank": rank})
 		"tower_moved":
 			aim_by_slot.erase(data.from)
 			place_times.erase(data.from)
@@ -143,6 +147,8 @@ func animate(event: Dictionary) -> void:
 			fusion_trails.append({"from": sim.track.slots[data.from].position, "to": destination,
 				"elements": data.elements, "time": .78})
 			place_times[data.slot] = .30
+			if int(data.get("refund", 0)) > 0:
+				rewards.append({"at": destination, "time": 1.30, "max": 1.30, "gold": int(data.refund), "offset": 0.0})
 		"mob_leaked":
 			shake = 5
 			if int(data.absorbed) > 0:
@@ -584,12 +590,8 @@ func _draw_placement_preview() -> void:
 		draw_arc(p, radius, 0, TAU, 72, Color(color, .72), .04, true)
 	_tile_outline(p, Color("#fff5bb"), .45, .065)
 	_set_upright(p)
-	_draw_foundation(p, 1, color.lightened(.35), color.darkened(.22))
-	var head := p - Vector2(0, .11 + sin(elapsed * 4.0) * .025)
-	if placement_preview.kind in ["arrow", "cannon"]:
-		_draw_launcher(head, Vector2.UP, color, placement_preview.kind == "cannon")
-	else:
-		TowerArt.draw(self, placement_preview, head, .50 if placement_preview.kind == "ascended" else .42, elapsed)
+	var head := p + Vector2(0, sin(elapsed * 4.0) * .025)
+	TowerArt.draw(self, placement_preview, head, .47, elapsed)
 	_set_board_transform()
 
 func _tile_outline(p: Vector2, color: Color, radius: float, width: float) -> void:
@@ -613,28 +615,8 @@ func _draw_tower(tower: Dictionary) -> void:
 	if gate_on_top and not aim.is_empty():
 		direction = -direction
 	var recoil: float = float(aim.get("recoil", 0.0)) / .18
-	var color: Color = tint.lightened(.14)
 	var rim: Color = tint.darkened(.32)
-	if tower.element == "normal" and tower.infusion == "":
-		color = tint.lerp(Color("#f3e9b6"), .39)
-		rim = Color("#628879")
-	_draw_foundation(p, level, color, rim)
-	if ascended:
-		draw_arc(p, .515, 0, TAU, 35, Color("#fff1a7"), .057)
-	var head: Vector2 = p - Vector2(0, .045 + float(level - 1) * .012)
-	if tower.kind in ["arrow", "cannon"]:
-		_draw_launcher(head - direction * recoil * .10, direction, color, tower.kind == "cannon")
-	else:
-		if not aim.is_empty():
-			var tip: Vector2 = head + direction * (.39 - recoil * .08)
-			draw_line(head, tip, rim, .14)
-			draw_circle(tip, .064 + .04 * recoil, Color("#fff9d7"))
-		var crown: Vector2 = head - Vector2(0,.065) - direction * recoil * .085
-		TowerArt.draw(self, tower, crown, .51 if ascended else .40 + minf(.085, level * .017), elapsed)
-		if recoil > .0:
-			var spark: Vector2 = head + direction * .35
-			draw_circle(spark, .08 + .10 * recoil, Color(tint, .48 * recoil))
-			draw_circle(spark, .075 * recoil, Color("#fff7cf"))
+	TowerArt.draw(self, tower, p, .47, elapsed, direction, recoil)
 	if tower.infusion != "":
 		draw_arc(p, .43, 0, TAU, 28, tint, .062)
 		var emblem: Vector2 = p + Vector2(-.27, .24)
@@ -677,65 +659,11 @@ func _draw_pure_badge(p: Vector2) -> void:
 	draw_polyline(star, Color("#79512d"), .033, true)
 	_caption(str(TowerRules.PURE_DISPLAY_LEVEL), p + Vector2(0, .064), .185, Color("#49351f"))
 
-func _draw_foundation(p: Vector2, level: int, color: Color, rim: Color) -> void:
-	var top: Vector2 = p - Vector2(0,.055 + (level - 1) * .013)
-	draw_circle(p + Vector2(.04,.095), .415, Color("#85956d"))
-	if level == 1:
-		draw_circle(p, .387, rim)
-		draw_circle(top, .342, color)
-	elif level <= 3:
-		_draw_polygon_base(p, .415, 8 if level == 2 else 6, PI / 8, rim)
-		_draw_polygon_base(top, .355, 8 if level == 2 else 6, PI / 8, color)
-		if level == 3:
-			_draw_corner_caps(p, .305, .075, color.lightened(.32), rim)
-	else:
-		_draw_polygon_base(p, .437, 8, PI / 8, rim.darkened(.18))
-		_draw_polygon_base(top, .376, 8, PI / 8, color)
-		_draw_corner_caps(p, .31, .10, Color("#e6ae58"), rim.darkened(.14))
-		if level >= 5:
-			draw_arc(top, .302, 0, TAU, 28, Color("#fbe29b"), .045)
-			for side: float in [-1., 1.]:
-				var fin: Vector2 = top + Vector2(side * .368, -.075)
-				_draw_polygon_base(fin, .136, 4, 0, rim)
-				_draw_polygon_base(fin, .085, 4, 0, color.lightened(.38))
-		if level == 6:
-			draw_arc(top, .433, -.8 + elapsed * .8, 3.8 + elapsed * .8, 24, Color("#fff2a9"), .045)
-			for side: float in [-1., 1.]:
-				var crest: Vector2 = top + Vector2(side * .19, -.35)
-				_draw_polygon_base(crest, .11, 4, 0, Color("#a26a44"))
-				_draw_polygon_base(crest, .069, 4, 0, Color("#ffdc76"))
-	draw_arc(top, .29, -PI * .94, -.66, 13, color.lightened(.42), .039)
-
 func _draw_polygon_base(p: Vector2, r: float, sides: int, tilt: float, color: Color) -> void:
 	var points := PackedVector2Array()
 	for side: int in range(sides):
 		points.append(p + Vector2.from_angle(tilt + TAU * side / sides) * r)
 	draw_colored_polygon(points, color)
-
-func _draw_corner_caps(p: Vector2, spread: float, cap: float, color: Color, rim: Color) -> void:
-	for i: int in range(4):
-		var corner: Vector2 = p + Vector2.from_angle(PI * .25 + TAU * i / 4.0) * spread
-		draw_circle(corner, cap, rim)
-		draw_circle(corner - Vector2(0,.025), cap * .68, color)
-
-func _draw_launcher(p: Vector2, aim: Vector2, tint: Color, cannon: bool) -> void:
-	var side: Vector2 = aim.orthogonal()
-	var dark: Color = Color("#3b514b")
-	var muzzle: Vector2 = p + aim * .37
-	draw_circle(p, .19, dark)
-	draw_circle(p - Vector2(0, .025), .135, tint.lightened(.16))
-	if cannon:
-		draw_line(p, muzzle, dark, .238)
-		draw_line(p + aim * .035 - side * .055, muzzle - side * .055, Color("#89978e"), .055)
-		draw_circle(muzzle, .12, dark)
-		draw_circle(muzzle, .056, Color("#fbd9a0"))
-	else:
-		draw_line(p, muzzle, dark, .106)
-		var bow: Vector2 = p + aim * .18
-		draw_polyline(PackedVector2Array([p + side * .205, bow + side * .105, bow - side * .105,
-			p - side * .205]), Color("#79553d"), .076)
-		draw_line(p + side * .20, p - side * .20, Color("#fff0bf"), .027)
-		draw_circle(muzzle, .063, Color("#ffedba"))
 
 func _enemy_position(enemy: Dictionary, ground_only: bool = false) -> Vector2:
 	var distance: float = lerpf(enemy.prev_s, enemy.s, fraction)
@@ -1212,11 +1140,20 @@ func _draw_burst(burst: Dictionary) -> void:
 	var r: float = float(burst.radius) * (1.0 - remaining)
 	draw_arc(p, .11 + r, 0, TAU, 30, shade, .062)
 	if burst.get("action", "") == "tower_upgraded":
-		for i: int in range(2):
-			var tip: Vector2 = p + Vector2(0, -.14 - (1.0 - remaining) * .65 - i * .16)
-			var chevron := PackedVector2Array([tip + Vector2(-.14, .12), tip, tip + Vector2(.14, .12)])
-			draw_polyline(chevron, Color("#775122", remaining), .105, true)
-			draw_polyline(chevron, Color("#fff0a3", remaining), .055, true)
+		var up: Vector2 = Vector2.DOWN if gate_on_top else Vector2.UP
+		var rank: int = int(burst.get("rank", 1))
+		var progress: float = 1.0 - remaining
+		var color: Color = Color(burst.color.lightened(.42), remaining)
+		var count: int = 5 + mini(rank, 7)
+		for index: int in range(count):
+			var axis: Vector2 = Vector2.from_angle(TAU * index / count + .21)
+			var shard: Vector2 = p + axis * (.15 + r) + up * sin(progress * PI) * (.18 + float(index % 3) * .08)
+			_draw_polygon_base(shard, .065 * remaining + .023, 4, axis.angle(), color)
+		draw_arc(p, .21 + r * .78, 0, TAU, 29, Color("#fff1b5", remaining * .67), .044, true)
+		if rank >= 5:
+			var tip: Vector2 = p + up * (.26 + progress * .56)
+			draw_line(p, tip, Color("#ffe5a1", remaining * .49), .14 * remaining, true)
+			_draw_polygon_base(tip, .12 * remaining + .021, 4, 0.0, Color("#fff0b5", remaining))
 		return
 	if burst.get("action", "") == "infusion_changed" and not String(burst.element).is_empty():
 		for i: int in range(3):

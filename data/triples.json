@@ -1,6 +1,6 @@
 {
   "boilgrove": {
-    "name": "Boilgrove",
+    "name": "Kettle Grove",
     "elements": [
       "fire",
       "water",
@@ -30,7 +30,7 @@
     }
   },
   "thunderkiln": {
-    "name": "Thunderkiln",
+    "name": "Thunder Kiln",
     "elements": [
       "fire",
       "water",
@@ -85,7 +85,7 @@
     }
   },
   "smoketide": {
-    "name": "Smoketide",
+    "name": "Smokeweir",
     "elements": [
       "fire",
       "water",
@@ -145,7 +145,7 @@
     }
   },
   "daystar": {
-    "name": "Daystar Bloom",
+    "name": "Daystar",
     "elements": [
       "fire",
       "nature",
@@ -232,7 +232,7 @@
     }
   },
   "blackglass": {
-    "name": "Cindercoil",
+    "name": "Blackglass",
     "elements": [
       "fire",
       "electric",
@@ -264,7 +264,7 @@
     }
   },
   "embershade": {
-    "name": "Embershade",
+    "name": "Emberveil",
     "elements": [
       "fire",
       "light",
@@ -290,7 +290,7 @@
     }
   },
   "monsoonroot": {
-    "name": "Monsoonroot",
+    "name": "Monsoon Spire",
     "elements": [
       "water",
       "nature",

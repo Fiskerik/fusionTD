@@ -115,7 +115,7 @@ func test_endgame_wave_budget_and_boss_lineup() -> void:
 		for group: Dictionary in preview.groups:
 			total += int(group.count)
 			check(not group.props.has("splitter") and not group.props.has("revenant"))
-		check(total <= 96, "Bosses count toward the endgame unit cap")
+		check(total <= Waves.unit_cap(), "Bosses count toward the endgame unit cap")
 	equal(families.size(), 20)
 	for wave: int in [60, 70, 80, 90, 100]:
 		var sim := Sim.new(42)
@@ -130,8 +130,8 @@ func test_endgame_wave_budget_and_boss_lineup() -> void:
 			if i > 0:
 				check(int(queued[i].tick) > int(queued[i - 1].tick))
 	near(EnemyRules.control_resistance(49), 0)
-	near(EnemyRules.control_resistance(50), .01)
-	near(EnemyRules.control_resistance(80), .31)
+	near(EnemyRules.control_resistance(50), .0125)
+	near(EnemyRules.control_resistance(80), .3875)
 	near(EnemyRules.control_resistance(120), .70)
 
 func test_legacy_active_wave_gains_tenacity_on_resume() -> void:
@@ -147,9 +147,9 @@ func test_legacy_active_wave_gains_tenacity_on_resume() -> void:
 	sim.schedule(group, 100)
 	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	near(restored.state.mobs[0].s, 6.0)
-	near(restored.state.mobs[0].control_resistance, .31)
+	near(restored.state.mobs[0].control_resistance, .3875)
 	equal(restored.state.mobs[0].armor_rank, 4)
-	near(restored.state.spawn_queue[0].group.control_resistance, .31)
+	near(restored.state.spawn_queue[0].group.control_resistance, .3875)
 	equal(restored.pure_crystals(), 2)
 
 func test_later_enemy_formations_mix_elements_and_pressure() -> void:
@@ -221,7 +221,6 @@ func test_wave_48_caps_seeded_formation_spikes() -> void:
 		var tuned_hp: float = 0.0
 		for group: Dictionary in tuned.groups:
 			tuned_hp += float(group.hp) * int(group.count)
-			check(group.props.is_empty() or group.props == ["armored"] or group.props == ["swift"])
 		var original_hp: float = 0.0
 		for group: Dictionary in original.groups:
 			original_hp += float(group.hp) * int(group.count)
@@ -713,7 +712,12 @@ func test_tier_three_pure_towers_share_three_slots_across_elements() -> void:
 	sim.state.tiers.fire = 3
 	sim.state.tiers.water = 3
 	sim.state.tiers.nature = 3
-	equal(sim.apply(build).cost, int(sim.cfg.pure_tower_cost))
+	check(not sim.apply(build).ok, "Direct Pure builds require a crystal even with enough gold")
+	sim.state.wave = 120
+	var gold_before: int = sim.state.gold
+	equal(sim.apply(build).cost, 1500)
+	equal(int(sim.state.gold), gold_before - 1500)
+	equal(sim.pure_crystals(), 3)
 	check(sim.apply({"type":"build_pure", "slot":"s2", "kind":"water"}).ok)
 	check(sim.apply({"type":"build_pure", "slot":"s3", "kind":"nature"}).ok)
 	var fourth: Dictionary = {"type":"build_pure", "slot":"s4", "kind":"fire"}
@@ -721,10 +725,9 @@ func test_tier_three_pure_towers_share_three_slots_across_elements() -> void:
 	var base: Dictionary = TowerRules.create(0, "", "pure", "fire", "", 0)
 	base.level = 6
 	var pure: Dictionary = sim.state.towers.s1
-	equal(TowerRules.display_name(pure), "Pure Fire")
+	equal(TowerRules.display_name(pure), "Ember Crown")
 	check(float(TowerRules.attack_profile(pure).damage) > 2.0 * float(TowerRules.attack_profile(base).damage))
 	check(not TowerRules.can_fuse(pure) and not sim.apply({"type":"upgrade", "slot":"s1"}).ok)
-	sim.state.wave = 30
 	check(sim.apply({"type": "build", "slot": "s5", "kind": "fire"}).ok)
 	sim.state.towers.s5.level = 6
 	check(not sim.apply({"type": "empower_pure", "slot": "s5"}).ok)
@@ -738,7 +741,7 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 	var sim := Sim.new()
 	sim.state.gold = 10000
 	sim.state.tiers.fire = 3
-	check(sim.apply({"type": "build_pure", "slot": "s1", "kind": "fire"}).ok)
+	sim.state.towers.s1 = TowerRules.create(sim.next_id(), "s1", "ascended", "fire", "", 1600)
 	check(sim.apply({"type": "build", "slot": "s2", "kind": "fire"}).ok)
 	sim.state.towers.s2.level = 6
 	var action: Dictionary = {"type": "empower_pure", "slot": "s1"}
@@ -978,3 +981,94 @@ func test_special_enemies_replace_regular_spawns() -> void:
 		for group: Dictionary in Waves.generate(sim.state.seed, wave).groups:
 			baseline += int(group.count)
 		equal(total, baseline)
+
+func test_fusion_cost_is_the_same_when_upgrading_before_or_after() -> void:
+	for elements: Array in [["fire", "light"], ["water", "light"]]:
+		for rank: int in [2, 3]:
+			var direct := _fusion_test_setup(elements)
+			var later := _fusion_test_setup(elements)
+			for slot: String in ["s1", "s2"]:
+				for level: int in range(2, rank * 2):
+					check(direct.apply({"type": "upgrade", "slot": slot}).ok)
+			var action := {"type": "fuse", "slot_a": "s1", "slot_b": "s2"}
+			var result: Dictionary = direct.apply(action)
+			check(result.ok and int(result.cost) < 0)
+			check(later.apply(action).ok)
+			for level: int in range(1, rank):
+				check(later.apply({"type": "upgrade", "slot": "s1"}).ok)
+			equal(direct.state.towers.s1.level, rank)
+			equal(direct.state.gold, later.state.gold)
+			equal(direct.state.towers.s1.invested, later.state.towers.s1.invested)
+
+func test_triple_fusion_cost_counts_both_ingredients_and_applies_boons() -> void:
+	var direct := _fusion_test_setup(["fire", "light"])
+	var later := _fusion_test_setup(["fire", "light"])
+	for sim: Sim in [direct, later]:
+		sim.state.boons = [{"id": "fusion_discount", "wave": 90}]
+		sim.refresh_boons()
+		check(sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s2"}).ok)
+		sim.state.tiers.water = 3
+		check(sim.apply({"type": "build", "slot": "s2", "kind": "water"}).ok)
+		check(sim.apply({"type": "upgrade", "slot": "s2"}).ok)
+	check(direct.apply({"type": "upgrade", "slot": "s1"}).ok)
+	for level: int in range(2):
+		check(direct.apply({"type": "upgrade", "slot": "s2"}).ok)
+	for sim: Sim in [direct, later]:
+		check(sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s2"}).ok)
+	check(later.apply({"type": "upgrade", "slot": "s1"}).ok)
+	equal(direct.state.towers.s1.level, 2)
+	equal(direct.state.gold, later.state.gold)
+	equal(direct.state.towers.s1.invested, later.state.towers.s1.invested)
+
+func _fusion_test_setup(elements: Array) -> Sim:
+	var sim := Sim.new(7)
+	sim.state.gold = 10000
+	for index: int in range(2):
+		var slot: String = "s%d" % (index + 1)
+		var element: String = elements[index]
+		sim.state.tiers[element] = 3
+		check(sim.apply({"type": "build", "slot": slot, "kind": element}).ok)
+		check(sim.apply({"type": "upgrade", "slot": slot}).ok)
+	return sim
+
+func test_wave_group_counts_respect_the_cap_after_swarm_and_bonus_spawns() -> void:
+	var sim := Sim.campaign(71)
+	for seed_value: int in range(1, 11):
+		for wave: int in [12, 25, 44, 48, 49, 51, 64, 72, 85, 103, 151]:
+			var output: Dictionary = Waves.generate(seed_value, wave, {}, true, true, sim.track)
+			var count: int = output.bosses.size()
+			for group: Dictionary in output.groups:
+				count += int(group.count)
+			check(count > 0 and count <= 48, "The count includes swarms, mixed groups, and Gilded Courier")
+
+func test_tower_atlas_covers_every_build_and_fusion() -> void:
+	var names: Dictionary = {}
+	var sprites: Dictionary = {}
+	var towers: Array[Dictionary] = [
+		TowerRules.create(0, "", "arrow", "normal", "", 0),
+		TowerRules.create(0, "", "cannon", "normal", "", 0),
+	]
+	for element: String in DataDB.ELEMENTS:
+		towers.append(TowerRules.create(0, "", "pure", element, "", 0))
+		towers.append(TowerRules.create(0, "", "ascended", element, "", 0))
+	for id: String in DataDB.read("duals").keys() + DataDB.read("triples").keys():
+		towers.append(TowerRules.fusion_result(id))
+	for tower: Dictionary in towers:
+		var sprite: String = TowerArt.sprite_id(tower)
+		check(TowerArt.SPRITES.has(sprite))
+		sprites[sprite] = true
+		names[TowerRules.display_name(tower)] = true
+	equal(sprites.size(), 49)
+	equal(names.size(), 49)
+
+func test_later_mobs_gain_health_armor_and_resistance_without_extra_spawns() -> void:
+	var adjustments: Dictionary = DataDB.read("waves").adjustments
+	adjustments["49"] = {"pattern": "grunts"}
+	adjustments["89"] = {"pattern": "grunts"}
+	var earlier: Dictionary = Waves.generate(34, 49).groups[0]
+	var later: Dictionary = Waves.generate(34, 89).groups[0]
+	adjustments.erase("49")
+	adjustments.erase("89")
+	check(float(later.hp) > float(earlier.hp))
+	check(float(later.armor) > float(earlier.armor))
+	check(float(later.control_resistance) > float(earlier.control_resistance))

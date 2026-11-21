@@ -19,7 +19,7 @@ static func stats(tower: Dictionary) -> Dictionary:
 
 static func display_name(tower: Dictionary) -> String:
 	var title: String = stats(tower).name
-	return "Pure " + title if tower.kind == "ascended" else title
+	return String(stats(tower).pure_name) if tower.kind == "ascended" else title
 
 static func progression(tower: Dictionary) -> Dictionary:
 	var key: String = tower.kind + "_levels" if tower.kind in ["pure", "dual", "triple", "ascended"] else "normal_levels"
@@ -246,12 +246,37 @@ static func ingredients(tower: Dictionary) -> PackedStringArray:
 static func fusion_result(id: String, slot: String = "", tower_id: int = 0, invested: int = 0) -> Dictionary:
 	return create(tower_id, slot, "triple" if DataDB.read("triples").has(id) else "dual", "", id, invested)
 
-static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Dictionary, victories: Dictionary, tower_id: int = 0, fee: int = -1) -> Dictionary:
-	var invested: int = int(first.invested) + int(second.invested) + (fusion_cost(first, second) if fee < 0 else fee)
+static func fusion_fee(first: Dictionary, second: Dictionary, tiers: Dictionary, base_fee: int) -> int:
+	var result: Dictionary = fusion_result(fusion_recipe(first, second))
+	var rank: int = _result_rank(result, first, second, tiers)
+	var bands: Array = DataDB.read("balance").infusion.min_levels
+	var pre_upgrades: int = 0
+	for input: Dictionary in [first, second]:
+		if input.kind == "dual":
+			pre_upgrades += _rank_cost(input, 1, rank)
+		else:
+			pre_upgrades += _rank_cost(input, int(bands[0]), int(bands[rank - 1]))
+	return base_fee + _rank_cost(result, 1, rank) - pre_upgrades
+
+static func _rank_cost(tower: Dictionary, from: int, to: int) -> int:
+	var prices: Array = progression(tower).upgrade
+	var cost: int = 0
+	for level: int in range(from, to):
+		cost += int(prices[level - 1])
+	return cost
+
+static func _result_rank(result: Dictionary, first: Dictionary, second: Dictionary, tiers: Dictionary) -> int:
+	var desired: int = mini(_fusion_level(first), _fusion_level(second))
+	var rank: int = 1
+	while rank < desired and rank_requirement(result, rank + 1, tiers).is_empty():
+		rank += 1
+	return rank
+
+static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Dictionary, victories: Dictionary, tower_id: int = 0, fee: Variant = null) -> Dictionary:
+	var paid: int = fusion_fee(first, second, tiers, fusion_cost(first, second)) if fee == null else int(fee)
+	var invested: int = int(first.invested) + int(second.invested) + paid
 	var result: Dictionary = fusion_result(id, first.slot, tower_id, invested)
-	var desired_level: int = mini(_fusion_level(first), _fusion_level(second))
-	while int(result.level) < desired_level and level_requirement(result, tiers).is_empty():
-		result.level += 1
+	result.level = _result_rank(result, first, second, tiers)
 	var crystals: int = int(first.get("crystals", 0)) + int(second.get("crystals", 0))
 	if crystals > 0:
 		result.crystals = crystals

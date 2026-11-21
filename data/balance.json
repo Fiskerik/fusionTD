@@ -14,7 +14,7 @@
   ],
   "interest": 0.02,
   "interest_cap": 15,
-  "pure_tower_cost": 1600,
+  "pure_tower_cost": 1500,
   "pure_tower_limit": 3,
   "pure_crystal_every": 30,
   "pure_crystal_damage": 0.25,

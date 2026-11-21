@@ -336,8 +336,8 @@ func test_late_enemies_recover_between_disables() -> void:
 	var root := {"root": [1, 2.0], "slow": [.5, 3.0]}
 	Effects.apply(mob, root, 1.0, false, 1, 0.0, 30.0)
 	var initial: int = mob.root_time
-	equal(initial, 41)
-	near(mob.slow, .34)
+	equal(initial, 36)
+	near(mob.slow, .30)
 	var free_ticks := 0
 	for i: int in range(initial + 15):
 		Effects.tick(mob, 30.0)
@@ -654,3 +654,13 @@ func test_campaign_enemy_behaviors_trigger_on_the_road() -> void:
 	check(not capped.has("sabotaged") and target.get("sabotaged", false))
 	check(sim.apply({"type": "upgrade", "slot": target.slot}).ok)
 	check(not target.has("sabotaged"))
+
+func test_summoned_enemies_wait_when_the_battlefield_is_at_its_enemy_cap() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	var enemy: Dictionary = _enemy()
+	for i: int in range(50):
+		sim.schedule(enemy, 1, 1.0 + float(i) * .1)
+	sim.step()
+	equal(sim.state.mobs.size(), 48)
+	equal(sim.state.spawn_queue.size(), 2)

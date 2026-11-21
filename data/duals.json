@@ -1,6 +1,6 @@
 {
   "steam": {
-    "name": "Steam",
+    "name": "Steamworks",
     "pair": [
       "fire",
       "water"
@@ -47,7 +47,7 @@
     "art": "grove"
   },
   "forge": {
-    "name": "Forge",
+    "name": "Emberforge",
     "pair": [
       "fire",
       "electric"
@@ -63,7 +63,7 @@
     "art": "anvil"
   },
   "flare": {
-    "name": "Flare",
+    "name": "Sunflare",
     "pair": [
       "fire",
       "light"
@@ -87,7 +87,7 @@
     "art": "sunburst"
   },
   "cinder": {
-    "name": "Cinder",
+    "name": "Cinder Maw",
     "pair": [
       "fire",
       "dark"
@@ -110,7 +110,7 @@
     "art": "crater"
   },
   "spring": {
-    "name": "Spring",
+    "name": "Springwell",
     "pair": [
       "water",
       "nature"
@@ -126,7 +126,7 @@
     "art": "spring"
   },
   "storm": {
-    "name": "Storm",
+    "name": "Stormglass",
     "pair": [
       "water",
       "electric"
@@ -153,7 +153,7 @@
     "art": "storm"
   },
   "frost": {
-    "name": "Frost",
+    "name": "Rime Spire",
     "pair": [
       "water",
       "light"
@@ -180,7 +180,7 @@
     "art": "ice"
   },
   "venom": {
-    "name": "Bog Venom",
+    "name": "Mirefang",
     "pair": [
       "water",
       "dark"
@@ -205,7 +205,7 @@
     "art": "trap"
   },
   "overgrowth": {
-    "name": "Overgrowth",
+    "name": "Stormbriar",
     "pair": [
       "nature",
       "electric"
@@ -232,7 +232,7 @@
     "art": "grove"
   },
   "bloom": {
-    "name": "Bloom",
+    "name": "Daybloom",
     "pair": [
       "nature",
       "light"
@@ -251,7 +251,7 @@
     "art": "lotus"
   },
   "blight": {
-    "name": "Blight",
+    "name": "Blightthorn",
     "pair": [
       "nature",
       "dark"
@@ -274,7 +274,7 @@
     "art": "thorn"
   },
   "prism": {
-    "name": "Prism",
+    "name": "Prism Gate",
     "pair": [
       "electric",
       "light"
@@ -296,7 +296,7 @@
     "art": "prism"
   },
   "null": {
-    "name": "Null",
+    "name": "Nullgate",
     "pair": [
       "electric",
       "dark"
