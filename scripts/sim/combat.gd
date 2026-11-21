@@ -234,7 +234,7 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 		killer.kills = int(killer.get("kills", 0)) + 1
 	sim.state.stats.kills += 1
 	if enemy.kind == "boss":
-		sim.state.stats.bosses_defeated = int(sim.state.stats.get("bosses_defeated", 0)) + 1
+		sim.record_boss_kill()
 	if enemy.kind == "spirit":
 		sim.resolve_spirit(enemy)
 	else:
@@ -281,7 +281,7 @@ static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array
 			var mobs: Dictionary = DataDB.read("mobs")
 			var group: Dictionary = {
 				"kind": "husk", "props": [], "element": "none", "gold": 0, "armor": 0,
-				"hp": Waves.base_enemy_hp(int(sim.state.wave)) * float(data.hp),
+				"hp": Waves.base_enemy_hp(int(sim.state.wave)) * float(data.hp) * float(mobs.health_multiplier),
 				"speed": float(mobs.speed), "leak": int(sim.cfg.leak.mob), "slow_cap": float(mobs.slow_cap),
 			}
 			for index: int in range(mini(int(data.count), int(data.cap) - husks)):

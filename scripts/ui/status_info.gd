@@ -22,6 +22,7 @@ const TRAITS: Dictionary = {
 	"tempest": ["Airborne", "Flies over roots and ice puddles. Slows and freezes still work.", "water"],
 	"ironwood": ["Elemental plating", "Takes half damage from elemental attacks. Uninfused Arrow and Cannon towers deal double damage.", "armor"],
 	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
+	"boss_guard": ["Damage reduction", "Reduces damage from all sources, including damage over time.", "armor"],
 	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
 	"chameleon": ["Chameleon", "Adapts to the last element that damaged it. Neutral hits always work.", "nature"],
 	"banner": ["Banner Bearer", "Nearby enemies move 20% faster. Banners do not stack.", "light"],
@@ -98,6 +99,7 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 		elif boss_trait == "ram" and not enemy.has("turn_seconds"):
 			boss_trait = "armored"
 		result.append(boss_trait)
+		result.append("boss_guard")
 	elif enemy.kind == "bonus":
 		result.append("bonus")
 	if float(enemy.get("control_resistance", 0.0)) > 0.0:
@@ -107,6 +109,8 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 static func trait_title(id: String, enemy: Dictionary) -> String:
 	if id == "resistance":
 		return "%s tenacity" % TowerInspector.percent(float(enemy.control_resistance))
+	if id == "boss_guard":
+		return "%s damage reduction" % TowerInspector.percent(float(DataDB.read("bosses").damage_reduction))
 	return TRAITS[id][0]
 
 static func trait_description(id: String) -> String:

@@ -1,5 +1,25 @@
 extends "res://tests/test_base.gd"
 
+func test_boss_damage_reduction_applies_to_hits_and_ongoing_effects() -> void:
+	var boss: Dictionary = EnemyRules.create(1, Waves.generate(1, 10).boss, 0.0, 0)
+	var start_hp: float = boss.hp
+	var tower: Dictionary = {"id": 2}
+	var hit: float = Damage.hit(100.0, boss.armor, 0.0, 0.0, 0.0)
+	Damage.deal(boss, hit, tower, 1)
+	near(start_hp - float(boss.hp), hit * .75)
+	near(boss.recent_damage, hit * .75)
+	near(tower.damage_dealt, hit * .75)
+	for effect: String in ["burn", "poison"]:
+		Effects.add_dot(boss, effect, 60.0, 1, 1, 1, 0.0, [2])
+	Effects.infect(boss, {"source": 2, "fraction": .2, "duration": 30})
+	var before_tick: float = boss.hp
+	var dot_damage: float = 4.0 * .75
+	var disease_damage: float = (hit * .75 + dot_damage) * .2 / 30.0 * .75
+	Effects.tick(boss, 30.0, false, {2: tower}, 2)
+	near(before_tick - float(boss.hp), dot_damage + disease_damage)
+	near(tower.damage_dealt, hit * .75 + dot_damage + disease_damage)
+	near(boss.recent_damage, hit * .75 + dot_damage)
+
 func test_splash_applies_full_and_partial_damage_at_distinct_distances() -> void:
 	var sim := Sim.new()
 	sim.state.phase = "wave"
@@ -614,7 +634,7 @@ func test_stormwing_ignores_ground_control_and_ironwood_resists_elements() -> vo
 		sim.state.towers.s1 = tower
 		Combat.spawn(sim, engine, 10.0)
 		sim.step()
-		near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * (2.0 if infusion.is_empty() else .5))
+		near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * (2.0 if infusion.is_empty() else .5) * .75)
 	near(Damage.against({"fire": .5, "water": .5}, engine, false), .5)
 	near(Damage.against({}, engine, true), .5)
 

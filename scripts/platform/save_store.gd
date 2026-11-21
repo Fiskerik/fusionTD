@@ -26,15 +26,17 @@ static func decode(payload: Variant) -> Sim:
 			state[key] = false
 	state = state.duplicate()
 	state.map_id = String(state.get("map_id", Track.LEGACY))
-	state.boons = state.get("boons", [])
+	state.active_boon = state.get("active_boon", _legacy_boon(state.get("boons", [])))
+	state.erase("boons")
 	state.boon_queue = state.get("boon_queue", [])
 	var sim := Sim.new(int(state.seed), state.map_id)
 	state.map_id = sim.track.layout_id
 	for key: String in sim.state:
 		if not state.has(key) or typeof(state[key]) != typeof(sim.state[key]):
 			return null
+	state.boon_queue = _boss_rewards(state.boon_queue, int(state.stats.get("bosses_defeated", 0)))
 	sim.state = state
-	sim.refresh_boons()
+	sim.refresh_boon()
 	_ascend_legacy_towers(state.towers)
 	for enemy: Dictionary in state.mobs:
 		EnemyRules.apply_wave_traits(enemy, int(state.wave))
@@ -44,8 +46,9 @@ static func decode(payload: Variant) -> Sim:
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
 		restored.map_id = state.map_id
-		restored.boons = restored.get("boons", [])
-		restored.boon_queue = restored.get("boon_queue", [])
+		restored.active_boon = restored.get("active_boon", _legacy_boon(restored.get("boons", [])))
+		restored.erase("boons")
+		restored.boon_queue = _boss_rewards(restored.get("boon_queue", []), int(restored.get("stats", {}).get("bosses_defeated", 0)))
 		restored.barrier = int(restored.get("barrier", 0))
 		restored.wave_has_rolled_weaknesses = bool(restored.get("wave_has_rolled_weaknesses", false))
 		restored.wave_uses_expanded_boss_roster = bool(restored.get("wave_uses_expanded_boss_roster", false))
@@ -53,6 +56,23 @@ static func decode(payload: Variant) -> Sim:
 		sim.undo_stack.append(restored)
 	sim.history.assign(payload.get("history", []))
 	return sim
+
+static func _legacy_boon(picks: Variant) -> Dictionary:
+	if not picks is Array or picks.is_empty():
+		return {}
+	var pick: Dictionary = picks.back()
+	var wave: int = int(pick.wave)
+	return {"id": pick.id, "wave": wave, "potency": 1.0 + .20 * clampi((wave - 1) / 20, 0, 4)}
+
+static func _boss_rewards(queue: Array, boss_kills: int) -> Array:
+	var rewards: Array = queue.filter(func(reward: Variant) -> bool: return reward is Dictionary and reward.get("source") == "boss")
+	var first_kill: int = boss_kills - rewards.size() + 1
+	for index: int in range(rewards.size()):
+		if not rewards[index].has("potency"):
+			var reward: Dictionary = rewards[index].duplicate()
+			reward.potency = RunBoons.reward_potency(first_kill + index)
+			rewards[index] = reward
+	return rewards
 
 static func _ascend_legacy_towers(towers: Dictionary) -> void:
 	for tower: Dictionary in towers.values():

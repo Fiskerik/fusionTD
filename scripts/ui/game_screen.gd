@@ -15,6 +15,7 @@ var element_status: HBoxContainer
 var gate_charge: int = 0
 var life_bar: ProgressBar
 var barrier_bar: ProgressBar
+var hud_boon: Button
 var preview_row: HBoxContainer
 var info: Label
 var inspector_panel: PanelContainer
@@ -99,7 +100,7 @@ func _resized() -> void:
 	match previous:
 		"select": _show_selection()
 		"boon_choice": _show_boon_choice()
-		"boons": _show_boons()
+		"boon_details": _show_active_boon()
 		"pause": _show_pause()
 		"end": _show_game_over()
 		"preview": _show_preview(overlay_wave, overlay_bonus)
@@ -150,10 +151,13 @@ func _build_layout() -> void:
 	wave_heading.add_child(combat_status)
 	stats = UIKit.label("", 18, Color("#d6e7bf"))
 	heading.add_child(stats)
+	var gate_row: HBoxContainer = UIKit.row(8)
+	gate_row.custom_minimum_size.y = 28
+	heading.add_child(gate_row)
 	var meters: VBoxContainer = UIKit.column(3)
-	meters.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	meters.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	meters.custom_minimum_size.x = 250
-	heading.add_child(meters)
+	gate_row.add_child(meters)
 	life_bar = ProgressBar.new()
 	life_bar.max_value = float(sim.cfg.start_lives)
 	life_bar.show_percentage = false
@@ -169,6 +173,16 @@ func _build_layout() -> void:
 	barrier_bar.add_theme_stylebox_override("fill", UIKit.style(Color("#87dcf5"), Color("#30483d"), 8, 0))
 	barrier_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 	meters.add_child(barrier_bar)
+	hud_boon = UIKit.button("", _show_active_boon, true, 28)
+	hud_boon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	hud_boon.add_theme_font_size_override("font_size", 14)
+	for style: String in ["normal", "focus", "hover", "pressed"]:
+		var fill: Color = Color("#ffe7af") if style in ["hover", "focus"] else Color("#f4d48f")
+		var pill: StyleBoxFlat = UIKit.style(fill, Color("#bd945a"), 12, 3)
+		pill.content_margin_left = 8
+		pill.content_margin_right = 8
+		hud_boon.add_theme_stylebox_override(style, pill)
+	gate_row.add_child(hud_boon)
 	var controls: HBoxContainer = UIKit.row(8)
 	header.add_child(controls)
 	speed_button = UIKit.button(DataDB.text("speed_value") % speed, _toggle_speed, false, 54)
@@ -420,12 +434,23 @@ func _refresh() -> void:
 		pulse.tween_interval(.5)
 		_update_countdown()
 	_update_hud(true)
+	_refresh_boon_badge()
 	_render_wave_heading()
 	_render_element_status()
 	_render_preview()
 	_render_site()
 	if is_instance_valid(overview):
 		overview.refresh_unlocks()
+
+func _refresh_boon_badge() -> void:
+	var pick: Dictionary = sim.state.active_boon
+	hud_boon.visible = not pick.is_empty()
+	if not hud_boon.visible:
+		return
+	var boon: Dictionary = DataDB.read("run_boons")[pick.id]
+	var effects: String = RunBoons.describe(boon, float(pick.potency))
+	hud_boon.text = "✦ " + effects.get_slice("\n", 0)
+	hud_boon.tooltip_text = boon.name + "\n" + effects
 
 func _update_hud(refresh_upgrades: bool = false) -> void:
 	stats.text = DataDB.text("hud_stats") % [sim.state.lives, sim.cfg.start_lives, sim.state.gold]
@@ -1124,7 +1149,8 @@ func _apply(action: Dictionary) -> void:
 		_update_hud()
 		return
 	message = ""
-	if action.type in ["select_element", "choose_boon", "fuse", "infuse", "remove_infusion"]:
+	var boon_decision: bool = action.type in ["choose_boon", "keep_boon"]
+	if boon_decision or action.type in ["select_element", "fuse", "infuse", "remove_infusion"]:
 		_close_overlay()
 	if action.type in ["upgrade", "empower_pure", "sell", "fuse"]:
 		upgrade_slot = ""
@@ -1162,13 +1188,15 @@ func _apply(action: Dictionary) -> void:
 		audio.play("unlock")
 		Haptics.play(26, profile.haptics)
 		field.animate({"type": "boon_chosen", "data": {}})
+	elif action.type == "keep_boon":
+		message = "Kept %s" % DataDB.read("run_boons")[sim.state.active_boon.id].name
 	elif action.type == "select_element":
 		message = DataDB.text("trial_queued") % [String(action.element).capitalize(), TowerRules.roman(int(action.tier))]
 		sim.apply({"type": "start_wave"})
 	_checkpoint()
 	_take_events()
 	_refresh()
-	if action.type == "choose_boon":
+	if boon_decision:
 		_show_intermission_choice()
 
 func _take_events() -> void:
@@ -1340,50 +1368,49 @@ func _show_boon_choice() -> void:
 	if options.is_empty():
 		return
 	var encounter: Dictionary = sim.state.boon_queue[0]
-	var body: VBoxContainer = _dialog("Choose a run boon", 600)
+	var active: Dictionary = sim.state.active_boon
+	var body: VBoxContainer = _dialog("Boss boon", 600)
 	overlay_type = "boon_choice"
-	body.add_child(UIKit.label("%s reward · Wave %d" % [String(encounter.source).capitalize(), int(encounter.wave)], 19, UIKit.MUTED))
+	var subtitle: String = "Wave %d" % int(encounter.wave)
+	if float(encounter.potency) > 1.0:
+		subtitle += " · New offers +%s potency" % TowerInspector.percent(float(encounter.potency) - 1.0)
+	body.add_child(UIKit.label(subtitle, 19, UIKit.MUTED))
 	var library: Dictionary = DataDB.read("run_boons")
+	if not active.is_empty():
+		var current: Dictionary = library[active.id]
+		var keep: Button = UIKit.button("Keep %s\n%s" % [current.name, RunBoons.describe(current, float(active.potency))],
+			_apply.bind({"type": "keep_boon"}), true, 72)
+		keep.add_theme_font_size_override("font_size", 19)
+		body.add_child(keep)
 	for id: String in options:
 		var boon: Dictionary = library[id]
 		var tags: PackedStringArray = RunBoons.tags(boon)
 		var tint: Color = _boon_tint(tags)
-		var button: Button = UIKit.button(boon.name + "\n" + RunBoons.describe(boon, int(encounter.wave)),
+		var button: Button = UIKit.button(boon.name + "\n" + RunBoons.describe(boon, float(encounter.potency)),
 			_apply.bind({"type": "choose_boon", "id": id}), false, 72)
 		button.add_theme_font_size_override("font_size", 19)
 		button.add_theme_stylebox_override("normal", UIKit.raised(UIKit.SURFACE.lerp(tint, .19), tint.lerp(UIKit.BORDER, .52)))
 		button.add_theme_stylebox_override("hover", UIKit.raised(UIKit.SURFACE.lerp(tint, .32), tint))
 		body.add_child(button)
 
-func _show_boons() -> void:
-	var body: VBoxContainer = _dialog("Run boons", 600)
-	overlay_type = "boons"
-	body.add_child(UIKit.label(sim.track.title, 19, UIKit.MUTED))
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size.y = minf(440.0, get_viewport_rect().size.y * .57) if not sim.state.boons.is_empty() else 72.0
-	body.add_child(scroll)
-	var list: VBoxContainer = UIKit.column(8)
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list)
-	var library: Dictionary = DataDB.read("run_boons")
-	for pick: Dictionary in sim.state.boons:
-		var boon: Dictionary = library[pick.id]
+func _show_active_boon() -> void:
+	var body: VBoxContainer = _dialog("Active boon", 530)
+	overlay_type = "boon_details"
+	var pick: Dictionary = sim.state.active_boon
+	if not pick.is_empty():
+		var boon: Dictionary = DataDB.read("run_boons")[pick.id]
 		var tags: PackedStringArray = RunBoons.tags(boon)
-		var tag_names := PackedStringArray()
-		for tag: String in tags:
-			tag_names.append(RunBoons.tag_name(tag))
 		var panel := PanelContainer.new()
 		var tint: Color = _boon_tint(tags)
 		panel.add_theme_stylebox_override("panel", UIKit.style(UIKit.SURFACE.lerp(tint, .16), UIKit.BORDER, 12, 8))
-		list.add_child(panel)
+		body.add_child(panel)
 		var card: VBoxContainer = UIKit.column(3)
 		panel.add_child(card)
 		card.add_child(UIKit.label(boon.name, 21, UIKit.INK))
-		card.add_child(UIKit.label(" / ".join(tag_names) + " · Wave %d" % int(pick.wave), 15, UIKit.MUTED, true))
-		card.add_child(UIKit.label(RunBoons.describe(boon, int(pick.wave)), 18, UIKit.INK, true))
-	if sim.state.boons.is_empty():
-		list.add_child(UIKit.label("Boons are earned after boss and spirit encounters.", 19, UIKit.MUTED, true))
+		card.add_child(UIKit.label("Chosen after wave %d" % int(pick.wave), 15, UIKit.MUTED))
+		card.add_child(UIKit.label(RunBoons.describe(boon, float(pick.potency)), 18, UIKit.INK, true))
+	else:
+		body.add_child(UIKit.label("Defeat a boss to earn your first boon.", 19, UIKit.MUTED, true))
 	body.add_child(UIKit.button(DataDB.text("close"), _close_reference, true, 48))
 
 func _show_selection() -> void:
@@ -1873,7 +1900,7 @@ func _show_pause() -> void:
 	references.add_child(UIKit.icon_button("book", DataDB.text("legend"), _show_legend))
 	body.add_child(references)
 	body.add_child(UIKit.button(DataDB.text("resume"), _resume, true, 65))
-	body.add_child(UIKit.button("Run boons · %d" % sim.state.boons.size(), _show_boons, false, 46))
+	body.add_child(UIKit.button("Active boon", _show_active_boon, false, 46))
 	body.add_child(UIKit.toggle_row("Music", profile.music, _toggle_music))
 	body.add_child(UIKit.toggle_row("Sound effects", profile.sound, _toggle_sound))
 	body.add_child(UIKit.toggle_row("Haptics", profile.haptics, _toggle_haptics))

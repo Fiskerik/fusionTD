@@ -3,7 +3,7 @@ extends RefCounted
 
 var state: Dictionary
 var track: Track
-var _boon_totals: Dictionary = {}
+var _boon_modifiers: Dictionary = {}
 var cfg: Dictionary = DataDB.read("balance")
 var hz: float = float(cfg.sim_hz)
 var intermission_left: float = float(cfg.intermission_seconds)
@@ -20,7 +20,7 @@ func _init(seed_value: int = 1, layout: String = Track.LEGACY) -> void:
 	for element: String in DataDB.ELEMENTS:
 		tiers[element] = 0
 	state = {
-		"seed": seed_value, "map_id": track.layout_id, "boons": [], "boon_queue": [], "tick": 0, "wave_tick": 0, "phase": "build", "wave": 1,
+		"seed": seed_value, "map_id": track.layout_id, "active_boon": {}, "boon_queue": [], "tick": 0, "wave_tick": 0, "phase": "build", "wave": 1,
 		"wave_has_rolled_weaknesses": true,
 		"wave_uses_expanded_boss_roster": true,
 		"lives": int(cfg.start_lives), "barrier": 0, "gold": int(cfg.start_gold), "next_id": 1,
@@ -62,32 +62,32 @@ func preview(wave: int, include_trial: bool = true) -> Dictionary:
 func boon_choices() -> PackedStringArray:
 	if state.boon_queue.is_empty():
 		return PackedStringArray()
-	return RunBoons.offers(int(state.seed), state.boon_queue[0], state.boons)
+	return RunBoons.offers(int(state.seed), state.boon_queue[0], state.active_boon)
 
-func refresh_boons() -> void:
-	_boon_totals = RunBoons.total(state.boons)
+func refresh_boon() -> void:
+	_boon_modifiers = RunBoons.modifiers(state.active_boon)
 
 func tower_boon(tower: Dictionary) -> Dictionary:
-	return RunBoons.for_tower(tower, _boon_totals)
+	return RunBoons.for_tower(tower, _boon_modifiers)
 
 func tower_profile(tower: Dictionary) -> Dictionary:
 	return TowerRules.attack_profile(tower, spirit_victories(), tower_boon(tower))
 
 func support_bonuses(tower: Dictionary, sources: Array[Dictionary], slot: String = "") -> Vector3:
-	return TowerRules.support_bonuses(tower, sources, track, slot, _boon_totals)
+	return TowerRules.support_bonuses(tower, sources, track, slot, _boon_modifiers)
 
 func fusion_fee(first: Dictionary, second: Dictionary) -> int:
-	var discount: float = RunBoons.limited("fusion_discount", float(_boon_totals.get("fusion", {}).get("fusion_discount", 0)))
+	var discount: float = RunBoons.limited("fusion_discount", float(_boon_modifiers.get("fusion", {}).get("fusion_discount", 0)))
 	var base_fee: int = ceili(float(TowerRules.fusion_cost(first, second)) * (1.0 - discount) - .000001)
 	if TowerRules.fusion_recipe(first, second).is_empty():
 		return base_fee
 	return TowerRules.fusion_fee(first, second, state.tiers, base_fee)
 
-func _queue_boons(source: String, wave: int, count: int = 1) -> void:
-	if track.layout_id == Track.LEGACY:
-		return
-	for index: int in range(count):
-		state.boon_queue.append({"source": source, "wave": wave, "index": index})
+func record_boss_kill() -> void:
+	var boss_kills: int = int(state.stats.get("bosses_defeated", 0)) + 1
+	state.stats.bosses_defeated = boss_kills
+	state.boon_queue.append({"source": "boss", "wave": int(state.wave), "index": state.boon_queue.size(),
+		"potency": RunBoons.reward_potency(boss_kills)})
 
 func choices() -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
@@ -225,6 +225,9 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 		"choose_boon":
 			if not boon_choices().has(String(action.get("id", ""))):
 				reason = "Choose one of the three offered boons."
+		"keep_boon":
+			if state.active_boon.is_empty() or state.boon_queue.is_empty():
+				reason = "Keeping a boon requires an active boon and a pending boss reward."
 		"start_wave":
 			if not state.boon_queue.is_empty():
 				reason = "Choose a run boon first."
@@ -251,7 +254,7 @@ func apply(action: Dictionary) -> Dictionary:
 	var slot: String = action.get("slot", action.get("slot_a", ""))
 	var tower: Dictionary = state.towers.get(slot, {})
 	history.append({"tick": int(state.tick), "action": action.duplicate(true)})
-	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon"]:
+	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon"]:
 		undo_stack.append(state.duplicate(true))
 		if undo_stack.size() > int(cfg.undo_limit):
 			undo_stack.pop_front()
@@ -310,10 +313,11 @@ func apply(action: Dictionary) -> Dictionary:
 			tower.stun = 0
 			state.rally_cd = int(cfg.rally_cooldown_ticks)
 			emit_event("tower_rallied", {"slot": slot})
-		"choose_boon":
+		"choose_boon", "keep_boon":
 			var reward: Dictionary = state.boon_queue.pop_front()
-			state.boons.append({"id": action.id, "wave": reward.wave})
-			refresh_boons()
+			if type == "choose_boon":
+				state.active_boon = {"id": action.id, "wave": reward.wave, "potency": reward.potency}
+				refresh_boon()
 			undo_stack.clear()
 		"select_element":
 			state.trial = {"element": action.element, "tier": int(action.tier)}
@@ -322,7 +326,7 @@ func apply(action: Dictionary) -> Dictionary:
 			_start_wave()
 		"undo":
 			state = undo_stack.pop_back()
-			refresh_boons()
+			refresh_boon()
 			emit_event("undone")
 	return result
 
@@ -417,14 +421,11 @@ func _start_wave() -> void:
 func _finish_wave() -> void:
 	intermission_left = float(cfg.intermission_seconds)
 	if not state.trial.is_empty():
-		_queue_boons("spirit", int(state.wave))
 		state.trial = {}
 		state.phase = "build"
 		emit_event("bonus_finished")
 		return
 	var cleared: int = state.wave
-	if cleared % int(cfg.boss_every) == 0:
-		_queue_boons("boss", cleared, preview(cleared).bosses.size())
 	state.gold += Economy.clear_reward(cleared, state.gold)
 	state.wave += 1
 	state.phase = "build"

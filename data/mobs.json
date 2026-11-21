@@ -30,6 +30,8 @@
     "obsidian_boar": {"name": "Obsidian Boar", "color": "#9386a2", "grim_index": 19, "gait": "lumber", "appears_from": 60}
   },
   "hp": 30,
+  "health_multiplier": 1.5,
+  "armor_multiplier": 2.0,
   "speed": 1,
   "slow_cap": 0.7,
   "specials": {

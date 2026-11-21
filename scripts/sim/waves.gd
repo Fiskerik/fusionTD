@@ -242,8 +242,8 @@ static func _group(wave: int, count: int, props: Array, hp: float, gold: int, el
 	if fast:
 		speed *= 1.0 + minf(float(pressure.speed_cap), harder_waves * float(pressure.speed_per_wave))
 	return {
-		"kind": "grunt", "element": "none", "props": props, "count": count, "hp": hp,
-		"armor": armor, "speed": speed, "gold": ceili(reward), "leak": int(DataDB.read("balance").leak.mob),
+		"kind": "grunt", "element": "none", "props": props, "count": count, "hp": hp * float(base.health_multiplier),
+		"armor": armor * float(base.armor_multiplier), "speed": speed, "gold": ceili(reward), "leak": int(DataDB.read("balance").leak.mob),
 		"slow_cap": float(base.slow_cap), "family": families[family_index % families.size()],
 		"season": floori(float(wave - 1) / families.size()) % 3,
 		"armor_rank": EnemyRules.armor_rank(wave), "control_resistance": EnemyRules.control_resistance(wave),

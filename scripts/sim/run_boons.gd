@@ -7,34 +7,32 @@ const LABELS: Dictionary = {"damage": "damage", "rate": "attack speed", "range":
 	"splash": "splash radius", "slow": "slow strength", "pierce": "armor pierce", "burn_stacks": "burn stacks",
 	"chain": "chain jumps", "fusion_discount": "fusion discount"}
 
-static func offers(seed_value: int, reward: Dictionary, picks: Array) -> PackedStringArray:
+static func offers(seed_value: int, reward: Dictionary, active_boon: Dictionary) -> PackedStringArray:
 	var pool: Array = DataDB.read("run_boons").keys()
-	var unused: Array = pool.duplicate()
-	for pick: Dictionary in picks:
-		unused.erase(pick.id)
-	var seed_offset: int = int(reward.index) + (100 if reward.source == "spirit" else 0)
+	pool.erase(active_boon.get("id", ""))
+	var seed_offset: int = int(reward.index)
 	var rng := SimRng.new((seed_value * 7919 + int(reward.wave) * 65537 + seed_offset * 104729 + 8749) & 0xffffffff)
 	var result := PackedStringArray()
 	for i: int in range(3):
-		var available: Array = unused if not unused.is_empty() else pool
-		var id: String = available[rng.take(available.size())]
-		result.append(id)
-		unused.erase(id)
-		pool.erase(id)
+		result.append(pool.pop_at(rng.take(pool.size())))
 	return result
 
-static func total(picks: Array) -> Dictionary:
+static func modifiers(active_boon: Dictionary) -> Dictionary:
+	if active_boon.is_empty():
+		return {}
 	var scopes: Dictionary = {}
-	var library: Dictionary = DataDB.read("run_boons")
-	for pick: Dictionary in picks:
-		for mod: Dictionary in library[pick.id].mods:
-			var stats: Dictionary = scopes.get(mod.scope, {})
-			stats[mod.stat] = float(stats.get(mod.stat, 0.0)) + amount(mod, int(pick.wave))
-			scopes[mod.scope] = stats
+	var boon: Dictionary = DataDB.read("run_boons")[active_boon.id]
+	for mod: Dictionary in boon.mods:
+		var stats: Dictionary = scopes.get(mod.scope, {})
+		stats[mod.stat] = amount(mod, float(active_boon.potency))
+		scopes[mod.scope] = stats
 	return scopes
 
-static func amount(mod: Dictionary, wave: int) -> float:
-	var value: float = float(mod.amount) * (1.0 + .20 * mini(4, maxi(0, (wave - 1) / 20)))
+static func reward_potency(boss_kills: int) -> float:
+	return 1.0 + .10 * clampi(boss_kills - 1, 0, 8)
+
+static func amount(mod: Dictionary, potency: float) -> float:
+	var value: float = float(mod.amount) * potency
 	if mod.stat in ["burn_stacks", "chain"]:
 		value = roundf(value)
 	return limited(mod.stat, value)
@@ -66,10 +64,10 @@ static func tags(boon: Dictionary) -> PackedStringArray:
 			result.append(mod.scope)
 	return result
 
-static func describe(boon: Dictionary, wave: int) -> String:
+static func describe(boon: Dictionary, potency: float) -> String:
 	var lines := PackedStringArray()
 	for mod: Dictionary in boon.mods:
-		var value: float = amount(mod, wave)
+		var value: float = amount(mod, potency)
 		var percentage: float = snappedf(absf(value) * 100.0, .01)
 		var percent_text: String = str(roundi(percentage)) if is_equal_approx(percentage, roundf(percentage)) else String.num(percentage, 2)
 		var unit: String = str(roundi(absf(value))) if mod.stat in ["burn_stacks", "chain"] else percent_text + "%"

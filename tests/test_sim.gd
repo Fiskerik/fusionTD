@@ -155,6 +155,7 @@ func test_legacy_active_wave_gains_tenacity_on_resume() -> void:
 func test_later_enemy_formations_mix_elements_and_pressure() -> void:
 	var data: Dictionary = DataDB.read("balance")
 	var base_hp: float = DataDB.read("mobs").hp
+	var swift_hp_limit: float = Waves.base_enemy_hp(11) * float(DataDB.read("mobs").health_multiplier) * .75
 	for seed_value: int in range(1, 6):
 		var shield_round: Dictionary = Waves.generate(seed_value, 8)
 		check(shield_round.groups.any(func(group: Dictionary) -> bool: return group.props.has("phasing")))
@@ -174,9 +175,31 @@ func test_later_enemy_formations_mix_elements_and_pressure() -> void:
 				near(group.speed, 1.0, "Ordinary enemies keep their movement speed")
 				check(float(group.armor) > 0.0)
 			elif group.props.has("swift"):
-				check(float(group.speed) > 1.3 and float(group.hp) < Waves.base_enemy_hp(11) * .75)
+				check(float(group.speed) > 1.3 and float(group.hp) < swift_hp_limit)
 		equal(elements.size(), 2)
 		check(speeds.size() > 1 and armors.size() > 1)
+
+func test_enemy_health_and_armor_multipliers() -> void:
+	var mobs: Dictionary = DataDB.read("mobs")
+	var health_multiplier: float = mobs.health_multiplier
+	var armor_multiplier: float = mobs.armor_multiplier
+	var trial: Dictionary = {"element": "fire", "tier": 1}
+	for wave: int in [5, 10, 48, 61]:
+		var boosted: Dictionary = Waves.generate(42, wave)
+		var spirit: Dictionary = Waves.generate(42, wave, trial).spirit
+		mobs.health_multiplier = 1.0
+		mobs.armor_multiplier = 1.0
+		var original: Dictionary = Waves.generate(42, wave)
+		var original_spirit: Dictionary = Waves.generate(42, wave, trial).spirit
+		mobs.health_multiplier = health_multiplier
+		mobs.armor_multiplier = armor_multiplier
+		equal(boosted.bosses, original.bosses)
+		equal(spirit, original_spirit)
+		for index: int in range(boosted.groups.size()):
+			var group: Dictionary = boosted.groups[index]
+			equal(group.count, original.groups[index].count)
+			near(group.hp, float(original.groups[index].hp) * 1.5)
+			near(group.armor, float(original.groups[index].armor) * 2.0)
 
 func test_wave_20_boss_health_reduction() -> void:
 	var adjustment: Dictionary = DataDB.read("bosses").health_adjustment
@@ -291,6 +314,8 @@ func test_play_through_first_trial_and_selection_gate() -> void:
 			equal(sim.state.tiers.water, 1)
 			equal(sim.state.lives, 20, "Five level-one Arrows stop the first spirit")
 			check(sim.apply({"type": "upgrade", "slot": "s1"}).ok)
+			check(sim.apply({"type": "upgrade", "slot": "s2"}).ok)
+			check(sim.apply({"type": "upgrade", "slot": "s3"}).ok)
 		check(sim.apply({"type": "start_wave"}).ok)
 		_finish(sim)
 		equal(sim.state.wave, wave + 1)
@@ -921,49 +946,100 @@ func test_campaign_layouts_are_centered_and_replay_uses_the_same_route() -> void
 		if sim.state.phase != "wave":
 			break
 		sim.step()
-	var choices: PackedStringArray = sim.boon_choices()
-	check(choices.size() == 3)
-	if not choices.is_empty():
-		check(sim.apply({"type": "choose_boon", "id": choices[0]}).ok)
+	check(sim.boon_choices().is_empty())
 	var replay := Replay.from_data({"seed": sim.state.seed, "map_id": sim.track.layout_id,
 		"actions": sim.history, "final_tick": sim.state.tick})
 	check(replay != null)
 	if replay != null:
 		equal(replay.state_hash(), sim.state_hash())
 
-func test_campaign_boons_queue_one_seeded_choice_per_encounter() -> void:
+func test_campaign_boons_queue_one_seeded_choice_per_boss_kill() -> void:
 	var sim := Sim.campaign(7)
 	var library: Dictionary = DataDB.read("run_boons")
 	equal(library.size(), 50)
 	sim.state.wave = 70
+	var bosses: Array[Dictionary] = sim.preview(70).bosses
 	sim.state.phase = "wave"
+	for boss: Dictionary in bosses:
+		Combat.spawn(sim, boss, 0.0)
+	Damage.deal(sim.state.mobs[0], float(bosses[0].hp) * 2.0, {})
 	sim.step()
+	equal(sim.state.phase, "wave")
+	equal(sim.state.boon_queue.size(), 1)
+	check(not sim.apply({"type": "choose_boon", "id": sim.boon_choices()[0]}).ok)
+	Damage.deal(sim.state.mobs[0], float(bosses[1].hp) * 2.0, {})
+	sim.step()
+	equal(sim.state.phase, "build")
 	equal(sim.state.boon_queue.size(), 2)
 	var choices: PackedStringArray = sim.boon_choices()
 	equal(choices.size(), 3)
+	near(sim.state.boon_queue[0].potency, 1.0)
+	near(sim.state.boon_queue[1].potency, 1.1)
 	check(choices[0] != choices[1] and choices[0] != choices[2] and choices[1] != choices[2])
 	check(not sim.describe({"type": "start_wave"}).ok)
 	check(not sim.apply({"type": "choose_boon", "id": "bogus"}).ok)
+	check(not sim.apply({"type": "keep_boon"}).ok)
 	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	equal(restored.track.layout_id, sim.track.layout_id)
 	equal(restored.boon_choices(), choices)
 	check(restored.apply({"type": "choose_boon", "id": choices[0]}).ok)
-	equal(restored.state.boons, [{"id": choices[0], "wave": 70}])
+	var first_pick: Dictionary = {"id": choices[0], "wave": 70, "potency": 1.0}
+	equal(restored.state.active_boon, first_pick)
 	check(not restored.boon_choices().has(choices[0]))
-	check(restored.apply({"type": "choose_boon", "id": restored.boon_choices()[0]}).ok)
+	var replacement_run: Sim = SaveStore.decode(SaveStore.encode(restored).duplicate(true))
+	var replacement: String = replacement_run.boon_choices()[0]
+	check(replacement_run.apply({"type": "choose_boon", "id": replacement}).ok)
+	equal(replacement_run.state.active_boon, {"id": replacement, "wave": 70, "potency": 1.1})
+	check(restored.apply({"type": "keep_boon"}).ok)
+	equal(restored.state.active_boon, first_pick)
+	check(not restored.apply({"type": "keep_boon"}).ok)
 	restored.state.trial = {"element": "fire", "tier": 1}
 	restored.state.phase = "wave"
+	Combat.spawn(restored, restored.preview(71).spirit, 0.0)
+	Damage.deal(restored.state.mobs[0], float(restored.state.mobs[0].hp), {})
 	restored.step()
-	equal(restored.state.boon_queue[0].source, "spirit")
-	equal(restored.boon_choices().size(), 3)
+	check(restored.boon_choices().is_empty())
+	restored.state.wave = 10
+	restored.state.phase = "wave"
+	Combat.spawn(restored, restored.preview(10).boss, restored.track.total)
+	restored.step()
+	equal(restored.state.stats.leaked, 1)
+	check(restored.boon_choices().is_empty())
+	restored.state.boon_queue.append({"source": "spirit", "wave": 70, "index": 0})
+	var migrated: Sim = SaveStore.decode(SaveStore.encode(restored))
+	check(migrated.boon_choices().is_empty())
+	equal(migrated.state.active_boon, first_pick)
 	var late_mod: Dictionary = library.fire_damage.mods[0]
-	check(RunBoons.amount(late_mod, 80) > RunBoons.amount(late_mod, 10))
+	check(RunBoons.amount(late_mod, RunBoons.reward_potency(3)) > RunBoons.amount(late_mod, RunBoons.reward_potency(2)))
+	near(RunBoons.reward_potency(80), 1.8)
+
+func test_legacy_save_keeps_the_most_recent_boon_at_its_original_potency() -> void:
+	var sim := Sim.campaign(7)
+	var payload: Dictionary = SaveStore.encode(sim).duplicate(true)
+	payload.state.erase("active_boon")
+	payload.state.boons = [{"id": "water_damage", "wave": 10}, {"id": "fire_damage", "wave": 30}]
+	payload.state.stats.bosses_defeated = 3
+	payload.state.boon_queue = [{"source": "boss", "wave": 30, "index": 0}]
+	payload.undo.append(payload.state.duplicate(true))
+	var restored: Sim = SaveStore.decode(payload)
+	equal(restored.state.active_boon, {"id": "fire_damage", "wave": 30, "potency": 1.2})
+	near(restored.state.boon_queue[0].potency, 1.2)
+	check(not restored.state.has("boons"))
+	check(restored.apply({"type": "undo"}).ok)
+	equal(restored.state.active_boon.id, "fire_damage")
+
+func test_a_replaced_boon_no_longer_changes_towers_or_fusion_costs() -> void:
+	var sim := Sim.campaign(7)
 	var fire: Dictionary = TowerRules.create(1, "tile_0_0", "pure", "fire", "", 100)
 	var water: Dictionary = TowerRules.create(2, "tile_0_1", "pure", "water", "", 100)
-	sim.state.boons = [{"id": "fire_damage", "wave": 70}, {"id": "fusion_discount", "wave": 90}]
-	sim.refresh_boons()
+	sim.state.active_boon = {"id": "fire_damage", "wave": 10, "potency": 1.0}
+	sim.refresh_boon()
 	check(float(sim.tower_profile(fire).damage) > float(TowerRules.attack_profile(fire).damage))
 	near(sim.tower_profile(water).damage, TowerRules.attack_profile(water).damage)
+	equal(sim.fusion_fee(fire, water), TowerRules.fusion_cost(fire, water))
+	sim.state.active_boon = {"id": "fusion_discount", "wave": 90, "potency": 1.8}
+	sim.refresh_boon()
+	near(sim.tower_profile(fire).damage, TowerRules.attack_profile(fire).damage)
 	equal(sim.fusion_fee(fire, water), ceili(TowerRules.fusion_cost(fire, water) * .75))
 
 func test_special_enemies_replace_regular_spawns() -> void:
@@ -1004,8 +1080,8 @@ func test_triple_fusion_cost_counts_both_ingredients_and_applies_boons() -> void
 	var direct := _fusion_test_setup(["fire", "light"])
 	var later := _fusion_test_setup(["fire", "light"])
 	for sim: Sim in [direct, later]:
-		sim.state.boons = [{"id": "fusion_discount", "wave": 90}]
-		sim.refresh_boons()
+		sim.state.active_boon = {"id": "fusion_discount", "wave": 90, "potency": 1.8}
+		sim.refresh_boon()
 		check(sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s2"}).ok)
 		sim.state.tiers.water = 3
 		check(sim.apply({"type": "build", "slot": "s2", "kind": "water"}).ok)

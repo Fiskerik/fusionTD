@@ -84,6 +84,8 @@ static func hit(raw: float, armor: float, pierce: float, shred: float, curse: fl
 	return maxf(amplified - remaining, amplified * float(DataDB.read("balance").armor_floor))
 
 static func deal(enemy: Dictionary, amount: float, tower: Dictionary, at_tick: int = -1) -> void:
+	if enemy.kind == "boss":
+		amount *= 1.0 - float(DataDB.read("bosses").damage_reduction)
 	var dealt: float = minf(maxf(0.0, float(enemy.hp)), amount)
 	enemy.hp -= amount
 	if dealt <= 0.0:

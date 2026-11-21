@@ -10,6 +10,7 @@
   "spawn_tick": 60,
   "health_adjustment": {"from": 20, "multiplier": 0.8},
   "control_resistance": 0.5,
+  "damage_reduction": 0.25,
   "gold": [
     225,
     15

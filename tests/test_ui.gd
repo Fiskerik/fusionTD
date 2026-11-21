@@ -1,5 +1,47 @@
 extends "res://tests/test_base.gd"
 
+func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	game.sim = Sim.campaign(7)
+	runner.root.add_child(game)
+	game.set_process(false)
+	game.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	game.size = Vector2(720, 1000)
+	await runner.process_frame
+	await runner.process_frame
+	check(not game.hud_boon.visible)
+	var board: Rect2 = game.field.get_global_rect()
+	game.sim.state.wave = 10
+	game.sim.record_boss_kill()
+	game._show_intermission_choice()
+	equal(game.overlay_type, "boon_choice")
+	var first: Array[Node] = game.overlay.find_children("*", "Button", true, false)
+	equal(first.size(), 3)
+	var choose: Button = first[0]
+	choose.pressed.emit()
+	var active: Dictionary = game.sim.state.active_boon.duplicate()
+	var boon: Dictionary = DataDB.read("run_boons")[active.id]
+	var description: String = RunBoons.describe(boon, float(active.potency))
+	check(game.hud_boon.visible and game.hud_boon.text.contains(description.get_slice("\n", 0)))
+	await runner.process_frame
+	equal(game.field.get_global_rect(), board)
+	game.hud_boon.pressed.emit()
+	equal(game.overlay_type, "boon_details")
+	check(game.overlay.find_children("*", "Label", true, false).any(func(label: Label) -> bool: return label.text == description))
+	game.sim.state.wave = 20
+	game.sim.record_boss_kill()
+	game._show_intermission_choice()
+	var next: Array[Node] = game.overlay.find_children("*", "Button", true, false)
+	equal(next.size(), 4)
+	var keep: Button = next[0]
+	check(keep.text.begins_with("Keep " + boon.name))
+	keep.pressed.emit()
+	equal(game.sim.state.active_boon, active)
+	equal(game.overlay_type, "")
+	game.queue_free()
+	await runner.process_frame
+
 func test_boss_heading_eases_into_bends_and_follows_the_inverted_board() -> void:
 	var field := BattlefieldView.new()
 	field.sim = Sim.new()

@@ -24,7 +24,7 @@ Dual fusions cost 313 gold and triple fusions cost 638 gold. For fusion, element
 
 Waves schedule up to 48 enemies, with a matching on-field cap. From wave 41, regular enemies gain extra health and armor.
 
-New campaigns draw one of ten centered Greenmarch routes from the run seed. The saved route, earned boons, and pending choices travel with the checkpoint. After a spirit or boss encounter, pick one of three boons. Boons offered later have stronger values up to a cap. Review your picks under **Run boons** in the pause menu.
+New campaigns draw one of ten centered Greenmarch routes from the run seed. The saved route, active boon, and pending choices travel with the checkpoint. After the fight, choose a new boon or keep your active one for each boss you defeated. Only one boon applies at a time. New offers gain 10% of their base potency per boss defeated after the first, up to +80% and each effect's cap. Tap the boon in the HUD or open **Active boon** in the pause menu to see its full effects.
 
 Chameleons adapt to elemental hits, Banner Bearers rally nearby enemies, Burrowers hide underground, Thieves steal gold at the gate, and Saboteurs jam the closest upgradeable tower. Upgrade or fuse a jammed tower to restore it.
 
