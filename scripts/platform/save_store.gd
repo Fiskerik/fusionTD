@@ -31,6 +31,7 @@ static func decode(payload: Variant) -> Sim:
 	state.boon_queue = state.get("boon_queue", [])
 	var sim := Sim.new(int(state.seed), state.map_id)
 	state.map_id = sim.track.layout_id
+	state.merge(sim.tactical_defaults())
 	for key: String in sim.state:
 		if not state.has(key) or typeof(state[key]) != typeof(sim.state[key]):
 			return null
@@ -42,10 +43,12 @@ static func decode(payload: Variant) -> Sim:
 		EnemyRules.apply_wave_traits(enemy, int(state.wave))
 	for entry: Dictionary in state.spawn_queue:
 		EnemyRules.apply_wave_traits(entry.group, int(state.wave))
-	sim.intermission_left = clampf(float(payload.get("intermission_left", sim.cfg.intermission_seconds)), 0, float(sim.cfg.intermission_seconds))
+	var countdown: float = float(sim.cfg.opening_seconds if int(state.wave) == 1 else sim.cfg.intermission_seconds)
+	sim.intermission_left = clampf(float(payload.get("intermission_left", countdown)), 0, countdown)
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
 		restored.map_id = state.map_id
+		restored.merge(sim.tactical_defaults())
 		restored.active_boon = restored.get("active_boon", _legacy_boon(restored.get("boons", [])))
 		restored.erase("boons")
 		restored.boon_queue = _boss_rewards(restored.get("boon_queue", []), int(restored.get("stats", {}).get("bosses_defeated", 0)))

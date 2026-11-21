@@ -57,6 +57,27 @@ static func move(enemy: Dictionary, track: Track, hz: float, skid: float) -> voi
 			return
 	enemy.s = to
 
+static func wizard_cycle(hz: float) -> int:
+	var wizard: Dictionary = DataDB.read("waves").wizard
+	return Effects.ticks(wizard.visible_seconds, hz) + Effects.ticks(wizard.void_seconds, hz)
+
+static func in_void(enemy: Dictionary, tick: int, hz: float) -> bool:
+	if enemy.kind != "wizard":
+		return false
+	var visible_ticks: int = Effects.ticks(DataDB.read("waves").wizard.visible_seconds, hz)
+	return (tick - int(enemy.born)) % wizard_cycle(hz) >= visible_ticks
+
+static func warp(enemy: Dictionary, track: Track, tick: int, hz: float) -> void:
+	var age: int = tick - int(enemy.born)
+	if age <= 0 or age % wizard_cycle(hz) != 0:
+		return
+	var corner: int = track.corner_crossed(float(enemy.s), track.total)
+	enemy.s = track.lengths[corner] if corner >= 0 else track.total
+	enemy.prev_s = enemy.s
+
+static func hidden(enemy: Dictionary, track: Track, tick: int, hz: float) -> bool:
+	return in_void(enemy, tick, hz) or burrowed(enemy, track.total)
+
 static func armor_rank(wave: int) -> int:
 	return mini(4, wave / 20)
 

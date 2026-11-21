@@ -16,6 +16,14 @@ var gate_charge: int = 0
 var life_bar: ProgressBar
 var barrier_bar: ProgressBar
 var hud_boon: Button
+var swap_buttons: Dictionary = {}
+var swap_kind: String = ""
+var swap_hold: int = 0
+var stone_status: Label
+var swap_status: Label
+var interest_status: Label
+var interest_awarded: int = 0
+var interest_notice: float = 0.0
 var preview_row: HBoxContainer
 var info: Label
 var inspector_panel: PanelContainer
@@ -44,6 +52,9 @@ var action_buttons: Dictionary = {}
 var overlay_actions: Dictionary = {}
 var last_gold: int = -1
 var round_controls: HBoxContainer
+var start_gesture_button: Button
+var start_gesture_position: Vector2
+var start_gesture_on_button: bool = false
 var start_button: Button
 var fuse_button: Button
 var last_countdown: int = -1
@@ -104,6 +115,8 @@ func _resized() -> void:
 		"pause": _show_pause()
 		"end": _show_game_over()
 		"preview": _show_preview(overlay_wave, overlay_bonus)
+		"matchups": _show_matchups(overlay_wave, overlay_bonus)
+		"swap": _show_swap_picker(swap_kind)
 		"tower": _show_tower_details()
 		"leaderboard": _show_leaderboard()
 		"statuses": _show_status_help()
@@ -202,6 +215,7 @@ func _build_layout() -> void:
 	ribbon.add_child(wave_effects)
 	element_status = UIKit.row(4)
 	ribbon.add_child(element_status)
+	_build_tactics(header_stack)
 
 	preview_row = UIKit.row(4)
 	stack.add_child(preview_row)
@@ -220,6 +234,7 @@ func _build_layout() -> void:
 		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		field.site_pressed.connect(_site_pressed)
 		field.enemy_pressed.connect(_enemy_pressed)
+		field.road_double_tapped.connect(_try_road_stone)
 	play.add_child(field)
 	field.gate_on_top = bool(profile.get("gate_on_top", false))
 
@@ -324,6 +339,7 @@ func _build_layout() -> void:
 func _process(delta: float) -> void:
 	if sim == null or paused:
 		return
+	interest_notice = maxf(0.0, interest_notice - delta)
 	if sim.state.phase == "build":
 		_count_down(delta)
 		return
@@ -341,6 +357,112 @@ func _process(delta: float) -> void:
 	if steps > 0:
 		_update_enemy_inspector()
 		_update_hud()
+
+func _build_tactics(parent: VBoxContainer) -> void:
+	var row: HBoxContainer = UIKit.row(6)
+	parent.add_child(row)
+	swap_buttons.clear()
+	for kind: String in ["arrow", "cannon"]:
+		var button: Button = UIKit.button("", Callable(), false, 38)
+		button.custom_minimum_size.x = 49
+		button.size_flags_horizontal = Control.SIZE_FILL
+		button.name = "Swap" + kind.capitalize()
+		var badge: Control = UIKit.badge(kind, 25)
+		button.add_child(badge)
+		badge.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		badge.offset_left = -12
+		badge.offset_top = -12
+		badge.offset_right = 12
+		badge.offset_bottom = 12
+		button.button_down.connect(_swap_hold_started.bind(kind))
+		button.button_up.connect(_swap_hold_released)
+		button.pressed.connect(_swap_tip)
+		swap_buttons[kind] = button
+		row.add_child(button)
+	swap_status = UIKit.label("", 15, Color("#e7ebd4"))
+	row.add_child(swap_status)
+	stone_status = UIKit.label("", 15, Color("#e7ebd4"))
+	stone_status.mouse_filter = Control.MOUSE_FILTER_STOP
+	row.add_child(stone_status)
+	interest_status = UIKit.label("", 16, Color("#ffe2a0"))
+	interest_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	interest_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(interest_status)
+
+func _update_tactics() -> void:
+	swap_status.text = "%d swaps" % int(sim.state.swap_tokens)
+	for kind: String in swap_buttons:
+		var button: Button = swap_buttons[kind]
+		var element: String = sim.state.wave_swaps.get(kind, "")
+		var tint: Color = UIKit.SURFACE if element.is_empty() else Glyphs.hue(element).lerp(UIKit.SURFACE, .28)
+		var style: StyleBoxFlat = button.get_theme_stylebox("normal")
+		style.bg_color = tint
+		button.tooltip_text = "Hold to swap all %s towers for one round." % kind.capitalize()
+		if not element.is_empty():
+			button.tooltip_text += " Active element: " + element.capitalize()
+	var cooldown: int = sim.stone_cooldown()
+	stone_status.text = "◆ %d" % int(sim.state.stone_blocks)
+	if cooldown > 0 and int(sim.state.stone_blocks) > 0:
+		stone_status.text += " · %ds" % cooldown
+	stone_status.tooltip_text = "Double-tap the road during combat. One block per numbered wave."
+	var interest: int = Economy.interest(sim.state.gold) if sim.state.phase == "build" else interest_awarded
+	interest_status.text = "Interest +%d g" % interest if sim.state.phase == "build" or interest_notice > 0.0 else ""
+	interest_status.tooltip_text = "10% of unspent gold is paid at the start of each round."
+
+func _try_road_stone(tile: Vector2i) -> void:
+	if not paused and overlay_type.is_empty():
+		_apply({"type": "place_stone", "tile": tile})
+
+func _swap_hold_started(kind: String) -> void:
+	swap_hold += 1
+	var press: int = swap_hold
+	var button: Button = swap_buttons[kind]
+	await get_tree().create_timer(.42).timeout
+	if press == swap_hold and is_instance_valid(button) and button.button_pressed and not paused and overlay_type.is_empty():
+		_show_swap_picker(kind)
+
+func _swap_hold_released() -> void:
+	swap_hold += 1
+
+func _swap_tip() -> void:
+	if overlay_type.is_empty():
+		message = "Hold Arrow or Cannon to swap its element for one round."
+		_update_hud()
+
+func _show_swap_picker(kind: String) -> void:
+	var unlocked: Array[String] = _unlocked()
+	if unlocked.is_empty() or int(sim.state.swap_tokens) <= 0:
+		message = "Defeat a spirit to unlock element swaps." if unlocked.is_empty() else "No swap tokens left."
+		_update_hud()
+		return
+	_close_overlay()
+	swap_kind = kind
+	overlay_type = "swap"
+	var shade := ColorRect.new()
+	shade.color = Color("#24332bb3")
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+	overlay = shade
+	var icon: Button = swap_buttons[kind]
+	var origin: Vector2 = get_global_transform().affine_inverse() * icon.get_global_rect().get_center()
+	origin = origin.clamp(Vector2(127, 127), size - Vector2(127, 127))
+	var core: Button = UIKit.button("", _close_overlay, false, 58)
+	core.tooltip_text = "Cancel swap"
+	UIKit.element_button(core, kind, true, true)
+	shade.add_child(core)
+	core.position = origin - Vector2(29, 29)
+	core.size = Vector2(58, 58)
+	for index: int in range(unlocked.size()):
+		var element: String = unlocked[index]
+		var direction := Vector2.from_angle(-PI * .5 + TAU * index / unlocked.size())
+		var action: Dictionary = {"type": "swap_element", "kind": kind, "element": element}
+		var option: Button = UIKit.button(element.capitalize(), _apply.bind(action), false, 54)
+		option.add_theme_font_size_override("font_size", 13)
+		option.disabled = not sim.describe(action).ok
+		UIKit.element_button(option, element, true, true)
+		shade.add_child(option)
+		option.position = origin + direction * 87 - Vector2(33, 27)
+		option.size = Vector2(66, 54)
 
 func _count_down(delta: float) -> void:
 	if not sim.state.boon_queue.is_empty() or sim.state.selection_pending or not sim.state.trial.is_empty():
@@ -361,6 +483,42 @@ func _update_countdown() -> void:
 	last_countdown = ceili(sim.intermission_left)
 	start_button.text = DataDB.text("start_countdown") % last_countdown
 	start_button.tooltip_text = DataDB.text("start_early")
+
+func _input(event: InputEvent) -> void:
+	if not event is InputEventMouseButton or event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if event.pressed:
+		if not _can_swipe_to_start() or not get_global_rect().has_point(event.position):
+			return
+		start_gesture_button = start_button
+		start_gesture_position = event.position
+		start_gesture_on_button = start_button.get_global_rect().has_point(event.position)
+		if start_gesture_on_button:
+			get_viewport().set_input_as_handled()
+			start_gesture_button.button_down.emit()
+		return
+	var button: Button = start_gesture_button
+	start_gesture_button = null
+	if not is_instance_valid(button):
+		return
+	if start_gesture_on_button:
+		get_viewport().set_input_as_handled()
+		button.button_up.emit()
+	if event.canceled or button != start_button or not _can_swipe_to_start():
+		return
+	var travel: Vector2 = event.position - start_gesture_position
+	var swipe: bool = travel.x >= 64.0 and travel.x >= absf(travel.y) * 1.5
+	var tap: bool = start_gesture_on_button and travel.length_squared() <= 24.0 * 24.0 and button.get_global_rect().has_point(event.position)
+	if tap or swipe:
+		if not start_gesture_on_button:
+			event.canceled = true
+		field.aiming_touch = false
+		button.pressed.emit()
+
+func _can_swipe_to_start() -> bool:
+	return sim != null and sim.state.phase == "build" and not paused and overlay_type.is_empty() \
+		and is_instance_valid(start_button) and start_button.is_visible_in_tree() and not start_button.disabled \
+		and not sim.state.selection_pending and sim.state.boon_queue.is_empty()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and is_node_ready():
@@ -453,6 +611,7 @@ func _refresh_boon_badge() -> void:
 	hud_boon.tooltip_text = boon.name + "\n" + effects
 
 func _update_hud(refresh_upgrades: bool = false) -> void:
+	_update_tactics()
 	stats.text = DataDB.text("hud_stats") % [sim.state.lives, sim.cfg.start_lives, sim.state.gold]
 	if int(sim.state.barrier) > 0 or gate_charge > 0:
 		stats.text += "   ·   Barrier %d/%d" % [int(sim.state.barrier), int(sim.cfg.gate_barrier_cap)]
@@ -565,7 +724,7 @@ func _render_wave_heading() -> void:
 	var seen: Dictionary = {}
 	for group: Dictionary in summary.groups:
 		if group.kind == "bonus":
-			_effect_chip(wave_effects, "Gilded Courier", UIKit.UPGRADE, "light", StatusInfo.trait_description("bonus"))
+			_effect_chip(wave_effects, "Courier · %d g" % int(group.gold), UIKit.UPGRADE, "gold", StatusInfo.trait_description("bonus"))
 		var element: String = group.element
 		if element != "none" and not seen.has(element):
 			seen[element] = true
@@ -585,7 +744,7 @@ func _render_preview() -> void:
 	var bonus: bool = not sim.state.trial.is_empty()
 	if bonus:
 		var chip: Button = UIKit.button(DataDB.text("bonus_chip") % TowerRules.roman(sim.state.trial.tier),
-			_show_preview.bind(int(sim.state.wave), true), false, 48)
+			_show_matchups.bind(int(sim.state.wave), true), false, 48)
 		chip.add_theme_font_size_override("font_size", 16)
 		UIKit.element_button(chip, sim.state.trial.element)
 		chip.tooltip_text = StatusInfo.enemy_name(sim.preview(int(sim.state.wave)).spirit)
@@ -605,6 +764,9 @@ func _render_preview() -> void:
 				icons.append(icon)
 		for group: Dictionary in preview.groups:
 			total += int(group.count)
+			if group.kind == "bonus":
+				icons.append("gold")
+				descriptions.append("%s · %d gold" % [StatusInfo.enemy_name(group), int(group.gold)])
 			if group.element != "none" and not icons.has(group.element):
 				icons.append(group.element)
 				descriptions.append(String(group.element).capitalize())
@@ -612,7 +774,7 @@ func _render_preview() -> void:
 				icons.append("phasing")
 				descriptions.append(StatusInfo.title("phasing"))
 			for prop: String in group.props:
-				if DataDB.read("mobs").specials.has(prop):
+				if prop in ["petrifier", "wizard"] or DataDB.read("mobs").specials.has(prop):
 					var trait_icon: String = StatusInfo.TRAITS[prop][2]
 					if not icons.has(trait_icon):
 						icons.append(trait_icon)
@@ -628,9 +790,16 @@ func _render_preview() -> void:
 			for weakness: String in weaknesses:
 				names.append("Neutral" if weakness == "normal" else weakness.capitalize())
 			descriptions.append("Weaknesses: " + ", ".join(names))
-		var chip: Button = UIKit.button("", _show_preview.bind(wave), false, 48)
+		var chip: Button = UIKit.button("", _show_matchups.bind(wave), false, 48)
 		var representative: Dictionary = preview.groups[0] if preview.bosses.is_empty() else preview.bosses[0]
 		UIKit.creature_forecast(chip, representative, wave, total, icons, preview.bosses)
+		var threats: Array = sim.wave_matchups(preview).weak
+		if not threats.is_empty():
+			var names := PackedStringArray()
+			for threat: Dictionary in threats:
+				names.append(threat.name)
+			descriptions.append("Weak towers: " + " / ".join(names))
+			chip.add_theme_stylebox_override("normal", UIKit.raised(Color("#fff2e6"), Color("#d99787")))
 		if not descriptions.is_empty():
 			chip.tooltip_text += " · " + " / ".join(descriptions)
 		preview_row.add_child(chip)
@@ -660,6 +829,8 @@ func _render_site() -> void:
 		_update_enemy_inspector()
 		return
 	var tower: Dictionary = sim.state.towers.get(selected, {})
+	if not tower.is_empty():
+		tower = sim.effective_tower(tower)
 	if upgrade_slot != selected or tower.is_empty():
 		upgrade_slot = ""
 	detail_button.tooltip_text = "Tower details"
@@ -682,7 +853,7 @@ func _render_site() -> void:
 	inspector_portrait.queue_redraw()
 	tower_composition.add_child(UIKit.composition(tower))
 	if tower.infusion != "":
-		var tier: int = TowerRules.infusion_tier(tower.level, sim.state.tiers[tower.infusion])
+		var tier: int = maxi(1, TowerRules.infusion_tier(tower.level, sim.state.tiers[tower.infusion]))
 		tower_composition.add_child(UIKit.label(TowerRules.roman(tier), 15, UIKit.MUTED))
 	tower_composition.show()
 	TowerInspector.fill_metrics(tower_stats, tower, sim.spirit_victories(), 17, UIKit.MINT, false, Vector3.ZERO, sim.tower_boon(tower))
@@ -692,6 +863,12 @@ func _render_site() -> void:
 	_add_tower_effects(tower_effects, tower)
 	if tower.get("sabotaged", false):
 		_effect_chip(tower_effects, "Jammed", UIKit.WARN, "electric", "Upgrade or fuse this tower to restore it.")
+	if tower.get("petrified", false):
+		_effect_chip(tower_effects, "Petrified", UIKit.MUTED, "armor", "This tower is inactive until the numbered wave ends.")
+	elif tower.get("stone_pending", false):
+		_effect_chip(tower_effects, "Marked for stone", UIKit.WARN, "armor", "This tower becomes inactive next wave.")
+	if sim.state.wave_swaps.has(tower.kind):
+		_effect_chip(tower_effects, "Round swap", UIKit.UPGRADE, tower.infusion, "This element lasts until the round ends.")
 	tower_effects.tooltip_text = "\n".join(TowerInspector.effects(tower, sim.state.tiers, sim.tower_boon(tower)))
 	var upgrade: Dictionary = _tower_upgrade_action(tower)
 	var quote: Dictionary = sim.describe(upgrade, true)
@@ -781,11 +958,11 @@ func _render_tower_toolbar(tower: Dictionary, upgrade: Dictionary, quote: Dictio
 	upgrade_button.tooltip_text = quote.reason
 	if quote.ok:
 		if use_crystal:
-			upgrade_button.tooltip_text = "Preview ascension to a level-7 Pure tower." if tower.kind == "pure" else "Preview the damage gained from another crystal."
+			upgrade_button.tooltip_text = "Preview ascension to a level-7 Pure tower."
 		else:
 			upgrade_button.tooltip_text = DataDB.text("upgrade_preview_tip")
 	elif not use_crystal:
-		upgrade_button.text = "Max level" if quote.reason == DataDB.text("max_level") else "Upgrade\nTier locked"
+		upgrade_button.text = DataDB.text("max_level") if quote.reason == DataDB.text("max_level") else "Upgrade\nTier locked"
 	if previewing:
 		action_buttons[upgrade_button] = upgrade
 		_update_action_button(upgrade_button, upgrade)
@@ -976,9 +1153,14 @@ func _update_enemy_inspector() -> void:
 	var traits: PackedStringArray = StatusInfo.enemy_traits(enemy)
 	var active: PackedStringArray = StatusInfo.active(enemy, sim.state.tick, sim.hz)
 	var stopped: bool = int(enemy.root_time) > 0 or int(enemy.freeze_time) > 0 or enemy.has("corner")
-	var metrics: String = "%d / %d HP   ·   %s armor   ·   %s tiles/s" % [
-		ceili(enemy.hp), ceili(enemy.max_hp), TowerInspector.number(maxf(0.0, float(enemy.armor) - float(enemy.shred))),
-		TowerInspector.number(0.0 if stopped else float(enemy.speed) * (1.0 - float(enemy.slow)) * Effects.slip_speed(enemy) * (1.2 if enemy.get("bannered", false) else 1.0))]
+	var metrics: String = "%d / %d HP   ·   %s armor" % [
+		ceili(enemy.hp), ceili(enemy.max_hp), TowerInspector.number(maxf(0.0, float(enemy.armor) - float(enemy.shred)))]
+	if enemy.kind == "wizard":
+		metrics += "   ·   In the void" if EnemyRules.in_void(enemy, sim.state.tick, sim.hz) else "   ·   Teleporting"
+	else:
+		var pace: float = 1.2 if enemy.get("bannered", false) else 1.0
+		var speed_now: float = 0.0 if stopped else float(enemy.speed) * (1.0 - float(enemy.slow)) * Effects.slip_speed(enemy) * pace
+		metrics += "   ·   %s tiles/s" % TowerInspector.number(speed_now)
 	tower_metrics.text = metrics
 	tower_metrics.show()
 	if is_instance_valid(enemy_detail_metrics):
@@ -1150,7 +1332,7 @@ func _apply(action: Dictionary) -> void:
 		return
 	message = ""
 	var boon_decision: bool = action.type in ["choose_boon", "keep_boon"]
-	if boon_decision or action.type in ["select_element", "fuse", "infuse", "remove_infusion"]:
+	if boon_decision or action.type in ["select_element", "fuse", "infuse", "remove_infusion", "swap_element"]:
 		_close_overlay()
 	if action.type in ["upgrade", "empower_pure", "sell", "fuse"]:
 		upgrade_slot = ""
@@ -1203,6 +1385,17 @@ func _take_events() -> void:
 	for event: Dictionary in sim.events:
 		field.animate(event)
 		match event.type:
+			"interest_paid":
+				interest_awarded = int(event.data.gold)
+				interest_notice = 1.7
+				if interest_awarded > 0:
+					audio.play("interest")
+			"stone_placed":
+				audio.play("stone")
+				Haptics.play(24, profile.haptics)
+			"element_swapped":
+				audio.play("infuse")
+				Haptics.play(22, profile.haptics)
 			"wave_started":
 				accumulator = 0.0
 				audio.play("spirit" if event.data.bonus else "wave")
@@ -1245,6 +1438,10 @@ func _take_events() -> void:
 				message = "Tower jammed · Upgrade or fuse it"
 				_render_site()
 				Haptics.play(24, profile.haptics)
+			"tower_stone_marked":
+				message = "Basilisk marked towers for next wave"
+				if selected == event.data.slot:
+					_render_site()
 			"gold_stolen":
 				if int(event.data.gold) > 0:
 					message = "Thief stole %d gold" % int(event.data.gold)
@@ -1259,7 +1456,8 @@ func _take_events() -> void:
 			"tower_fired":
 				if event.data.primary:
 					var tower: Dictionary = sim.state.towers[event.data.slot]
-					audio.play("cannon" if tower.kind == "cannon" else ("arrow" if tower.kind == "arrow" and tower.infusion == "" else "magic"))
+					var neutral_arrow: bool = tower.kind == "arrow" and event.data.get("infusion", tower.infusion) == ""
+					audio.play("cannon" if tower.kind == "cannon" else ("arrow" if neutral_arrow else "magic"))
 			"mob_killed":
 				if int(event.data.gold) > 0 and event.data.kind != "spirit":
 					audio.play("coin")
@@ -1337,6 +1535,8 @@ func _dialog(title: String, width: float = 570) -> VBoxContainer:
 	return body
 
 func _close_overlay() -> void:
+	if is_instance_valid(field):
+		field.matchups = {}
 	overlay_actions.clear()
 	overview = null
 	enemy_detail_metrics = null
@@ -1488,6 +1688,52 @@ func _read_effect(label: Label, effect: Dictionary) -> void:
 	label.text = effect.detail
 	label.add_theme_color_override("font_color", effect.tint)
 
+func _show_matchups(wave: int, bonus: bool = false) -> void:
+	_close_overlay()
+	overlay_type = "matchups"
+	overlay_wave = wave
+	overlay_bonus = bonus
+	var next: int = wave if bonus else wave + 1
+	var current: Dictionary = sim.wave_matchups(sim.preview(wave, bonus))
+	var strong: Array = current.good
+	var weak: Array = sim.wave_matchups(sim.preview(next, false)).weak
+	for entry: Dictionary in strong:
+		field.matchups[entry.slot] = 1
+	for entry: Dictionary in weak:
+		field.matchups[entry.slot] = int(field.matchups.get(entry.slot, 0)) | 2
+	field.queue_redraw()
+	var shade := ColorRect.new()
+	shade.color = Color("#30333545")
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+	overlay = shade
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UIKit.style(UIKit.SURFACE, UIKit.BORDER, 18, 11))
+	shade.add_child(panel)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	panel.offset_right = -12
+	panel.offset_left = -mini(430, int(size.x) - 14)
+	panel.offset_bottom = -12
+	panel.offset_top = -151
+	var body: VBoxContainer = UIKit.column(5)
+	panel.add_child(body)
+	var first: String = "Spirit trial" if bonus else "Wave %d" % wave
+	var top: String = "%s · %d strong" % [first, strong.size()]
+	body.add_child(UIKit.label(top, 16, Color("#256a49")))
+	if not current.weak.is_empty():
+		var current_risks := PackedStringArray()
+		for entry: Dictionary in current.weak:
+			current_risks.append(entry.name)
+		body.add_child(UIKit.label("Weak here · " + " / ".join(current_risks), 15, UIKit.MUTED, true))
+	var risks := PackedStringArray()
+	for entry: Dictionary in weak:
+		risks.append(entry.name)
+	var bottom: String = "Wave %d · %s" % [next, " / ".join(risks) if not risks.is_empty() else "No weak matchups"]
+	body.add_child(UIKit.label(bottom, 16, UIKit.WARN, true))
+	var actions: HBoxContainer = UIKit.row(6)
+	actions.add_child(UIKit.button("Enemy details", _show_preview.bind(wave, bonus), false, 43))
+	actions.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true, 43))
+	body.add_child(actions)
 
 func _show_preview(wave: int, bonus: bool = false) -> void:
 	var preview: Dictionary = sim.preview(wave, bonus)
@@ -1545,8 +1791,11 @@ func _forecast_card(list: VBoxContainer, group: Dictionary, hint: Label) -> void
 	details.add_child(stat_row)
 	stat_row.add_child(UIKit.stat_value("health", TowerInspector.number(group.hp), "Health per enemy", 16, UIKit.INK))
 	stat_row.add_child(UIKit.stat_value("armor", TowerInspector.number(group.armor), "Armor", 16, UIKit.INK))
-	stat_row.add_child(UIKit.stat_value("speed", "%s/s" % TowerInspector.number(group.speed), "Movement speed in tiles per second", 16, UIKit.INK))
-	if group.kind in ["boss", "bonus", "spirit"]:
+	if group.kind == "wizard":
+		stat_row.add_child(UIKit.stat_value("speed", "Teleport", StatusInfo.trait_description("wizard"), 16, UIKit.INK))
+	else:
+		stat_row.add_child(UIKit.stat_value("speed", "%s/s" % TowerInspector.number(group.speed), "Movement speed in tiles per second", 16, UIKit.INK))
+	if group.kind in ["boss", "bonus", "spirit", "petrifier", "wizard"]:
 		stat_row.add_child(UIKit.stat_value("gold", str(int(group.gold)), "Gold reward", 16, UIKit.UPGRADE))
 	var traits := HFlowContainer.new()
 	details.add_child(traits)
@@ -1582,6 +1831,7 @@ func _show_tower_details() -> void:
 	var tower: Dictionary = sim.state.towers.get(selected, {})
 	if tower.is_empty():
 		return
+	tower = sim.effective_tower(tower)
 	var body: VBoxContainer = _dialog(info.text, 625)
 	overlay_type = "tower"
 	body.add_child(UIKit.composition(tower, 29))
@@ -1616,6 +1866,7 @@ func _update_tower_detail_stats() -> void:
 	var tower: Dictionary = sim.state.towers.get(selected, {})
 	if tower.is_empty():
 		return
+	tower = sim.effective_tower(tower)
 	var sources: Array[Dictionary] = TowerRules.support_sources(sim.state.towers.values())
 	var support: Vector3 = sim.support_bonuses(tower, sources)
 	if tower_detail_stats.get_child_count() > 0 and support.is_equal_approx(tower_detail_support):
@@ -1875,7 +2126,7 @@ func _show_fusion(partner: String) -> void:
 		body.add_child(UIKit.label(DataDB.text("fusion_matchup") % " / ".join(matchups), 16, UIKit.MUTED, true))
 	var controls: HBoxContainer = UIKit.row()
 	controls.add_child(UIKit.button(DataDB.text("cancel"), _cancel_fusion))
-	var quote: String = DataDB.text("fusion_confirm") % cost if cost >= 0 else "Fuse · Refund %d gold" % -cost
+	var quote: String = DataDB.text("fusion_confirm") % cost
 	var confirm: Button = UIKit.button(quote, _apply.bind(action), true)
 	overlay_actions[confirm] = action
 	_update_action_button(confirm, action)

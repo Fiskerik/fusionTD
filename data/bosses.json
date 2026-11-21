@@ -8,6 +8,7 @@
     "ironwood"
   ],
   "spawn_tick": 60,
+  "health_multiplier": 0.9,
   "health_adjustment": {"from": 20, "multiplier": 0.8},
   "control_resistance": 0.5,
   "damage_reduction": 0.25,
@@ -66,7 +67,7 @@
     "name": "Ironwood Engine",
     "element": "none",
     "weakness": "normal",
-    "elemental_damage": 0.5,
+    "elemental_damage": 0.75,
     "neutral_damage": 2.0,
     "hp_mult": 10,
     "armor": 20,

@@ -12,8 +12,7 @@
     63,
     3
   ],
-  "interest": 0.02,
-  "interest_cap": 15,
+  "interest": 0.1,
   "pure_tower_cost": 1500,
   "pure_tower_limit": 3,
   "pure_crystal_every": 30,
@@ -22,7 +21,12 @@
   "selection_every": 5,
   "boss_every": 10,
   "sim_hz": 30,
-  "intermission_seconds": 30,
+  "opening_seconds": 30,
+  "intermission_seconds": 10,
+  "stone_blocks": 3,
+  "stone_seconds": 3,
+  "stone_cooldown_seconds": 60,
+  "swap_tokens": 5,
   "infusion": {
     "min_levels": [
       2,

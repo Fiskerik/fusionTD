@@ -16,6 +16,8 @@ const CUES: Dictionary = {
 	"cannon": [[0., .22, 122., 51., .57]],
 	"magic": [[0., .12, 660., 310., .13]],
 	"coin": [[0., .09, 935., 1160., .00], [.05, .12, 1300., 1530., .01]],
+	"interest": [[0., .10, 475., 580., .25], [.065, .12, 1080., 1380., .045], [.145, .18, 1680., 1950., .01]],
+	"stone": [[0., .17, 210., 82., .52], [.07, .11, 495., 268., .18]],
 	"gate": [[0., .28, 160., 65., .25], [.12, .27, 280., 140., .03]],
 	"countdown": [[0., .105, 760., 590., .01]],
 	"wave": [[0., .16, 330., 390., .02], [.11, .21, 500., 659., .0]],
@@ -69,7 +71,7 @@ func play(cue: String) -> void:
 			voice = player
 			break
 	if voice == null:
-		if cue not in ["gate", "spirit", "unlock", "wave", "countdown"]:
+		if cue not in ["gate", "spirit", "unlock", "wave", "countdown", "interest", "stone"]:
 			return
 		voice = voices[0]
 		voice.stop()

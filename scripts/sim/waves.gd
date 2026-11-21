@@ -34,7 +34,9 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	if wave % int(balance.boss_every) == 0:
 		var bosses_in_wave: Array[Dictionary] = []
 		var health_adjustment: Dictionary = bosses.health_adjustment
-		var boss_hp: float = hp * float(health_adjustment.multiplier) if wave >= int(health_adjustment.from) else hp
+		var boss_hp: float = hp * float(bosses.health_multiplier)
+		if wave >= int(health_adjustment.from):
+			boss_hp *= float(health_adjustment.multiplier)
 		var boss_count: int = 1 if late_waves == 0 else (3 if wave >= int(late.third_boss_from) else 2)
 		var roster_size: int = bosses.order.size() if expanded_roster else 3
 		var first: int = (wave / int(balance.boss_every) - 1) % roster_size
@@ -102,20 +104,28 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			_add_group(groups, support, element, secondary, elemental_share, index + 1)
 	var scheduled_cap: int = floori(float(unit_cap()) * float(tuning.get("count_scale", 1.0)))
 	_limit_groups(groups, scheduled_cap - (1 if include_bonus else 0))
+	if campaign_track != null:
+		_add_specials(groups, wave, SimRng.new((seed_value * 65537 + wave * 1879) ^ 0x6d1da1))
+	var encounter_rng := SimRng.new((seed_value * 43517 + wave * 9749) ^ 0x3b7af2)
+	if wave % int(balance.boss_every) == int(balance.boss_every) - 1 or encounter_rng.take(100) < int(rules.petrifier.chance_percent):
+		_replace_with_encounter(groups, "petrifier")
+	if encounter_rng.take(100) < int(rules.wizard.chance_percent):
+		_replace_with_encounter(groups, "wizard")
 	if include_bonus:
 		var courier: Dictionary = _group(wave, 1, [], hp, gold, false)
 		courier.kind = "bonus"
 		courier.family = "hare"
 		courier.hp *= 2.0
-		courier.armor *= 2.0
-		courier.gold += int(bonus.extra_gold)
+		courier.armor *= float(bonus.armor_multiplier)
+		var wave_gold: int = 0
+		for group: Dictionary in groups:
+			wave_gold += int(group.gold) * int(group.count)
+		courier.gold = roundi(wave_gold * float(bonus.gold_share))
 		courier.speed = (campaign_track.total if campaign_track != null else Track.new().total) / float(bonus.travel_seconds)
 		courier.slow_cap = 0.0
 		courier.control_resistance = 0.0
 		courier.interval = int(rules.interval)
 		groups.insert(maxi(1, groups.size() / 2), courier)
-	if campaign_track != null:
-		_add_specials(groups, wave, SimRng.new((seed_value * 65537 + wave * 1879) ^ 0x6d1da1))
 	if roll_weaknesses and wave >= int(rules.elemental_from):
 		var weaknesses: Dictionary = {}
 		for group: Dictionary in groups:
@@ -124,6 +134,22 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 				weaknesses[affinity] = _roll_weakness(weakness_rng, affinity)
 			group.weakness = weaknesses[affinity]
 	return {"wave": wave, "groups": groups, "boss": {}, "bosses": [], "spirit": {}}
+
+static func _replace_with_encounter(groups: Array[Dictionary], kind: String) -> void:
+	var index: int = -1
+	for i: int in range(groups.size()):
+		if groups[i].kind == "grunt" and (index < 0 or int(groups[i].count) > int(groups[index].count)):
+			index = i
+	if index < 0:
+		return
+	var source: Dictionary = groups[index]
+	var enemy: Dictionary = source.duplicate()
+	enemy.merge({"kind": kind, "count": 1, "props": [kind]}, true)
+	if int(source.count) == 1:
+		groups[index] = enemy
+	else:
+		source.count -= 1
+		groups.insert(index + 1, enemy)
 
 static func _limit_groups(groups: Array[Dictionary], limit: int) -> void:
 	var remaining: int = 0

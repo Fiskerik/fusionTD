@@ -201,18 +201,22 @@ func test_enemy_health_and_armor_multipliers() -> void:
 			near(group.hp, float(original.groups[index].hp) * 1.5)
 			near(group.armor, float(original.groups[index].armor) * 2.0)
 
-func test_wave_20_boss_health_reduction() -> void:
-	var adjustment: Dictionary = DataDB.read("bosses").health_adjustment
-	var multiplier: float = adjustment.multiplier
-	for wave: int in [10, 20, 30, 70, 90]:
+func test_boss_health_reductions_apply_to_every_boss() -> void:
+	var bosses: Dictionary = DataDB.read("bosses")
+	var adjustment: Dictionary = bosses.health_adjustment
+	var late_multiplier: float = adjustment.multiplier
+	var global_multiplier: float = bosses.health_multiplier
+	for wave: int in [9, 10, 20, 30, 40, 50, 60, 70, 90]:
 		var reduced: Dictionary = Waves.generate(42, wave)
 		adjustment.multiplier = 1.0
+		bosses.health_multiplier = 1.0
 		var original: Dictionary = Waves.generate(42, wave)
-		adjustment.multiplier = multiplier
+		adjustment.multiplier = late_multiplier
+		bosses.health_multiplier = global_multiplier
 		equal(reduced.groups, original.groups)
 		equal(reduced.bosses.size(), original.bosses.size())
 		for i: int in range(reduced.bosses.size()):
-			near(float(reduced.bosses[i].hp) / float(original.bosses[i].hp), 1.0 if wave == 10 else .8)
+			near(float(reduced.bosses[i].hp) / float(original.bosses[i].hp), .9 if wave == 10 else .72)
 
 func test_wave_10_health_increase_keeps_enemy_counts() -> void:
 	var boost: Dictionary = DataDB.read("waves").health_boost
@@ -274,7 +278,8 @@ func test_economy_and_undo() -> void:
 	equal(sim.apply({"type": "upgrade", "slot": "s1"}).cost, 40)
 	equal(sim.state.towers.s1.invested, 90)
 	equal(Economy.refund(90), 67)
-	equal(Economy.clear_reward(1, 30000), Economy.scaled(sim.cfg.wave_clear_bonus, 1) + 15)
+	equal(Economy.clear_reward(1), Economy.scaled(sim.cfg.wave_clear_bonus, 1))
+	equal(Economy.interest(125), 12)
 	check(sim.apply({"type": "sell", "slot": "s1"}).ok)
 	equal(sim.state.gold, int(sim.cfg.start_gold) - 90 + 67)
 	for i: int in range(3):
@@ -417,9 +422,62 @@ func test_focused_fire_can_win_early_tier_two_in_one_pass() -> void:
 			equal(sim.state.wave, wave)
 			equal(sim.state.lives, lives_before_trial, "Focused defense kills the early spirit")
 		if wave < 10:
+			if wave == 9:
+				for slot: String in ["tile_0_0", "tile_1_0"]:
+					check(sim.apply({"type": "build", "slot": slot, "kind": "arrow"}).ok)
 			check(sim.apply({"type": "start_wave"}).ok)
 			_finish(sim)
 	equal(sim.state.tiers.fire, 2)
+
+func test_special_encounters_are_seeded_and_respect_wave_types() -> void:
+	var sim := Sim.campaign(5)
+	var petrifiers: int = 0
+	var wizards: int = 0
+	for seed_value: int in range(1, 201):
+		var common: Dictionary = Waves.generate(seed_value, 18, {}, true, true, sim.track)
+		var warning: Dictionary = Waves.generate(seed_value, 19, {}, true, true, sim.track)
+		var stones: int = common.groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier").size()
+		var portals: int = common.groups.filter(func(group: Dictionary) -> bool: return group.kind == "wizard").size()
+		check(stones <= 1 and portals <= 1)
+		petrifiers += stones
+		wizards += portals
+		equal(warning.groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier").size(), 1)
+	check(petrifiers >= 8 and petrifiers <= 35)
+	check(wizards >= 34 and wizards <= 70)
+	check(sim.preview(20).groups.is_empty())
+	check(Waves.generate(5, 20, {"element": "fire", "tier": 1}).groups.is_empty())
+
+func test_petrification_survives_a_save_and_the_spirit_trial() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 9
+	sim.state.phase = "wave"
+	for slot: String in ["s2", "s1", "s7"]:
+		sim.state.towers[slot] = TowerRules.create(sim.next_id(), slot, "arrow", "normal", "", 50)
+	var basilisk: Dictionary = sim.preview(9).groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier")[0]
+	Combat.spawn(sim, basilisk, 0.0)
+	check(sim.state.towers.s2.stone_pending and sim.state.towers.s1.stone_pending)
+	check(not TowerRules.disabled(sim.state.towers.s2) and not sim.state.towers.s7.has("stone_pending"))
+	sim.state.mobs[0].hp = 0.0
+	sim.step()
+	equal(sim.state.wave, 10)
+	sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	check(TowerRules.disabled(sim.state.towers.s2) and TowerRules.disabled(sim.state.towers.s1))
+	check(sim.apply({"type": "select_element", "element": "fire", "tier": 1}).ok)
+	check(sim.apply({"type": "start_wave"}).ok)
+	sim.state.spawn_queue.clear()
+	var enemy: Dictionary = Waves.spirit_group("fire", 1, 10)
+	Combat.spawn(sim, enemy, 8.0)
+	sim.step()
+	near(sim.state.towers.s1.damage_dealt, 0.0)
+	near(sim.state.towers.s2.damage_dealt, 0.0)
+	sim.state.mobs[0].hp = 0.0
+	sim.step()
+	check(TowerRules.disabled(sim.state.towers.s1))
+	check(sim.apply({"type": "start_wave"}).ok)
+	sim.state.spawn_queue.clear()
+	sim.step()
+	equal(sim.state.wave, 11)
+	check(not TowerRules.disabled(sim.state.towers.s1) and not TowerRules.disabled(sim.state.towers.s2))
 
 func test_live_build_upgrade_and_sell() -> void:
 	var sim := Sim.new()
@@ -812,22 +870,19 @@ func test_pure_crystal_rewards_spending_and_save() -> void:
 	check(sim.apply({"type": "undo"}).ok)
 	equal(sim.pure_crystals(), 3)
 	equal(sim.state.towers.s2.kind, "pure")
-	check(sim.apply(action).ok)
-	equal(sim.pure_crystals(), 2)
-	near(TowerRules.attack_profile(sim.state.towers.s1).damage, base_hit * 1.25)
-	check(sim.apply({"type": "undo"}).ok)
+	equal(sim.describe(action).reason, DataDB.text("max_level"))
+	check(not sim.apply(action).ok)
 	equal(sim.pure_crystals(), 3)
 	near(TowerRules.attack_profile(sim.state.towers.s1).damage, base_hit)
 	sim.state.phase = "wave"
-	for remaining: int in [2, 1, 0]:
-		check(sim.apply(action).ok)
-		equal(sim.pure_crystals(), remaining)
+	check(sim.apply(elemental_action).ok)
 	check(not sim.apply(action).ok)
 	check(sim.apply({"type": "move", "slot": "s1", "to": "s3"}).ok)
 	var loaded: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
-	equal(loaded.pure_crystals(), 0)
-	equal(loaded.state.towers.s3.crystals, 3)
-	near(TowerRules.attack_profile(loaded.state.towers.s3).damage, base_hit * 1.75)
+	equal(loaded.pure_crystals(), 2)
+	equal(loaded.state.towers.s3.kind, "ascended")
+	equal(loaded.describe({"type": "empower_pure", "slot": "s3"}).reason, DataDB.text("max_level"))
+	near(TowerRules.attack_profile(loaded.state.towers.s3).damage, base_hit)
 
 func test_ascended_towers_cannot_fuse_in_either_slot() -> void:
 	var sim := Sim.new()
@@ -1058,7 +1113,7 @@ func test_special_enemies_replace_regular_spawns() -> void:
 			baseline += int(group.count)
 		equal(total, baseline)
 
-func test_fusion_cost_is_the_same_when_upgrading_before_or_after() -> void:
+func test_expensive_ingredients_never_turn_fusion_cost_into_a_refund() -> void:
 	for elements: Array in [["fire", "light"], ["water", "light"]]:
 		for rank: int in [2, 3]:
 			var direct := _fusion_test_setup(elements)
@@ -1067,14 +1122,59 @@ func test_fusion_cost_is_the_same_when_upgrading_before_or_after() -> void:
 				for level: int in range(2, rank * 2):
 					check(direct.apply({"type": "upgrade", "slot": slot}).ok)
 			var action := {"type": "fuse", "slot_a": "s1", "slot_b": "s2"}
+			var gold: int = direct.state.gold
+			var investment: int = int(direct.state.towers.s1.invested) + int(direct.state.towers.s2.invested)
 			var result: Dictionary = direct.apply(action)
-			check(result.ok and int(result.cost) < 0)
+			check(result.ok and int(result.cost) == 0)
+			equal(direct.state.gold, gold)
+			equal(direct.state.towers.s1.invested, investment)
 			check(later.apply(action).ok)
 			for level: int in range(1, rank):
 				check(later.apply({"type": "upgrade", "slot": "s1"}).ok)
 			equal(direct.state.towers.s1.level, rank)
-			equal(direct.state.gold, later.state.gold)
-			equal(direct.state.towers.s1.invested, later.state.towers.s1.invested)
+			check(int(direct.state.gold) <= int(later.state.gold))
+
+func test_interest_is_paid_once_at_start_before_any_spawn() -> void:
+	var sim := Sim.new()
+	sim.state.gold = 125
+	check(sim.apply({"type": "start_wave"}).ok)
+	equal(sim.state.gold, 137)
+	equal(sim.events[0], {"type": "interest_paid", "data": {"gold": 12}})
+	check(sim.state.mobs.is_empty() and not sim.state.spawn_queue.is_empty())
+	check(not sim.apply({"type": "start_wave"}).ok)
+	equal(sim.state.gold, 137)
+	sim.state.spawn_queue.clear()
+	sim.step()
+	equal(sim.state.gold, 137 + Economy.clear_reward(1))
+	near(sim.intermission_left, 10.0)
+
+func test_swap_tokens_apply_to_all_matching_towers_for_one_round() -> void:
+	var sim := Sim.new()
+	sim.state.gold = 1000
+	sim.state.tiers.fire = 1
+	sim.state.tiers.water = 3
+	for slot: String in ["s1", "s2", "s3"]:
+		check(sim.apply({"type": "build", "slot": slot, "kind": "cannon" if slot == "s3" else "arrow"}).ok)
+	check(sim.apply({"type": "upgrade", "slot": "s1"}).ok)
+	check(sim.apply({"type": "infuse", "slot": "s1", "element": "fire"}).ok)
+	check(sim.apply({"type": "swap_element", "kind": "arrow", "element": "water"}).ok)
+	equal(sim.state.swap_tokens, 4)
+	equal(TowerRules.damage_split(sim.effective_tower(sim.state.towers.s1)), {"water": 1.0})
+	equal(TowerRules.damage_split(sim.effective_tower(sim.state.towers.s2)), {"water": 1.0})
+	equal(TowerRules.damage_split(sim.effective_tower(sim.state.towers.s3)), {"normal": 1.0})
+	var novice: Dictionary = sim.effective_tower(sim.state.towers.s2)
+	equal(TowerRules.trait_profile(novice, sim.state.tiers), DataDB.read("elements").water.effects[0])
+	check(sim.apply({"type": "start_wave"}).ok)
+	sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	check(not sim.apply({"type": "swap_element", "kind": "arrow", "element": "water"}).ok)
+	check(sim.apply({"type": "swap_element", "kind": "cannon", "element": "fire"}).ok)
+	equal(sim.state.swap_tokens, 3)
+	sim.state.spawn_queue.clear()
+	sim.step()
+	equal(sim.state.wave_swaps, {})
+	equal(sim.state.towers.s1.infusion, "fire")
+	equal(sim.state.towers.s2.infusion, "")
+	equal(sim.state.swap_tokens, 3)
 
 func test_triple_fusion_cost_counts_both_ingredients_and_applies_boons() -> void:
 	var direct := _fusion_test_setup(["fire", "light"])

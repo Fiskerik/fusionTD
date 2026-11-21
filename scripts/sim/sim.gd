@@ -6,7 +6,7 @@ var track: Track
 var _boon_modifiers: Dictionary = {}
 var cfg: Dictionary = DataDB.read("balance")
 var hz: float = float(cfg.sim_hz)
-var intermission_left: float = float(cfg.intermission_seconds)
+var intermission_left: float = float(cfg.opening_seconds)
 var events: Array[Dictionary] = []
 var history: Array[Dictionary] = []
 var undo_stack: Array[Dictionary] = []
@@ -27,6 +27,22 @@ func _init(seed_value: int = 1, layout: String = Track.LEGACY) -> void:
 		"towers": {}, "mobs": [], "spawn_queue": [], "tiers": tiers, "trial": {},
 		"selection_pending": false, "rally_cd": 0, "stats": {"kills": 0, "spirits": 0, "fusions": 0, "leaked": 0},
 	}
+	state.merge(tactical_defaults())
+
+func tactical_defaults() -> Dictionary:
+	return {"stone_blocks": int(cfg.stone_blocks), "stone": {}, "stone_last_wave": 0,
+		"stone_ready_tick": 0, "swap_tokens": int(cfg.swap_tokens), "wave_swaps": {}}
+
+func effective_tower(tower: Dictionary) -> Dictionary:
+	var element: String = state.wave_swaps.get(tower.kind, "")
+	if element.is_empty() or element == tower.infusion:
+		return tower
+	var current: Dictionary = tower.duplicate()
+	current.infusion = element
+	return current
+
+func stone_cooldown() -> int:
+	return ceili(maxf(0.0, float(int(state.stone_ready_tick) - int(state.tick))) / hz)
 
 func step() -> void:
 	if state.phase != "wave":
@@ -34,6 +50,9 @@ func step() -> void:
 	state.tick += 1
 	state.wave_tick += 1
 	state.rally_cd = maxi(0, int(state.rally_cd) - 1)
+	if not state.stone.is_empty() and int(state.tick) >= int(state.stone.until):
+		emit_event("stone_expired", {"tile": state.stone.tile})
+		state.stone = {}
 	while not state.spawn_queue.is_empty() and int(state.spawn_queue[0].tick) <= int(state.wave_tick) and state.mobs.size() < Waves.unit_cap():
 		var next: Dictionary = state.spawn_queue.pop_front()
 		Combat.spawn(self, next.group, next.s)
@@ -71,7 +90,51 @@ func tower_boon(tower: Dictionary) -> Dictionary:
 	return RunBoons.for_tower(tower, _boon_modifiers)
 
 func tower_profile(tower: Dictionary) -> Dictionary:
-	return TowerRules.attack_profile(tower, spirit_victories(), tower_boon(tower))
+	var effective: Dictionary = effective_tower(tower)
+	return TowerRules.attack_profile(effective, spirit_victories(), tower_boon(effective))
+
+func wave_matchups(summary: Dictionary) -> Dictionary:
+	var groups: Array = summary.groups + summary.bosses
+	if not summary.spirit.is_empty():
+		groups.append(summary.spirit)
+	var good: Array[Dictionary] = []
+	var weak: Array[Dictionary] = []
+	for original: Dictionary in ordered_towers():
+		if TowerRules.disabled(original) or float(TowerRules.stats(original).rate) <= 0.0:
+			continue
+		var tower: Dictionary = effective_tower(original) if int(summary.wave) == int(state.wave) else original
+		var boon: Dictionary = tower_boon(tower)
+		var profile: Dictionary = TowerRules.attack_profile(tower, spirit_victories(), boon)
+		var effects: Dictionary = TowerRules.trait_profile(tower, state.tiers, boon)
+		var split: Dictionary = TowerRules.damage_split(tower)
+		var pierce: float = minf(.9, float(effects.get("pierce", 0.0)) * float(profile.potency))
+		var raw: float = profile.damage
+		var actual: float = 0.0
+		var neutral: float = 0.0
+		for group: Dictionary in groups:
+			var count: int = int(group.count)
+			var armor: float = group.armor
+			var factor: float = Damage.against(split, group, effects.has("adaptive"))
+			var forms: PackedStringArray = group.get("forms", PackedStringArray())
+			if forms.size() > 1:
+				factor = 0.0
+				for form: String in forms:
+					var variant: Dictionary = group.duplicate()
+					variant.element = form
+					factor += Damage.against(split, variant, effects.has("adaptive")) / forms.size()
+			actual += count * Damage.hit(raw * factor, armor, pierce, 0.0, 0.0)
+			neutral += count * Damage.hit(raw, armor, pierce, 0.0, 0.0)
+		if neutral <= 0.0:
+			continue
+		var score: float = actual / neutral
+		var entry: Dictionary = {"slot": tower.slot, "name": TowerRules.display_name(tower), "score": score}
+		if score >= 1.05:
+			good.append(entry)
+		elif score <= .95:
+			weak.append(entry)
+	weak.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a.slot < b.slot if is_equal_approx(float(a.score), float(b.score)) else float(a.score) < float(b.score))
+	return {"good": good, "weak": weak.slice(0, 2)}
 
 func support_bonuses(tower: Dictionary, sources: Array[Dictionary], slot: String = "") -> Vector3:
 	return TowerRules.support_bonuses(tower, sources, track, slot, _boon_modifiers)
@@ -115,7 +178,7 @@ func ice_tiles() -> Dictionary:
 	var coverage: Dictionary = {}
 	for slot: String in state.towers:
 		var tower: Dictionary = state.towers[slot]
-		if tower.kind != "triple" or int(tower.stun) > 0 or tower.get("sabotaged", false):
+		if tower.kind != "triple" or int(tower.stun) > 0 or TowerRules.disabled(tower):
 			continue
 		var rule: Dictionary = TowerRules.stats(tower)
 		if not rule.effect.has("ice"):
@@ -136,9 +199,29 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 	var reason: String = ""
 	if state.phase == "game_over":
 		return {"ok": false, "reason": DataDB.text("ended"), "cost": 0}
-	if state.phase == "wave" and type not in ["build", "build_pure", "upgrade", "empower_pure", "sell", "move", "infuse", "remove_infusion", "fuse", "set_target", "rally"]:
+	if state.phase == "wave" and type not in ["build", "build_pure", "upgrade", "empower_pure", "sell", "move", "infuse", "remove_infusion", "fuse", "set_target", "rally", "place_stone", "swap_element"]:
 		return {"ok": false, "reason": DataDB.text("between_waves"), "cost": 0}
 	match type:
+		"place_stone":
+			if state.phase != "wave":
+				reason = "Place a stone during combat."
+			elif not track.road_tiles.has(action.get("tile")):
+				reason = "Choose a road tile."
+			elif int(state.stone_blocks) == 0:
+				reason = "No stone blocks left."
+			elif int(state.stone_last_wave) == int(state.wave):
+				reason = "One stone block per wave."
+			elif stone_cooldown() > 0:
+				reason = "Stone block ready in %ds." % stone_cooldown()
+		"swap_element":
+			var kind: String = action.get("kind", "")
+			var element: String = action.get("element", "")
+			if kind not in ["arrow", "cannon"] or int(state.tiers.get(element, 0)) <= 0:
+				reason = "Choose an unlocked element."
+			elif int(state.swap_tokens) == 0:
+				reason = "No swap tokens left."
+			elif state.wave_swaps.get(kind, "") == element:
+				reason = "That element is already active."
 		"build", "build_pure":
 			var kind: String = action.get("kind", "")
 			var pure_tower: bool = type == "build_pure"
@@ -165,11 +248,13 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = TowerRules.level_requirement(tower, state.tiers)
 				cost = TowerRules.upgrade_cost(tower)
 		"empower_pure":
-			if not TowerRules.can_socket_crystal(tower):
-				reason = "Choose a level-6 elemental tower or a Pure tower."
+			if tower.get("kind", "") == "ascended":
+				reason = DataDB.text("max_level")
+			elif not TowerRules.can_socket_crystal(tower):
+				reason = "Choose a level-6 elemental tower."
 			elif int(state.tiers[tower.element]) < 3:
 				reason = DataDB.text("requires_tier") % [String(tower.element).capitalize(), "III"]
-			elif tower.kind == "pure" and pure_count() >= int(cfg.pure_tower_limit):
+			elif pure_count() >= int(cfg.pure_tower_limit):
 				reason = "All %d Pure tower slots are in use." % int(cfg.pure_tower_limit)
 			elif pure_crystals() == 0:
 				reason = "Earn a Pure Crystal on reaching each %d-wave milestone." % int(cfg.pure_crystal_every)
@@ -254,12 +339,19 @@ func apply(action: Dictionary) -> Dictionary:
 	var slot: String = action.get("slot", action.get("slot_a", ""))
 	var tower: Dictionary = state.towers.get(slot, {})
 	history.append({"tick": int(state.tick), "action": action.duplicate(true)})
-	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon"]:
+	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon", "swap_element"]:
 		undo_stack.append(state.duplicate(true))
 		if undo_stack.size() > int(cfg.undo_limit):
 			undo_stack.pop_front()
 	state.gold -= int(result.cost)
 	match type:
+		"place_stone":
+			_place_stone(action.tile)
+		"swap_element":
+			undo_stack.clear()
+			state.swap_tokens -= 1
+			state.wave_swaps[action.kind] = action.element
+			emit_event("element_swapped", {"kind": action.kind, "element": action.element})
 		"build":
 			var kind: String = action.kind
 			var pure: bool = DataDB.ELEMENTS.has(kind)
@@ -273,8 +365,7 @@ func apply(action: Dictionary) -> Dictionary:
 			tower.erase("sabotaged")
 			tower.invested += int(result.cost)
 		"empower_pure":
-			if tower.kind == "pure":
-				state.stats.pure_built = int(state.stats.get("pure_built", 0)) + 1
+			state.stats.pure_built = int(state.stats.get("pure_built", 0)) + 1
 			TowerRules.empower_pure(tower)
 			state.stats.pure_crystals_spent = int(state.stats.get("pure_crystals_spent", 0)) + 1
 		"infuse":
@@ -401,6 +492,9 @@ func _start_wave() -> void:
 	state.phase = "wave"
 	state.wave_tick = 0
 	state.rally_cd = 0
+	var interest: int = Economy.interest(state.gold)
+	state.gold += interest
+	emit_event("interest_paid", {"gold": interest})
 	for tower: Dictionary in state.towers.values():
 		tower.cooldown = 0
 		tower.stun = 0
@@ -420,25 +514,44 @@ func _start_wave() -> void:
 
 func _finish_wave() -> void:
 	intermission_left = float(cfg.intermission_seconds)
+	state.stone = {}
+	state.wave_swaps = {}
 	if not state.trial.is_empty():
 		state.trial = {}
 		state.phase = "build"
 		emit_event("bonus_finished")
 		return
 	var cleared: int = state.wave
-	state.gold += Economy.clear_reward(cleared, state.gold)
+	state.gold += Economy.clear_reward(cleared)
 	state.wave += 1
 	state.phase = "build"
 	if cleared % int(cfg.gate_repair_every) == 0:
 		_restore_gate()
+	for tower: Dictionary in state.towers.values():
+		tower.erase("petrified")
+		if tower.get("stone_pending", false):
+			tower.petrified = true
+			tower.erase("stone_pending")
 	if int(state.wave) % int(cfg.selection_every) == 0:
 		state.selection_pending = not choices().is_empty()
 	emit_event("wave_cleared", {"wave": cleared, "pure_crystal": int(state.wave) % int(cfg.pure_crystal_every) == 0})
 
+func _place_stone(tile: Vector2i) -> void:
+	var stop: float = track.stone_stop(tile)
+	state.stone = {"tile": tile, "stop": stop, "until": int(state.tick) + Effects.ticks(cfg.stone_seconds, hz)}
+	state.stone_blocks -= 1
+	state.stone_last_wave = state.wave
+	state.stone_ready_tick = int(state.tick) + Effects.ticks(cfg.stone_cooldown_seconds, hz)
+	for enemy: Dictionary in state.mobs:
+		if Vector2i(track.at(enemy.s).floor()) == tile:
+			enemy.s = track.previous_corner(stop) if enemy.kind == "wizard" else stop
+			enemy.prev_s = enemy.s
+	emit_event("stone_placed", {"tile": tile})
+
 func gate_repair_per_cycle() -> int:
 	var repair: int = 0
 	for tower: Dictionary in state.towers.values():
-		if TowerRules.is_fusion(tower) and not tower.get("sabotaged", false):
+		if TowerRules.is_fusion(tower) and not TowerRules.disabled(tower):
 			repair = maxi(repair, int(TowerRules.stats(tower).effect.get("wall_heal", 0)))
 	return repair
 

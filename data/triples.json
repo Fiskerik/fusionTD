@@ -305,8 +305,9 @@
     "damage": 77,
     "rate": 0.75,
     "range": 3.12,
-    "role": "Chain lightning chills the pack and periodically pins it.",
+    "role": "An upgraded Springwell aura hastens nearby towers. Chain lightning chills and roots enemies.",
     "effect": {
+      "aura_speed": 0.32,
       "chain": [
         5,
         1.65,

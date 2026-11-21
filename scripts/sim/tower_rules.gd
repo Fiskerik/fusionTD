@@ -84,6 +84,9 @@ static func support_sources(towers: Array) -> Array[Dictionary]:
 			sources.append(tower)
 	return sources
 
+static func disabled(tower: Dictionary) -> bool:
+	return bool(tower.get("sabotaged", false)) or bool(tower.get("petrified", false))
+
 static func support_bonuses(tower: Dictionary, sources: Array[Dictionary], track: Track, slot: String = "", scopes: Dictionary = {}) -> Vector3:
 	# Damage, attack rate, and attack range each use the strongest active aura.
 	var bonuses := Vector3.ZERO
@@ -91,7 +94,7 @@ static func support_bonuses(tower: Dictionary, sources: Array[Dictionary], track
 		return bonuses
 	var at: Vector2 = track.slots[tower.slot if slot.is_empty() else slot].position
 	for source: Dictionary in sources:
-		if source.dual == tower.dual or int(source.stun) > 0 or source.get("sabotaged", false):
+		if source.dual == tower.dual or int(source.stun) > 0 or disabled(source):
 			continue
 		var rule: Dictionary = stats(source)
 		var origin: Vector2 = track.slots[source.slot].position
@@ -134,14 +137,11 @@ static func _require_tier(element: String, tier: int, tier_by_element: Dictionar
 	return DataDB.text("requires_tier") % [element.capitalize(), roman(tier)] if int(tier_by_element.get(element, 0)) < tier else ""
 
 static func can_socket_crystal(tower: Dictionary) -> bool:
-	return tower.get("kind", "") in ["pure", "ascended"] and int(tower.level) >= progression(tower).damage.size()
+	return tower.get("kind", "") == "pure" and int(tower.level) >= progression(tower).damage.size()
 
 static func empower_pure(tower: Dictionary) -> void:
-	if tower.kind == "pure":
-		tower.kind = "ascended"
-		tower.level = 1
-	else:
-		tower.crystals = int(tower.get("crystals", 0)) + 1
+	tower.kind = "ascended"
+	tower.level = 1
 
 static func upgrade_cost(tower: Dictionary) -> int:
 	var prices: Array = stats(tower).upgrade if tower.kind in ["arrow", "cannon"] else progression(tower).upgrade
@@ -188,7 +188,7 @@ static func _base_traits(tower: Dictionary, unlocked: Dictionary) -> Dictionary:
 	var element: String = tower.infusion
 	if element == "":
 		return {}
-	var tier: int = infusion_tier(tower.level, unlocked[element])
+	var tier: int = maxi(1, infusion_tier(tower.level, unlocked[element]))
 	return DataDB.read("elements")[element].effects[tier - 1]
 
 static func recipe(first: String, second: String) -> String:
@@ -256,7 +256,7 @@ static func fusion_fee(first: Dictionary, second: Dictionary, tiers: Dictionary,
 			pre_upgrades += _rank_cost(input, 1, rank)
 		else:
 			pre_upgrades += _rank_cost(input, int(bands[0]), int(bands[rank - 1]))
-	return base_fee + _rank_cost(result, 1, rank) - pre_upgrades
+	return maxi(0, base_fee + _rank_cost(result, 1, rank) - pre_upgrades)
 
 static func _rank_cost(tower: Dictionary, from: int, to: int) -> int:
 	var prices: Array = progression(tower).upgrade
@@ -280,6 +280,9 @@ static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Di
 	var crystals: int = int(first.get("crystals", 0)) + int(second.get("crystals", 0))
 	if crystals > 0:
 		result.crystals = crystals
+	for status: String in ["stone_pending", "petrified"]:
+		if first.get(status, false) or second.get(status, false):
+			result[status] = true
 	if float(stats(result).rate) > 0.0:
 		var strongest_hit: float = maxf(attack_profile(first, victories).damage, attack_profile(second, victories).damage)
 		result.fusion_damage_floor = strongest_hit / (spirit_multiplier(result, victories) * (1.0 + crystal_damage_bonus(result)))

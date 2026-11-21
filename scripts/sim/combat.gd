@@ -4,6 +4,8 @@ extends RefCounted
 static func spawn(sim: RefCounted, group: Dictionary, distance: float) -> void:
 	var enemy: Dictionary = EnemyRules.create(sim.next_id(), group, distance, sim.state.tick)
 	sim.state.mobs.append(enemy)
+	if enemy.kind == "petrifier":
+		_mark_towers(sim, distance)
 	if enemy.kind in ["spirit", "boss"]:
 		sim.emit_event("special_spawned", {"kind": enemy.kind, "element": enemy.element})
 
@@ -28,7 +30,7 @@ static func advance(sim: RefCounted) -> void:
 			if enemy.element != previous_form:
 				sim.emit_event("boss_morphed")
 		var phased: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
-		var hidden: bool = EnemyRules.burrowed(enemy, sim.track.total)
+		var hidden: bool = EnemyRules.hidden(enemy, sim.track, sim.state.tick, sim.hz)
 		enemy.erase("bannered")
 		if not banners.is_empty() and not enemy.props.has("banner"):
 			var origin: Vector2 = sim.track.at(enemy.s)
@@ -44,7 +46,17 @@ static func advance(sim: RefCounted) -> void:
 		if not ice.is_empty() or enemy.has("on_ice"):
 			var tile := Vector2i(sim.track.at(old).floor())
 			skid = Effects.ice_speed(enemy, {} if phased or hidden else ice.get(tile, {}))
-		EnemyRules.move(enemy, sim.track, sim.hz, skid)
+		if enemy.kind == "wizard":
+			EnemyRules.warp(enemy, sim.track, sim.state.tick, sim.hz)
+			if _crossed_stone(sim.state.stone, old, float(enemy.s)):
+				enemy.s = old
+				enemy.prev_s = old
+			if float(enemy.s) != old or (hidden and not EnemyRules.in_void(enemy, sim.state.tick - 1, sim.hz)):
+				sim.emit_event("wizard_portal", {"s": enemy.s, "arrived": float(enemy.s) != old})
+		else:
+			EnemyRules.move(enemy, sim.track, sim.hz, skid)
+			if _crossed_stone(sim.state.stone, old, float(enemy.s)):
+				enemy.s = sim.state.stone.stop
 		points[enemy.id] = sim.track.at(enemy.s)
 		if float(enemy.hp) > 0.0 and EnemyRules.property(enemy, "saboteur") and not enemy.get("sabotage_used", false) and float(enemy.s) >= sim.track.total * .45:
 			_sabotage(sim, enemy, points[enemy.id], towers)
@@ -53,7 +65,7 @@ static func advance(sim: RefCounted) -> void:
 	var ready: Array = []
 	var exposed: Array = []
 	for enemy: Dictionary in enemies:
-		if float(enemy.hp) <= 0.0 or EnemyRules.burrowed(enemy, sim.track.total):
+		if float(enemy.hp) <= 0.0 or EnemyRules.hidden(enemy, sim.track, sim.state.tick, sim.hz):
 			continue
 		exposed.append(enemy)
 		if not EnemyRules.phased(enemy, sim.state.tick, sim.hz):
@@ -61,7 +73,7 @@ static func advance(sim: RefCounted) -> void:
 	for tower: Dictionary in towers:
 		tower.stun = maxi(0, int(tower.stun) - 1)
 		tower.cooldown = maxi(0, int(tower.cooldown) - 1)
-		if int(tower.stun) == 0 and int(tower.cooldown) == 0 and not tower.get("sabotaged", false):
+		if int(tower.stun) == 0 and int(tower.cooldown) == 0 and not TowerRules.disabled(tower):
 			_attack(sim, tower, support_sources, exposed if tower.dual == "null" else ready, points)
 	var survivors: Array[Dictionary] = []
 	for enemy: Dictionary in enemies:
@@ -75,13 +87,30 @@ static func advance(sim: RefCounted) -> void:
 			break
 	sim.state.mobs = survivors
 
+static func _crossed_stone(stone: Dictionary, from: float, to: float) -> bool:
+	return not stone.is_empty() and from <= float(stone.stop) + .011 and to > float(stone.stop)
+
+static func _mark_towers(sim: RefCounted, distance: float) -> void:
+	var towers: Array = sim.ordered_towers()
+	var origin: Vector2 = sim.track.at(distance)
+	towers.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_dist: float = origin.distance_squared_to(sim.track.slots[a.slot].position)
+		var b_dist: float = origin.distance_squared_to(sim.track.slots[b.slot].position)
+		return int(a.id) < int(b.id) if a_dist == b_dist else a_dist < b_dist)
+	var targets: int = int(DataDB.read("waves").petrifier.targets)
+	for i: int in range(mini(targets, towers.size())):
+		var tower: Dictionary = towers[i]
+		tower.stone_pending = true
+		sim.emit_event("tower_stone_marked", {"slot": tower.slot, "s": distance})
+
 static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[Dictionary], candidates: Array, points: Dictionary) -> void:
 	var stats: Dictionary = TowerRules.stats(tower)
 	if float(stats.rate) == 0.0:
 		return
-	var boon: Dictionary = sim.tower_boon(tower)
-	var trait_profile: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers, boon)
-	var profile: Dictionary = TowerRules.attack_profile(tower, sim.spirit_victories(), boon)
+	var effective: Dictionary = sim.effective_tower(tower)
+	var boon: Dictionary = sim.tower_boon(effective)
+	var trait_profile: Dictionary = TowerRules.trait_profile(effective, sim.state.tiers, boon)
+	var profile: Dictionary = TowerRules.attack_profile(effective, sim.spirit_victories(), boon)
 	var at: Vector2 = sim.track.slots[tower.slot].position
 	var aura: Vector3 = sim.support_bonuses(tower, support_sources)
 	var radius: float = float(profile.range) * (1.0 + aura.z)
@@ -89,7 +118,7 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 	if target.is_empty():
 		tower.beam_target = -1
 		return
-	var infused: bool = tower.infusion != ""
+	var infused: bool = effective.infusion != ""
 	var potency: float = profile.potency
 	var raw: float = float(profile.damage) * (1.0 + aura.x)
 	if trait_profile.has("ramp"):
@@ -121,7 +150,7 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			if last.is_empty():
 				break
 			victims.append(last)
-	var split: Dictionary = TowerRules.damage_split(tower)
+	var split: Dictionary = TowerRules.damage_split(effective)
 	var adaptive: bool = trait_profile.has("adaptive")
 	var pierce: float = minf(0.9, float(trait_profile.get("pierce", 0.0)) * potency)
 	var previous: Dictionary = {}
@@ -159,6 +188,7 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			style = "beam"
 		sim.emit_event("tower_fired", {
 			"slot": tower.slot, "s": victim.s, "target_id": victim.id, "primary": previous.is_empty(), "style": style,
+			"infusion": effective.infusion,
 			"from_s": float(target.s if index == area_count else previous.s) if style == "chain" else -1.0,
 			"area": radius if pulse else float(profile.splash), "core": float(profile.splash_core),
 			"range": radius if is_finite(radius) else float(stats.range),
@@ -221,13 +251,13 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 		var count: int = floori(float(burn.stacks) * 0.5)
 		if float(burn.spread) > 0 and count > 0:
 			for other: Dictionary in enemies:
-				if float(other.hp) > 0 and position.distance_to(sim.track.at(other.s)) <= float(burn.spread):
+				if float(other.hp) > 0 and not EnemyRules.in_void(other, sim.state.tick, sim.hz) and position.distance_to(sim.track.at(other.s)) <= float(burn.spread):
 					Effects.add_dot(other, "burn", burn.dps, burn.cap, count, burn.time, burn.spread, burn.get("owners", []))
 	if enemy.has("disease"):
 		var strain: Dictionary = enemy.disease
 		var radius: float = float(strain.radius)
 		for other: Dictionary in enemies:
-			if float(other.hp) > 0 and not EnemyRules.phased(other, sim.state.tick, sim.hz) and position.distance_squared_to(sim.track.at(other.s)) <= radius * radius:
+			if float(other.hp) > 0 and not EnemyRules.phased(other, sim.state.tick, sim.hz) and not EnemyRules.in_void(other, sim.state.tick, sim.hz) and position.distance_squared_to(sim.track.at(other.s)) <= radius * radius:
 				Effects.infect(other, strain)
 	var killer: Dictionary = by_id.get(int(enemy.get("kill_credit", -1)), {})
 	if not killer.is_empty():
@@ -291,7 +321,7 @@ static func _stun(sim: RefCounted, target: Dictionary, towers: Array, duration: 
 	var resistance: float = 0.0
 	var at: Vector2 = sim.track.slots[target.slot].position
 	for tower: Dictionary in towers:
-		if tower.kind in ["pure", "ascended"] and tower.element == "light" and not tower.get("sabotaged", false):
+		if tower.kind in ["pure", "ascended"] and tower.element == "light" and not TowerRules.disabled(tower):
 			var cleanse: Array = TowerRules.trait_profile(tower, sim.state.tiers).get("cleanse", [])
 			var source: Vector2 = sim.track.slots[tower.slot].position
 			if not cleanse.is_empty() and at.distance_to(source) <= float(cleanse[1]):

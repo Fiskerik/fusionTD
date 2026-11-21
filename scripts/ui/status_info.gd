@@ -20,7 +20,7 @@ const TRAITS: Dictionary = {
 	"necromancer": ["Raise husks", "Summons two husks every 10 seconds, up to four alive at once.", "dark"],
 	"prismheart": ["Shapeshifter", "Cycles through your unlocked elements every 5 seconds. Each form resists its own element and the element it counters.", "light"],
 	"tempest": ["Airborne", "Flies over roots and ice puddles. Slows and freezes still work.", "water"],
-	"ironwood": ["Elemental plating", "Takes half damage from elemental attacks. Uninfused Arrow and Cannon towers deal double damage.", "armor"],
+	"ironwood": ["Elemental plating", "", "armor"],
 	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
 	"boss_guard": ["Damage reduction", "Reduces damage from all sources, including damage over time.", "armor"],
 	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
@@ -29,7 +29,9 @@ const TRAITS: Dictionary = {
 	"burrower": ["Burrower", "Burrows beneath two sections of the road and cannot be targeted underground.", "normal"],
 	"thief": ["Thief", "Steals gold if it reaches the gate.", "gold"],
 	"saboteur": ["Saboteur", "Jams the closest upgradeable tower mid-route. Upgrade or fuse the tower to repair it.", "electric"],
-	"bonus": ["Unstoppable", "Immune to slowing, roots, and freezes. Reaches the gate in 12 seconds and grants 250 extra gold on defeat.", "light"],
+	"bonus": ["Unstoppable", "Immune to slowing, roots, and freezes. Reaches the gate in 12 seconds. Its gold reward is %s of all other enemies' combined bounty.", "gold"],
+	"petrifier": ["Petrification", "Marks the two nearest towers on arrival. They turn to stone through the next wave, including its Spirit trial.", "armor"],
+	"wizard": ["Void step", "Stays at each stop for %s seconds, then disappears for %s seconds before appearing at the next corner. Cannot be hit in the void.", "dark"],
 }
 const ACCENTS: Dictionary = {
 	"Burn": "#963c24", "Spreading": "#963c24", "Poison": "#436b26", "Root": "#436b26",
@@ -88,6 +90,8 @@ static func enemy_name(enemy: Dictionary) -> String:
 		"splitling": return "Splitling"
 		"husk": return "Husk"
 		"bonus": return "Gilded Courier"
+		"petrifier": return "Stonegaze Basilisk"
+		"wizard": return "Void Wizard"
 	return DataDB.read("mobs").families[enemy.family].name
 
 static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
@@ -116,6 +120,15 @@ static func trait_title(id: String, enemy: Dictionary) -> String:
 static func trait_description(id: String) -> String:
 	if id == "ram":
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").ram.turn_seconds)
+	if id == "ironwood":
+		var plating: Dictionary = DataDB.read("bosses").ironwood
+		return "Takes %s of elemental damage. Uninfused Arrow and Cannon towers deal %s damage." % [
+			TowerInspector.percent(plating.elemental_damage), TowerInspector.percent(plating.neutral_damage)]
+	if id == "bonus":
+		return String(TRAITS[id][1]) % TowerInspector.percent(float(DataDB.read("waves").bonus_mob.gold_share))
+	if id == "wizard":
+		var wizard: Dictionary = DataDB.read("waves").wizard
+		return String(TRAITS[id][1]) % [int(wizard.visible_seconds), int(wizard.void_seconds)]
 	return description(id) if id == "phasing" else TRAITS[id][1]
 
 static func state_value(enemy: Dictionary, id: String, tick: int, hz: float) -> String:

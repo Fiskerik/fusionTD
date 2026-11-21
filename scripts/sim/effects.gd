@@ -55,7 +55,7 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 			var stacks: int = ceili(float(effect[0]) * potency) if infusion else roundi(float(effect[0]) * potency)
 			var spread: float = float(trait_profile.get("spread", 0.0)) if not infusion and type == "burn" else 0.0
 			add_dot(mob, type, raw * float(effect[1]) * potency, stacks, 1, ticks(duration(effect[2], potency), hz), spread, [source])
-	if trait_profile.has("slow") and mob.kind != "bonus":
+	if trait_profile.has("slow") and mob.kind not in ["bonus", "wizard"]:
 		var strength: float = minf(float(mob.slow_cap), slow_strength(trait_profile.slow[0], potency))
 		strength *= 1.0 - float(mob.get("control_resistance", 0.0))
 		timed(mob, "slow", strength, ticks(slow_duration(trait_profile.slow[1], potency), hz))
@@ -84,7 +84,7 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 		mob.silence_time = maxi(mob.silence_time, ticks(trait_profile.silence, hz))
 
 static func _apply_hard_control(mob: Dictionary, effect: String, seconds: float, hz: float) -> void:
-	if mob.has("control_recovery") or (effect == "root" and EnemyRules.airborne(mob)):
+	if mob.kind == "wizard" or mob.has("control_recovery") or (effect == "root" and EnemyRules.airborne(mob)):
 		return
 	var resistance: float = float(mob.get("control_resistance", 0.0))
 	var key: String = effect + "_time"
@@ -104,7 +104,7 @@ static func disease_rate(mob: Dictionary) -> float:
 	return float(mob.get("recent_damage", 0.0)) * float(mob.get("disease", {}).get("fraction", 0.0)) * Damage.special_matchup("dark", mob)
 
 static func ice_speed(mob: Dictionary, ice: Dictionary) -> float:
-	if mob.kind in ["spirit", "bonus"] or EnemyRules.airborne(mob):
+	if mob.kind in ["spirit", "bonus", "wizard"] or EnemyRules.airborne(mob):
 		return 1.0
 	if not ice.is_empty() and not bool(mob.get("on_ice", false)) and int(mob.get("slip_time", 0)) == 0:
 		mob.slip_time = int(ice.slide) + int(ice.stumble)

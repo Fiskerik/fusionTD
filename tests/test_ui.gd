@@ -296,7 +296,9 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	sim.step()
 	game._take_events()
 	check(game.stats.text.contains("◈ 1") and game.message.contains("+1 Pure Crystal"))
-	check(game.field.upgrade_ready.has("s2"), "The Pure tower gains an upgrade badge when a crystal is earned")
+	check(not game.field.upgrade_ready.has("s2"), "A level-7 Pure tower stays maxed when a crystal is earned")
+	game._site_pressed("s2")
+	check(game.upgrade_button.disabled and game.upgrade_button.text == DataDB.text("max_level"))
 	check(game.field.upgrade_ready.has("s3"), "A max-level Nature tower can spend the milestone crystal")
 	game._site_pressed("s3")
 	check(game.upgrade_button.text.begins_with("Use Crystal") and not game.upgrade_button.disabled)
@@ -310,10 +312,107 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	check(after_labels.has("418.5") and after_labels.has("4.5") and after_labels.has("0.93/s"))
 	equal(sim.pure_crystals(), 1)
 	game._upgrade_pressed()
-	check(game.upgrade_button.disabled and not game.field.upgrade_ready.has("s3"))
+	check(game.upgrade_button.disabled and game.upgrade_button.text == DataDB.text("max_level"))
+	check(not game.field.upgrade_ready.has("s3"))
 	equal(sim.state.towers.s3.kind, "ascended")
 	check(not game.tower_special.visible)
 	check(game.stats.text.contains("◈ 0") and game.info.text.contains("Verdant Sanctum") and game.info.text.contains("7"))
+	game.queue_free()
+	await runner.process_frame
+
+func test_a_right_swipe_away_from_start_wave_starts_combat() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	runner.root.add_child(game)
+	game.set_process(false)
+	await runner.process_frame
+	await runner.process_frame
+	var center: Vector2 = game.start_button.get_global_rect().get_center()
+	var pointer := InputEventMouseButton.new()
+	pointer.device = InputEvent.DEVICE_ID_EMULATION
+	pointer.button_index = MOUSE_BUTTON_LEFT
+	for travel: Vector2 in [Vector2(-85, 0), Vector2(75, 80), Vector2(150, 0)]:
+		var origin: Vector2 = center
+		if travel == Vector2(150, 0):
+			origin = game.field.get_global_rect().get_center()
+			check(not game.start_button.get_global_rect().has_point(origin))
+		pointer.pressed = true
+		pointer.position = origin
+		runner.root.push_input(pointer, true)
+		equal(game.sim.state.phase, "build", "Wait for the player to finish the gesture")
+		pointer.pressed = false
+		pointer.position = origin + travel
+		runner.root.push_input(pointer, true)
+		equal(game.sim.state.phase, "wave" if travel == Vector2(150, 0) else "build")
+	equal(game.sim.history.back().action.type, "start_wave")
+	game.sim.state.phase = "build"
+	game.sim.state.spawn_queue.clear()
+	game._refresh()
+	await runner.process_frame
+	pointer.position = game.start_button.get_global_rect().get_center()
+	pointer.canceled = false
+	pointer.pressed = true
+	runner.root.push_input(pointer, true)
+	pointer.pressed = false
+	runner.root.push_input(pointer, true)
+	equal(game.sim.state.phase, "wave", "A tap still starts the wave")
+	game.queue_free()
+	await runner.process_frame
+
+func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	runner.root.add_child(game)
+	game.set_process(false)
+	game.sim.state.tiers.fire = 1
+	game.sim.state.tiers.water = 1
+	game.sim.state.towers.s1 = TowerRules.create(game.sim.next_id(), "s1", "arrow", "normal", "", 50)
+	game.sim.state.towers.s2 = TowerRules.create(game.sim.next_id(), "s2", "pure", "fire", "", 110)
+	game._refresh()
+	await runner.process_frame
+	await runner.process_frame
+	check(game.interest_status.text.contains("+16"))
+	var pointer := InputEventMouseButton.new()
+	pointer.button_index = MOUSE_BUTTON_LEFT
+	var swap: Button = game.swap_buttons.arrow
+	pointer.position = swap.get_global_rect().get_center()
+	pointer.pressed = true
+	runner.root.push_input(pointer, true)
+	await runner.create_timer(.48).timeout
+	equal(game.overlay_type, "swap")
+	pointer.pressed = false
+	runner.root.push_input(pointer, true)
+	if game.overlay_type == "swap":
+		var choices: Array[Node] = game.overlay.find_children("*", "Button", true, false)
+		equal(choices.size(), 3)
+		for choice: Button in choices:
+			if choice.text == "Water":
+				choice.pressed.emit()
+	equal(game.sim.state.wave_swaps.get("arrow"), "water")
+	check(game.swap_status.text.contains("4"))
+	game._show_matchups(59)
+	equal(game.overlay_type, "matchups")
+	check(int(game.field.matchups.get("s2", 0)) & 2)
+	game._close_overlay()
+	check(game.field.matchups.is_empty())
+	game._apply({"type": "start_wave"})
+	var tile: Vector2i = game.sim.track.road_tiles.keys()[0]
+	pointer.position = game.field._board_transform() * game.sim.track.road_tiles[tile]
+	for tap: int in range(2):
+		pointer.pressed = true
+		game.field._gui_input(pointer)
+		pointer.pressed = false
+		game.field._gui_input(pointer)
+	equal(game.sim.state.stone_blocks, 2)
+	game.sim.state.spawn_queue.clear()
+	game.sim.step()
+	game._take_events()
+	near(game.sim.intermission_left, 10.0)
+	game._process(9.9)
+	equal(game.sim.state.phase, "build")
+	game._process(.11)
+	equal(game.sim.state.phase, "wave")
+	check(game.sim.state.mobs.is_empty() and game.interest_status.text.begins_with("Interest +"))
 	game.queue_free()
 	await runner.process_frame
 

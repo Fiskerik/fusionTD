@@ -19,6 +19,12 @@ static func draw(canvas: CanvasItem, enemy: Dictionary, p: Vector2, direction: V
 	if enemy.kind == "boss":
 		_boss(canvas, enemy, p - direction * impact * .045, r, direction, clock, distance)
 		return
+	if enemy.kind == "wizard":
+		_draw_wizard(canvas, p, r, clock)
+		return
+	if enemy.kind == "petrifier":
+		_draw_basilisk(canvas, p, r, direction, distance)
+		return
 	var family: String = enemy.get("family", "acorn")
 	var entry: Dictionary = DataDB.read("mobs").families.get(family, {})
 	var gait: String = entry.get("gait", GAITS.get(family, "scuttle"))
@@ -67,6 +73,38 @@ static func draw(canvas: CanvasItem, enemy: Dictionary, p: Vector2, direction: V
 	_draw_armor(canvas, center, r, rank, clock)
 	if rank == 0 and enemy.props.has("armored"):
 		canvas.draw_arc(p + Vector2(0,r*.65), r*.66, .25, PI-.25, 10, Color("#ffebaf"), r*.105, true)
+
+static func _draw_wizard(canvas: CanvasItem, p: Vector2, r: float, clock: float) -> void:
+	var base: Vector2 = p + Vector2(0, sin(clock * 5.0) * .07 * r)
+	var robe: Color = Color("#59447a")
+	var edge: Color = Color("#cf9dda")
+	_shape(canvas, base, Vector2.RIGHT, r, [Vector2(-.91,.53), Vector2(-.65,-.24), Vector2(-.48,-.75),
+		Vector2(.17,-1.15), Vector2(.58,-.67), Vector2(.57,.09), Vector2(.83,.56), Vector2(.19,.72)], robe.darkened(.38))
+	_shape(canvas, base, Vector2.RIGHT, r, [Vector2(-.65,.49), Vector2(-.40,-.23), Vector2(-.25,-.58),
+		Vector2(.34,-.41), Vector2(.46,.22), Vector2(.64,.46), Vector2(.12,.60)], robe)
+	canvas.draw_circle(base + Vector2(.03,-.43) * r, .32 * r, Color("#292239"), true, -1, true)
+	for side: float in [-1.0, 1.0]:
+		canvas.draw_circle(base + Vector2(.03 + side * .10, -.44) * r, .052 * r, edge.lightened(.33), true, -1, true)
+	canvas.draw_line(base + Vector2(.74,.52) * r, base + Vector2(.82,-.79) * r, Color("#b8956e"), .12 * r, true)
+	var crystal: Vector2 = base + Vector2(.82,-.93) * r
+	canvas.draw_circle(crystal, r * (.27 + .04 * sin(clock * 12.0)), Color(edge, .28), true, -1, true)
+	_shape(canvas, crystal, Vector2.RIGHT, r, [Vector2(0,-.22), Vector2(.15,-.02), Vector2(0,.18), Vector2(-.14,-.02)], edge)
+
+static func _draw_basilisk(canvas: CanvasItem, p: Vector2, r: float, direction: Vector2, distance: float) -> void:
+	var facing: Vector2 = Vector2.LEFT if direction.x + direction.y * .44 < 0.0 else Vector2.RIGHT
+	var lean: float = sin(distance * 12.0) * .14
+	var back: Color = Color("#446456")
+	_shape(canvas, p, facing, r, [Vector2(-1.09,.24 + lean), Vector2(-.64,-.15), Vector2(-.46,-.53),
+		Vector2(.19,-.53), Vector2(.38,-.32), Vector2(.73,-.37), Vector2(1.02,-.11), Vector2(.88,.27),
+		Vector2(.40,.42), Vector2(-.33,.44), Vector2(-.74,.34)], back.darkened(.35))
+	for i: int in range(3):
+		var plate: Vector2 = p + facing * (r * (-.43 + .27 * i)) - Vector2(0, .31 * r)
+		_shape(canvas, plate, facing, r, [Vector2(-.23,.13), Vector2(-.16,-.32),
+			Vector2(.05,-.48), Vector2(.20,-.15), Vector2(.20,.12)], back.lightened(.18 + .07 * i))
+	for side: float in [-1.0, 1.0]:
+		var leg: Vector2 = p + facing * r * (side * .39 + lean) + Vector2(0, .43 * r)
+		canvas.draw_line(leg - Vector2(0, .17) * r, leg + facing * (.24 * r), back, .18 * r, true)
+	canvas.draw_circle(p + facing * (.69 * r) - Vector2(0, .18 * r), .115 * r, Color("#ccf58d"), true, -1, true)
 
 static func _draw_armor(canvas: CanvasItem, p: Vector2, r: float, rank: int, clock: float) -> void:
 	if rank <= 0:

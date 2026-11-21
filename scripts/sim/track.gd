@@ -80,6 +80,24 @@ func at(distance: float) -> Vector2:
 			return points[index - 1].lerp(points[index], (s - lengths[index - 1]) / (lengths[index] - lengths[index - 1]))
 	return points[-1]
 
+func stone_stop(tile: Vector2i) -> float:
+	var center: Vector2 = road_tiles[tile]
+	var closest: float = INF
+	var stop: float = 0.0
+	for i: int in range(1, points.size()):
+		var point: Vector2 = Geometry2D.get_closest_point_to_segment(center, points[i - 1], points[i])
+		var distance: float = center.distance_squared_to(point)
+		if distance < closest:
+			closest = distance
+			stop = lengths[i - 1] + points[i - 1].distance_to(point)
+	return maxf(0.0, stop - .51)
+
+func previous_corner(distance: float) -> float:
+	for i: int in range(points.size() - 2, 0, -1):
+		if lengths[i] < distance and corner_crossed(lengths[i - 1], lengths[i]) == i:
+			return lengths[i]
+	return 0.0
+
 func corner_crossed(from: float, to: float) -> int:
 	for index: int in range(1, points.size() - 1):
 		if lengths[index] > to:

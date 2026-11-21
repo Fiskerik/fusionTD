@@ -1,5 +1,40 @@
 extends "res://tests/test_base.gd"
 
+func test_road_stone_pushes_occupants_and_stops_followers_until_it_expires() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	var tile := Vector2i(4, 1)
+	var stop: float = sim.track.stone_stop(tile)
+	var group: Dictionary = _enemy()
+	group.speed = 3.0
+	for distance: float in [stop - .1, stop + .51, stop + 1.8]:
+		Combat.spawn(sim, group, distance)
+	var block: Dictionary = {"type": "place_stone", "tile": tile}
+	check(sim.apply(block).ok)
+	near(sim.state.mobs[1].s, stop)
+	equal(sim.state.stone_blocks, 2)
+	equal(sim.stone_cooldown(), 60)
+	check(not sim.apply(block).ok)
+	for tick: int in range(89):
+		sim.step()
+	near(sim.state.mobs[0].s, stop)
+	near(sim.state.mobs[1].s, stop)
+	check(float(sim.state.mobs[2].s) > stop + 1.8)
+	sim.step()
+	check(sim.state.stone.is_empty() and float(sim.state.mobs[0].s) > stop)
+	check(not sim.apply(block).ok)
+	sim.state.wave += 1
+	check(not sim.apply(block).ok)
+	sim.state.tick = int(sim.state.stone_ready_tick)
+	check(sim.apply(block).ok)
+	sim.state.wave += 1
+	sim.state.tick = int(sim.state.stone_ready_tick)
+	check(sim.apply(block).ok)
+	sim.state.wave += 1
+	sim.state.tick = int(sim.state.stone_ready_tick)
+	check(not sim.apply(block).ok)
+	equal(sim.state.stone_blocks, 0)
+
 func test_boss_damage_reduction_applies_to_hits_and_ongoing_effects() -> void:
 	var boss: Dictionary = EnemyRules.create(1, Waves.generate(1, 10).boss, 0.0, 0)
 	var start_hp: float = boss.hp
@@ -388,6 +423,7 @@ func test_late_necromancer_heals_without_adding_units() -> void:
 func test_gilded_courier_payout_and_travel_time() -> void:
 	var courier: Dictionary = {}
 	var ordinary: Dictionary = {}
+	var wave_bounty: int = 0
 	for seed_value: int in range(1, 300):
 		var wave: Dictionary = Waves.generate(seed_value, 11)
 		var bonus: Array = wave.groups.filter(func(group: Dictionary) -> bool: return group.kind == "bonus")
@@ -395,14 +431,17 @@ func test_gilded_courier_payout_and_travel_time() -> void:
 		if not bonus.is_empty():
 			courier = bonus[0]
 			ordinary = wave.groups.filter(func(group: Dictionary) -> bool: return group.kind == "grunt" and group.props.is_empty())[0]
+			for group: Dictionary in wave.groups:
+				if group.kind != "bonus":
+					wave_bounty += int(group.gold) * int(group.count)
 			break
 	check(not courier.is_empty())
 	if courier.is_empty():
 		return
 	equal(courier.count, 1)
 	near(courier.hp, float(ordinary.hp) * 2.0)
-	near(courier.armor, float(ordinary.armor) * 2.0)
-	equal(courier.gold, int(ordinary.gold) + 250)
+	near(courier.armor, float(ordinary.armor) * 4.0)
+	equal(courier.gold, roundi(wave_bounty * .4))
 	var sim := Sim.new()
 	sim.state.phase = "wave"
 	sim.schedule(ordinary, 900)
@@ -422,6 +461,59 @@ func test_gilded_courier_payout_and_travel_time() -> void:
 	sim.state.mobs[0].hp = 0
 	sim.step()
 	equal(int(sim.state.gold) - before, courier.gold)
+
+func test_void_wizard_waits_and_only_moves_to_corners() -> void:
+	var sim := Sim.campaign(7)
+	var group: Dictionary = _enemy()
+	group.merge({"kind": "wizard", "props": ["wizard"]}, true)
+	sim.state.phase = "wave"
+	Combat.spawn(sim, group, 0)
+	var wizard: Dictionary = sim.state.mobs[0]
+	for tick: int in range(89):
+		sim.step()
+	near(wizard.s, 0.0)
+	check(not EnemyRules.in_void(wizard, sim.state.tick, sim.hz))
+	sim.step()
+	check(EnemyRules.in_void(wizard, sim.state.tick, sim.hz))
+	var health: float = wizard.hp
+	Effects.add_dot(wizard, "burn", 100.0, 1, 1, 60, 0.0)
+	for tick: int in range(59):
+		sim.step()
+	near(wizard.s, 0.0)
+	near(wizard.hp, health)
+	sim.step()
+	var corner: int = sim.track.corner_crossed(0.0, sim.track.total)
+	near(wizard.s, sim.track.lengths[corner])
+	near(wizard.prev_s, wizard.s)
+	check(not EnemyRules.in_void(wizard, sim.state.tick, sim.hz))
+	var events: Array[Dictionary] = sim.events.filter(func(event: Dictionary) -> bool: return event.type == "wizard_portal")
+	equal(events.size(), 2)
+	for hop: int in range(sim.track.points.size()):
+		if sim.state.phase != "wave":
+			break
+		var previous: float = wizard.s
+		corner = sim.track.corner_crossed(previous, sim.track.total)
+		for tick: int in range(150):
+			sim.step()
+		near(wizard.s, sim.track.lengths[corner] if corner >= 0 else sim.track.total)
+	equal(sim.state.lives, 19)
+
+func test_springwell_fuses_into_a_stronger_attack_speed_aura() -> void:
+	var sim := Sim.new()
+	var spring: Dictionary = TowerRules.fusion_result("spring", "s2", 1)
+	var electric: Dictionary = TowerRules.create(2, "s4", "pure", "electric", "", 100)
+	electric.level = 2
+	var arrow: Dictionary = TowerRules.create(3, "s1", "arrow", "normal", "", 50)
+	for element: String in ["water", "nature", "electric"]:
+		sim.state.tiers[element] = 3
+	var recipe: String = TowerRules.fusion_recipe(spring, electric)
+	equal(recipe, "monsoonroot")
+	var monsoon: Dictionary = TowerRules.combine(recipe, spring, electric, sim.state.tiers, {})
+	var spring_boost: float = sim.support_bonuses(arrow, TowerRules.support_sources([spring])).y
+	var monsoon_boost: float = sim.support_bonuses(arrow, TowerRules.support_sources([monsoon])).y
+	check(monsoon_boost > spring_boost)
+	monsoon.petrified = true
+	near(sim.support_bonuses(arrow, TowerRules.support_sources([monsoon])).y, 0.0)
 
 func test_chain_falloff_and_fire_spread() -> void:
 	var sim := Sim.new()
@@ -634,9 +726,10 @@ func test_stormwing_ignores_ground_control_and_ironwood_resists_elements() -> vo
 		sim.state.towers.s1 = tower
 		Combat.spawn(sim, engine, 10.0)
 		sim.step()
-		near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * (2.0 if infusion.is_empty() else .5) * .75)
-	near(Damage.against({"fire": .5, "water": .5}, engine, false), .5)
-	near(Damage.against({}, engine, true), .5)
+		near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * (2.0 if infusion.is_empty() else .75) * .75)
+	near(Damage.against({"fire": .5, "water": .5}, engine, false), .75)
+	near(Damage.against({}, engine, true), .75)
+	check(StatusInfo.trait_description("ironwood").contains("75% of elemental damage"))
 
 func _enemy(properties: Array = []) -> Dictionary:
 	return {"kind": "grunt", "element": "none", "props": properties, "hp": 1000.0,

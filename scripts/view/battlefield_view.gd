@@ -3,6 +3,7 @@ extends Control
 
 signal site_pressed(slot: String)
 signal enemy_pressed(id: int)
+signal road_double_tapped(tile: Vector2i)
 
 var sim: Sim
 var selected: String = ""
@@ -37,6 +38,9 @@ var place_times: Dictionary = {}
 var hover_slot: String = ""
 var pointer_over_board: bool = false
 var aiming_touch: bool = false
+var last_road_tap: int = -1000
+var last_road_tile: Vector2i
+var matchups: Dictionary = {}
 var tap_ripple: float = 0.0
 var tap_point := Vector2.ZERO
 var inspected_enemy: int = -1
@@ -115,6 +119,8 @@ func reset_animation() -> void:
 func animate(event: Dictionary) -> void:
 	var data: Dictionary = event.data
 	match event.type:
+		"wave_started":
+			last_road_tap = -1000
 		"tower_fired":
 			_fire(data)
 		"mob_killed":
@@ -163,6 +169,17 @@ func animate(event: Dictionary) -> void:
 			var site: Vector2 = sim.track.slots[data.slot].position
 			bursts.append({"at": site, "color": Color("#b582d4"), "time": .72, "max": .72, "radius": .77})
 			fusion_trails.append({"from": sim.track.at(data.s), "to": site, "elements": ["dark", "electric"], "time": .78})
+		"tower_stone_marked":
+			var site: Vector2 = sim.track.slots[data.slot].position
+			bursts.append({"at": site, "color": Color("#a4d5bd"), "time": .75, "max": .75, "radius": .67})
+			fusion_trails.append({"from": sim.track.at(data.s), "to": site, "elements": ["nature"], "time": .78})
+		"stone_placed", "stone_expired":
+			var tile: Vector2i = data.tile
+			bursts.append({"at": sim.track.road_tiles[tile], "color": Color("#d2c1a1"),
+				"time": .55, "max": .55, "radius": .72})
+		"wizard_portal":
+			bursts.append({"at": sim.track.at(data.s), "color": Color("#e3a9ff") if data.arrived else Color("#734ca1"),
+				"time": .64, "max": .64, "radius": .80})
 		"boon_chosen":
 			_gate_pulse(Color("#ffd579"))
 			bursts.append({"at": sim.track.at(sim.track.total * .36), "color": Color("#ffe7a3"), "time": .65, "max": .65, "radius": 1.08})
@@ -183,6 +200,9 @@ func _gate_pulse(color: Color) -> void:
 
 func _fire(data: Dictionary) -> void:
 	var tower: Dictionary = sim.state.towers[data.slot]
+	if data.has("infusion") and data.infusion != tower.infusion:
+		tower = tower.duplicate()
+		tower.infusion = data.infusion
 	var center: Vector2 = sim.track.slots[data.slot].position
 	var target: Vector2 = sim.track.at(data.s)
 	var style: String = ProjectileArt.style(tower, String(data.style))
@@ -285,6 +305,18 @@ func _gui_input(event: InputEvent) -> void:
 		elif aiming_touch:
 			aiming_touch = false
 			if inside:
+				var tile: Vector2i = Vector2i(world.floor())
+				if sim.state.phase == "wave" and sim.track.road_tiles.has(tile):
+					var now: int = Time.get_ticks_msec()
+					if last_road_tile == tile and now - last_road_tap <= 370:
+						last_road_tap = -1000
+						road_double_tapped.emit(tile)
+						accept_event()
+						return
+					last_road_tile = tile
+					last_road_tap = now
+				else:
+					last_road_tap = -1000
 				var slot: String = sim.track.slot_at(world)
 				var enemy: Dictionary = _enemy_at(world, .48)
 				tap_point = world
@@ -327,6 +359,8 @@ func _update_status_tooltip(point: Vector2) -> void:
 func _enemy_at(point: Vector2, closest: float) -> Dictionary:
 	var result: Dictionary = {}
 	for enemy: Dictionary in sim.state.mobs:
+		if EnemyRules.in_void(enemy, sim.state.tick, sim.hz):
+			continue
 		var distance: float = _enemy_position(enemy).distance_to(point)
 		if distance < closest:
 			closest = distance
@@ -348,6 +382,8 @@ func _draw() -> void:
 	_set_board_transform()
 	_draw_field(field_size)
 	_draw_ice_puddles()
+	if not sim.state.stone.is_empty():
+		_draw_road_stone()
 	status_vfx.draw_floor(self)
 	_draw_area_hits()
 	_draw_selection()
@@ -362,6 +398,8 @@ func _draw() -> void:
 	for tower: Dictionary in sim.state.towers.values():
 		_draw_tower(tower)
 	for enemy: Dictionary in sim.state.mobs:
+		if EnemyRules.in_void(enemy, sim.state.tick, sim.hz):
+			continue
 		if int(enemy.id) == inspected_enemy:
 			var focus: Vector2 = _enemy_position(enemy)
 			draw_arc(focus, .43, 0, TAU, 30, Color("#fff7cc"), .09, true)
@@ -391,6 +429,33 @@ func _draw() -> void:
 	_draw_gate_health()
 	for reward: Dictionary in rewards:
 		_draw_reward(reward)
+	draw_set_transform(Vector2.ZERO)
+	if not matchups.is_empty():
+		_draw_matchups()
+
+func _draw_road_stone() -> void:
+	var tile: Vector2i = sim.state.stone.tile
+	var p: Vector2 = sim.track.road_tiles[tile]
+	_set_upright(p)
+	_draw_oval(p + Vector2(.04, .24), Vector2(.45, .22), Color("#503f3f69"))
+	_draw_petrification(p)
+	var left: float = clampf(float(int(sim.state.stone.until) - int(sim.state.tick)) / (sim.hz * float(sim.cfg.stone_seconds)), .001, 1.0)
+	draw_arc(p, .49, -.5 * PI, -.5 * PI + TAU * left, 28, Color("#fff0bd"), .049, true)
+	_set_board_transform()
+
+func _draw_matchups() -> void:
+	draw_rect(Rect2(Vector2.ZERO, size), Color("#363a3c7d"))
+	_set_board_transform()
+	for slot: String in matchups:
+		if not sim.state.towers.has(slot):
+			continue
+		var p: Vector2 = sim.track.slots[slot].position
+		var rating: int = matchups[slot]
+		if rating & 1:
+			draw_arc(p, .55, 0.0, PI if rating == 3 else TAU, 28, Color("#8cffac"), .072, true)
+		if rating & 2:
+			draw_arc(p, .55, PI if rating == 3 else 0.0, TAU, 28, Color("#ff8d86"), .075, true)
+		_draw_tower(sim.state.towers[slot])
 	draw_set_transform(Vector2.ZERO)
 
 func _draw_castle_horizon(bounds: Vector2) -> void:
@@ -602,6 +667,7 @@ func _tile_outline(p: Vector2, color: Color, radius: float, width: float) -> voi
 				corner - Vector2(0, sign_y * .19)]), color, width)
 
 func _draw_tower(tower: Dictionary) -> void:
+	tower = sim.effective_tower(tower)
 	var p: Vector2 = sim.track.slots[tower.slot].position
 	_set_upright(p)
 	var tint: Color = _tower_color(tower)
@@ -617,6 +683,13 @@ func _draw_tower(tower: Dictionary) -> void:
 	var recoil: float = float(aim.get("recoil", 0.0)) / .18
 	var rim: Color = tint.darkened(.32)
 	TowerArt.draw(self, tower, p, .47, elapsed, direction, recoil)
+	if tower.get("petrified", false):
+		_draw_petrification(p)
+	if tower.get("stone_pending", false):
+		draw_arc(p, .49, elapsed * 1.9, elapsed * 1.9 + TAU * .72, 26, Color("#baf9c3"), .05, true)
+		var mark: Vector2 = p + Vector2(.29, -.32)
+		_draw_polygon_base(mark, .135, 4, 0.0, Color("#2d604e"))
+		_draw_polygon_base(mark, .078, 4, 0.0, Color("#c1f3bd"))
 	if tower.infusion != "":
 		draw_arc(p, .43, 0, TAU, 28, tint, .062)
 		var emblem: Vector2 = p + Vector2(-.27, .24)
@@ -648,6 +721,18 @@ func _draw_tower(tower: Dictionary) -> void:
 	if int(tower.stun) > 0:
 		Glyphs.draw(self, "electric", p + Vector2(.30, -.30), .19, Color("#aa64c6"))
 	_set_board_transform()
+
+func _draw_petrification(p: Vector2) -> void:
+	var rock := PackedVector2Array()
+	for point: Vector2 in [Vector2(-.41,.24), Vector2(-.43,-.14), Vector2(-.25,-.44),
+			Vector2(.14,-.48), Vector2(.35,-.34), Vector2(.41,.10), Vector2(.31,.31), Vector2(-.18,.39)]:
+		rock.append(p + point)
+	draw_colored_polygon(rock, Color("#728782ed"))
+	rock.append(rock[0])
+	draw_polyline(rock, Color("#425751"), .031, true)
+	draw_polyline(PackedVector2Array([p + Vector2(-.29, -.39), p + Vector2(-.15, -.12), p + Vector2(.03, -.13),
+		p + Vector2(.16, .15), p + Vector2(.35, .18)]), Color("#43564f"), .030, true)
+	draw_line(p + Vector2(.035, -.13), p + Vector2(.23, -.37), Color("#a2bbb0"), .031, true)
 
 func _draw_pure_badge(p: Vector2) -> void:
 	var star := PackedVector2Array()
@@ -758,6 +843,12 @@ func _draw_enemy(enemy: Dictionary) -> void:
 			var sparkle: Vector2 = p - direction * (.21 + index * .15)
 			var offset: float = sin(elapsed * 13.0 + index * 2.2) * .15
 			draw_circle(sparkle + direction.orthogonal() * offset, .051 - index * .009, Color("#fff1a1"), true, -1, true)
+	if enemy.kind == "wizard":
+		var age: int = int(sim.state.tick) - int(enemy.born)
+		var stand: int = Effects.ticks(DataDB.read("waves").wizard.visible_seconds, sim.hz)
+		var charge: float = float(age % EnemyRules.wizard_cycle(sim.hz)) / stand
+		draw_arc(p + Vector2(0, .17), .36 + charge * .12, -.5 * PI, -.5 * PI + TAU * maxf(.02, charge),
+			28, Color("#da9df2"), .045, true)
 	var airborne: bool = EnemyRules.airborne(enemy)
 	_draw_oval(p + Vector2(.035, radius * .53), Vector2(radius, radius * .42), Color("#614f42", .23 if airborne or prismheart else .34))
 	_draw_status_ground(enemy, p, direction, radius)

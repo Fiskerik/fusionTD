@@ -4,9 +4,11 @@ extends RefCounted
 static func scaled(values: Array, wave: int) -> int:
 	return int(values[0]) + int(values[1]) * wave
 
-static func clear_reward(wave: int, gold: int) -> int:
-	var cfg: Dictionary = DataDB.read("balance")
-	return scaled(cfg.wave_clear_bonus, wave) + mini(int(cfg.interest_cap), floori(gold * float(cfg.interest)))
+static func clear_reward(wave: int) -> int:
+	return scaled(DataDB.read("balance").wave_clear_bonus, wave)
+
+static func interest(gold: int) -> int:
+	return floori(gold * float(DataDB.read("balance").interest))
 
 static func refund(invested: int) -> int:
 	return floori(invested * float(DataDB.read("balance").sell_refund))
