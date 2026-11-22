@@ -29,9 +29,13 @@ static func decode(payload: Variant) -> Sim:
 	state.active_boon = state.get("active_boon", _legacy_boon(state.get("boons", [])))
 	state.erase("boons")
 	state.boon_queue = state.get("boon_queue", [])
-	var sim := Sim.new(int(state.seed), state.map_id)
+	var sim := Sim.new(int(state.seed), state.map_id, String(state.get("run_mode", "legacy")))
 	state.map_id = sim.track.layout_id
 	state.merge(sim.tactical_defaults())
+	state.run_mode = sim.state.run_mode
+	for key: String in ["act_pending", "outcome", "finale_defeated"]:
+		if not state.has(key):
+			state[key] = sim.state[key]
 	for key: String in sim.state:
 		if not state.has(key) or typeof(state[key]) != typeof(sim.state[key]):
 			return null
@@ -51,12 +55,16 @@ static func decode(payload: Variant) -> Sim:
 	for entry: Dictionary in state.spawn_queue:
 		EnemyRules.apply_wave_traits(entry.group, int(state.wave))
 		_retune_enemy(entry.group, int(state.wave), bosses_by_type)
-	var countdown: float = float(sim.cfg.opening_seconds if int(state.wave) == 1 else sim.cfg.intermission_seconds)
+	var countdown: float = sim.breather()
 	sim.intermission_left = clampf(float(payload.get("intermission_left", countdown)), 0, countdown)
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
 		restored.map_id = state.map_id
 		restored.merge(sim.tactical_defaults())
+		restored.run_mode = state.run_mode
+		for key: String in ["act_pending", "outcome", "finale_defeated"]:
+			if not restored.has(key):
+				restored[key] = sim.state[key]
 		restored.tiers = restored.get("tiers", {}).duplicate()
 		for element: String in DataDB.ELEMENTS:
 			if not restored.tiers.has(element):
@@ -157,7 +165,8 @@ static func finish(sim: Sim, values: Dictionary) -> void:
 	values.runs = int(values.runs) + 1
 	values.total_kills = int(values.total_kills) + int(sim.state.stats.kills)
 	write_profile(values)
-	_write_json(REPLAY, {"seed": sim.state.seed, "map_id": sim.track.layout_id, "final_tick": sim.state.tick, "actions": sim.history})
+	_write_json(REPLAY, {"seed": sim.state.seed, "map_id": sim.track.layout_id, "mode": sim.state.run_mode,
+		"final_tick": sim.state.tick, "actions": sim.history})
 	clear()
 
 static func record_run(sim: Sim, values: Dictionary) -> void:
@@ -172,6 +181,7 @@ static func record_run(sim: Sim, values: Dictionary) -> void:
 	var runs: Array = values.get("recent_runs", [])
 	runs.push_front({
 		"date": Time.get_datetime_string_from_system(false, true).left(16),
+		"mode": sim.state.run_mode, "outcome": sim.state.outcome,
 		"reached": int(sim.state.wave), "cleared": int(sim.state.wave) - 1,
 		"kills": int(sim.state.stats.kills), "bosses": int(sim.state.stats.get("bosses_defeated", 0)),
 		"trials": int(sim.state.stats.spirits), "spirits_defeated": int(sim.state.stats.get("spirits_defeated", 0)),

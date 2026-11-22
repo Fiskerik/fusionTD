@@ -87,7 +87,7 @@ static func support_sources(towers: Array) -> Array[Dictionary]:
 	return sources
 
 static func disabled(tower: Dictionary) -> bool:
-	return bool(tower.get("sabotaged", false)) or bool(tower.get("petrified", false))
+	return int(tower.get("reflect", 0)) > 0 or bool(tower.get("sabotaged", false)) or bool(tower.get("petrified", false))
 
 static func support_bonuses(tower: Dictionary, sources: Array[Dictionary], track: Track, slot: String = "", scopes: Dictionary = {}) -> Vector3:
 	# Damage, attack rate, and attack range each use the strongest active aura.
@@ -282,6 +282,9 @@ static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Di
 	var crystals: int = int(first.get("crystals", 0)) + int(second.get("crystals", 0))
 	if crystals > 0:
 		result.crystals = crystals
+	var reflect: int = maxi(int(first.get("reflect", 0)), int(second.get("reflect", 0)))
+	if reflect > 0:
+		result.reflect = reflect
 	for status: String in ["stone_pending", "petrified"]:
 		if first.get(status, false) or second.get(status, false):
 			result[status] = true

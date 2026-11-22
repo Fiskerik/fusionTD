@@ -5,10 +5,13 @@ static func unit_cap() -> int:
 	return int(DataDB.read("waves").unit_cap)
 
 static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_weaknesses: bool = true,
-		expanded_roster: bool = true, campaign_track: Track = null) -> Dictionary:
+		expanded_roster: bool = true, campaign_track: Track = null, pacing: String = "") -> Dictionary:
 	if not trial.is_empty():
 		return {"wave": wave, "groups": [], "boss": {}, "bosses": [], "spirit": spirit_group(trial.element, int(trial.tier), wave)}
 	var rules: Dictionary = DataDB.read("waves")
+	if pacing in ["spirit", "merchant"]:
+		return {"wave": wave, "groups": [], "boss": {}, "bosses": [], "spirit": {}}
+	var finale: Dictionary = rules.finales.get(pacing, {})
 	var balance: Dictionary = DataDB.read("balance")
 	var bosses: Dictionary = DataDB.read("bosses")
 	var base: Dictionary = DataDB.read("mobs")
@@ -29,32 +32,39 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	var count: int = int(balance.mob_count_base) + floori(float(balance.mob_count_per_wave) * wave)
 	count += floori(harder_waves * float(rules.pressure.added_count_per_wave))
 	count = roundi(count * float(tuning.get("count_scale", 1.0)))
+	if pacing == "short":
+		var count_scale: float = rules.short_wave.count_scale
+		count = maxi(1, roundi(count * count_scale))
+		gold = roundi(gold / count_scale)
 	var bonus: Dictionary = rules.bonus_mob
 	var include_bonus: bool = bonus_rng.take(100) < int(bonus.chance_percent)
-	if wave % int(balance.boss_every) == 0:
+	if wave % int(balance.boss_every) == 0 or not finale.is_empty():
 		var bosses_in_wave: Array[Dictionary] = []
 		var health_adjustment: Dictionary = bosses.health_adjustment
 		var boss_hp: float = hp * float(bosses.health_multiplier)
 		if wave >= int(health_adjustment.from):
 			boss_hp *= float(health_adjustment.multiplier)
-		var boss_count: int = 1 if late_waves == 0 else (3 if wave >= int(late.third_boss_from) else 2)
+		var boss_count: int = 1 if late_waves == 0 or not finale.is_empty() else (3 if wave >= int(late.third_boss_from) else 2)
 		boss_hp *= float(late.boss_health_scale_by_count[boss_count - 1])
+		boss_hp *= float(finale.get("health_scale", 1.0))
 		var boss_armor_scale: float = late.boss_armor_scale_by_count[boss_count - 1]
 		var roster_size: int = bosses.order.size() if expanded_roster else 3
 		var first: int = (wave / int(balance.boss_every) - 1) % roster_size
 		for index: int in range(boss_count):
-			var boss_type: String = bosses.order[(first + index) % roster_size]
+			var boss_type: String = finale.get("boss", bosses.order[(first + index) % roster_size])
 			var stats: Dictionary = bosses[boss_type]
 			bosses_in_wave.append({
 				"kind": "boss", "element": stats.element, "props": [], "count": 1, "interval": 0,
-				"hp": boss_hp * float(stats.hp_mult), "armor": (float(stats.armor) + wave) * boss_armor_scale,
-				"speed": float(stats.speed), "gold": Economy.scaled(bosses.gold, wave),
+				"hp": boss_hp * float(stats.hp_mult), "armor": (float(stats.armor) + wave + float(finale.get("armor_bonus", 0))) * boss_armor_scale,
+				"speed": float(stats.speed) * float(finale.get("speed_scale", 1.0)), "gold": Economy.scaled(bosses.gold, wave),
 				"leak": int(balance.leak.boss), "slow_cap": float(base.slow_cap),
 				"control_resistance": float(bosses.control_resistance),
 				"boss_type": boss_type, "spawn": int(bosses.spawn_tick) + index * Effects.ticks(late.boss_spacing_seconds, balance.sim_hz),
 				"armor_rank": EnemyRules.armor_rank(wave),
 				"heal_aura": late_waves > 0 and boss_type == "necromancer",
 			})
+			if not finale.is_empty():
+				bosses_in_wave[-1].finale = true
 			if boss_type == "ram":
 				if expanded_roster:
 					bosses_in_wave[-1].turn_seconds = float(stats.turn_seconds)
@@ -135,6 +145,9 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			if not weaknesses.has(affinity):
 				weaknesses[affinity] = _roll_weakness(weakness_rng, affinity)
 			group.weakness = weaknesses[affinity]
+	if pacing == "short":
+		for group: Dictionary in groups:
+			group.interval = maxi(1, roundi(float(group.interval) * float(rules.short_wave.interval_scale)))
 	return {"wave": wave, "groups": groups, "boss": {}, "bosses": [], "spirit": {}}
 
 static func _replace_with_encounter(groups: Array[Dictionary], kind: String) -> void:

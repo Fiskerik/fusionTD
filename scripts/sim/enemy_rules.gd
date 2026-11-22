@@ -20,7 +20,12 @@ static func create(id: int, group: Dictionary, distance: float, born: int) -> Di
 		enemy.forms = group.forms
 	if group.has("turn_seconds"):
 		enemy.turn_seconds = group.turn_seconds
+	if group.get("finale", false):
+		enemy.finale = true
 	return enemy
+
+static func reflect_ready(enemy: Dictionary, tick: int) -> bool:
+	return enemy.kind == "boss" and tick >= int(enemy.get("reflect_ready_tick", 0))
 
 static func airborne(enemy: Dictionary) -> bool:
 	return enemy.get("boss_type", "") == "tempest"

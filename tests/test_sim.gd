@@ -1,5 +1,80 @@
 extends "res://tests/test_base.gd"
 
+func test_campaign_beats_and_merchant_are_numbered_events() -> void:
+	var sim := Sim.campaign(51, "endless")
+	equal(sim.next_event_wave(), 5)
+	for wave: int in range(1, 5):
+		var timed: Dictionary = sim.preview(wave)
+		var old: Dictionary = Waves.generate(sim.state.seed, wave, {}, true, true, sim.track)
+		check(int(timed.groups[0].interval) < int(old.groups[0].interval) if wave < 4 else timed.groups == old.groups)
+	sim.state.wave = 4
+	sim.state.phase = "wave"
+	sim.step()
+	equal(sim.state.wave, 5)
+	near(sim.intermission_left, 20.0)
+	equal(sim.event_kind(5), "spirit")
+	check(sim.preview(5).groups.is_empty())
+	check(sim.apply({"type": "select_element", "element": "earth", "tier": 1}).ok)
+	check(sim.apply({"type": "start_wave"}).ok)
+	var spirit: Dictionary = sim.state.spawn_queue.pop_front().group
+	Combat.spawn(sim, spirit, 0.0)
+	Damage.deal(sim.state.mobs[0], float(spirit.hp), {})
+	sim.step()
+	equal(sim.state.wave, 6, "The spirit consumes its numbered event")
+	equal(sim.state.tiers.earth, 1)
+	equal(sim.event_kind(10), "boss")
+	equal(sim.event_kind(25), "spirit")
+	sim.state.wave = 35
+	sim.state.gold = 500
+	sim.state.lives = 18
+	check(sim.merchant_pending())
+	check(not sim.apply({"type": "start_wave"}).ok)
+	var purchase: Dictionary = sim.apply({"type": "merchant", "offer": "repair"})
+	check(purchase.ok and int(purchase.cost) > 0)
+	equal(sim.state.lives, 20)
+	equal(sim.state.barrier, 3)
+	equal(sim.state.wave, 36)
+	check(not sim.apply({"type": "merchant", "offer": "repair"}).ok)
+
+func test_runs_bank_or_continue_at_act_breaks_and_win_only_by_killing_the_finale() -> void:
+	for mode: String in ["quick", "standard", "endless"]:
+		var sim := Sim.campaign(7, mode)
+		var last: int = sim.run_limit() if mode != "endless" else 15
+		sim.state.wave = last
+		sim.state.phase = "wave"
+		sim.step()
+		check(sim.state.act_pending)
+		check(not sim.apply({"type": "start_wave"}).ok)
+		var checkpoint: Dictionary = SaveStore.encode(sim).duplicate(true)
+		var banked: Sim = SaveStore.decode(checkpoint.duplicate(true))
+		check(banked.apply({"type": "bank_run"}).ok)
+		equal(banked.state.outcome, "banked")
+		equal(banked.state.phase, "game_over")
+		equal(int(banked.state.wave) - 1, last)
+		sim = SaveStore.decode(checkpoint.duplicate(true))
+		equal(sim.state.run_mode, mode)
+		check(sim.apply({"type": "continue_act"}).ok)
+		check(sim.apply({"type": "start_wave"}).ok)
+		if mode == "endless":
+			check(sim.event_kind(sim.state.wave).is_empty())
+			continue
+		var ordinary: Dictionary = Waves.generate(7, 20 if mode == "quick" else 30).boss
+		var finale: Dictionary = sim.state.spawn_queue.pop_front().group
+		check(finale.finale and float(finale.hp) > float(ordinary.hp))
+		Combat.spawn(sim, finale, 0.0)
+		Damage.deal(sim.state.mobs[0], float(finale.hp) * 2, {})
+		sim.step()
+		equal(sim.state.outcome, "win")
+		check(sim.state.boon_queue.is_empty())
+		var failed: Sim = SaveStore.decode(checkpoint.duplicate(true))
+		failed.apply({"type": "continue_act"})
+		failed.apply({"type": "start_wave"})
+		failed.state.spawn_queue.clear()
+		Combat.spawn(failed, finale, failed.track.total)
+		failed.step()
+		check(int(failed.state.lives) > 0)
+		equal(failed.state.outcome, "lost")
+
 func test_data_and_map() -> void:
 	equal(DataDB.validate(), PackedStringArray(), "All tables and fusion combinations must be valid")
 	var track := Track.new()
@@ -290,7 +365,7 @@ func test_economy_and_undo() -> void:
 	equal(sim.state.towers.s1.invested, 90)
 	equal(Economy.refund(90), 67)
 	equal(Economy.clear_reward(1), Economy.scaled(sim.cfg.wave_clear_bonus, 1))
-	equal(Economy.interest(125), 12)
+	equal(Economy.interest(125), 5)
 	check(sim.apply({"type": "sell", "slot": "s1"}).ok)
 	equal(sim.state.gold, int(sim.cfg.start_gold) - 90 + 67)
 	for i: int in range(3):
@@ -754,7 +829,7 @@ func test_all_twenty_triples_and_third_element_rules() -> void:
 		pure.level = 2
 		equal(TowerRules.fusion_recipe(dual, pure), id)
 		equal(TowerRules.fusion_recipe(pure, dual), id)
-		equal(sim.apply(action).cost, 638)
+		equal(sim.apply(action).cost, 798)
 		var result: Dictionary = sim.state.towers.s1
 		equal(result.kind, "triple")
 		equal(result.dual, id)
@@ -1122,7 +1197,7 @@ func test_campaign_layouts_are_centered_and_replay_uses_the_same_route() -> void
 			break
 		sim.step()
 	check(sim.boon_choices().is_empty())
-	var replay := Replay.from_data({"seed": sim.state.seed, "map_id": sim.track.layout_id,
+	var replay := Replay.from_data({"seed": sim.state.seed, "map_id": sim.track.layout_id, "mode": sim.state.run_mode,
 		"actions": sim.history, "final_tick": sim.state.tick})
 	check(replay != null)
 	if replay != null:
@@ -1218,7 +1293,7 @@ func test_a_replaced_boon_no_longer_changes_towers_or_fusion_costs() -> void:
 	equal(sim.fusion_fee(fire, water), ceili(TowerRules.fusion_cost(fire, water) * .75))
 
 func test_special_enemies_replace_regular_spawns() -> void:
-	var sim := Sim.campaign(3)
+	var sim := Sim.campaign(3, "legacy")
 	for id: String in DataDB.read("mobs").specials:
 		var wave: int = DataDB.read("mobs").specials[id].first
 		var generated: Dictionary = sim.preview(wave)
@@ -1258,14 +1333,14 @@ func test_interest_is_paid_once_at_start_before_any_spawn() -> void:
 	var sim := Sim.new()
 	sim.state.gold = 125
 	check(sim.apply({"type": "start_wave"}).ok)
-	equal(sim.state.gold, 137)
-	equal(sim.events[0], {"type": "interest_paid", "data": {"gold": 12}})
+	equal(sim.state.gold, 130)
+	equal(sim.events[0], {"type": "interest_paid", "data": {"gold": 5}})
 	check(sim.state.mobs.is_empty() and not sim.state.spawn_queue.is_empty())
 	check(not sim.apply({"type": "start_wave"}).ok)
-	equal(sim.state.gold, 137)
+	equal(sim.state.gold, 130)
 	sim.state.spawn_queue.clear()
 	sim.step()
-	equal(sim.state.gold, 137 + Economy.clear_reward(1))
+	equal(sim.state.gold, 130 + Economy.clear_reward(1))
 	near(sim.intermission_left, 10.0)
 
 func test_swap_tokens_apply_to_all_matching_towers_for_one_round() -> void:

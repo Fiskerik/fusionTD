@@ -1,5 +1,34 @@
 extends "res://tests/test_base.gd"
 
+func test_run_picker_and_hud_library_keep_combat_live() -> void:
+	var menu: Control = load("res://scenes/main_menu.tscn").instantiate()
+	runner.root.add_child(menu)
+	menu._new_run()
+	for mode: String in ["Quick", "Standard", "Endless"]:
+		check(menu.find_child("Run" + mode, true, false) is Button)
+	menu.queue_free()
+	await runner.process_frame
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	game.sim = Sim.campaign(7, "quick")
+	runner.root.add_child(game)
+	game.set_process(false)
+	check(game.event_status.text.begins_with("Next event in 4 waves"))
+	game._apply({"type": "start_wave"})
+	var library: Button = game.find_child("HudLibrary", true, false)
+	library.pressed.emit()
+	equal(game.overlay_type, "legend")
+	check(not game.paused)
+	game._process(.25)
+	check(int(game.sim.state.tick) > 0)
+	game._close_reference()
+	game._show_pause()
+	var paused_tick: int = game.sim.state.tick
+	game._process(.25)
+	equal(game.sim.state.tick, paused_tick)
+	game.queue_free()
+	await runner.process_frame
+
 func test_tower_details_can_scroll_when_the_screen_is_short() -> void:
 	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
 	game.persistence_enabled = false
@@ -330,6 +359,9 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	check(not game.field.upgrade_ready.has("s2"), "A level-7 Pure tower stays maxed when a crystal is earned")
 	game._site_pressed("s2")
 	check(game.upgrade_button.disabled and game.upgrade_button.text == DataDB.text("max_level"))
+	check(not game.field.upgrade_ready.has("s3"), "A crystal alone does not pay for ascension")
+	sim.state.gold = 1500
+	game._update_hud(true)
 	check(game.field.upgrade_ready.has("s3"), "A max-level Nature tower can spend the milestone crystal")
 	game._site_pressed("s3")
 	check(game.upgrade_button.text.begins_with("Use Crystal") and not game.upgrade_button.disabled)
@@ -353,6 +385,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	game._upgrade_pressed()
 	var use_crystal: Button = game.overlay.find_child("ConfirmPureCrystal", true, false)
 	use_crystal.pressed.emit()
+	equal(sim.state.gold, 0, "Ascension charges 1500 gold on confirmation")
 	check(game.upgrade_button.disabled and game.upgrade_button.text == DataDB.text("max_level"))
 	check(not game.field.upgrade_ready.has("s3"))
 	equal(sim.state.towers.s3.kind, "ascended")
@@ -412,7 +445,7 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	game._refresh()
 	await runner.process_frame
 	await runner.process_frame
-	check(game.interest_status.text.contains("+16"))
+	check(game.interest_status.text.contains("+6"))
 	var pointer := InputEventMouseButton.new()
 	pointer.button_index = MOUSE_BUTTON_LEFT
 	var swap: Button = game.swap_buttons.arrow
@@ -443,7 +476,7 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	game._close_overlay()
 	check(game.field.matchups.is_empty())
 	game._apply({"type": "start_wave"})
-	check(game.interest_toast.visible and game.interest_toast_text.text == "Interest: 16 gold")
+	check(game.interest_toast.visible and game.interest_toast_text.text == "Interest +6 g")
 	game._show_selection()
 	check(game.interest_toast.visible and game.interest_toast.get_parent().layer > 0)
 	game._close_overlay()
@@ -464,9 +497,10 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	equal(game.sim.state.phase, "build")
 	game._process(.11)
 	equal(game.sim.state.phase, "wave")
-	check(game.sim.state.mobs.is_empty() and game.interest_toast_text.text.begins_with("Interest: "))
+	check(game.sim.state.mobs.is_empty() and game.interest_toast_text.text.begins_with("Interest +"))
 	game._process(3.1)
 	check(not game.interest_toast.visible)
+	check(game.interest_status.text == "Interest +%d g" % game.sim.state.last_interest)
 	game.queue_free()
 	await runner.process_frame
 

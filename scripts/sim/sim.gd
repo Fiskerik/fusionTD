@@ -1,6 +1,8 @@
 class_name Sim
 extends RefCounted
 
+const RUN_LENGTHS: Dictionary = {"quick": 15, "standard": 30, "endless": 0, "legacy": 0}
+
 var state: Dictionary
 var track: Track
 var _boon_modifiers: Dictionary = {}
@@ -11,10 +13,10 @@ var events: Array[Dictionary] = []
 var history: Array[Dictionary] = []
 var undo_stack: Array[Dictionary] = []
 
-static func campaign(seed_value: int) -> Sim:
-	return Sim.new(seed_value, Track.campaign_layout(seed_value))
+static func campaign(seed_value: int, mode: String = "endless") -> Sim:
+	return Sim.new(seed_value, Track.campaign_layout(seed_value), mode)
 
-func _init(seed_value: int = 1, layout: String = Track.LEGACY) -> void:
+func _init(seed_value: int = 1, layout: String = Track.LEGACY, mode: String = "legacy") -> void:
 	track = Track.new(layout)
 	var tiers: Dictionary = {}
 	for element: String in DataDB.ELEMENTS:
@@ -28,10 +30,44 @@ func _init(seed_value: int = 1, layout: String = Track.LEGACY) -> void:
 		"selection_pending": false, "rally_cd": 0, "stats": {"kills": 0, "spirits": 0, "fusions": 0, "leaked": 0},
 	}
 	state.merge(tactical_defaults())
+	state.run_mode = mode if RUN_LENGTHS.has(mode) else "endless"
+	state.act_pending = false
+	state.outcome = ""
+	state.finale_defeated = false
+
+func run_limit() -> int:
+	return int(RUN_LENGTHS[state.run_mode])
+
+func uses_acts() -> bool:
+	return state.run_mode != "legacy"
+
+func event_kind(wave: int) -> String:
+	if run_limit() > 0 and wave == run_limit() + 1:
+		return "finale"
+	if wave % int(cfg.boss_every) == 0:
+		return "boss"
+	if wave % int(cfg.selection_every) != 0:
+		return ""
+	var merchant: Dictionary = DataDB.read("waves").merchant
+	var since_first: int = wave - int(merchant.first_wave)
+	return "merchant" if uses_acts() and ((since_first >= 0 and since_first % int(merchant.every) == 0) or choices().is_empty()) else "spirit"
+
+func next_event_wave() -> int:
+	var wave: int = int(state.wave) + (1 if state.phase == "wave" and not event_kind(state.wave).is_empty() else 0)
+	var next_mark: int = ceili(float(wave) / float(cfg.selection_every)) * int(cfg.selection_every)
+	return mini(next_mark, run_limit() + 1) if run_limit() > 0 else next_mark
+
+func merchant_pending() -> bool:
+	return uses_acts() and state.phase == "build" and not state.act_pending and event_kind(state.wave) == "merchant"
+
+func breather() -> float:
+	if int(state.wave) == 1:
+		return float(cfg.opening_seconds)
+	return float(cfg.event_break_seconds if uses_acts() and not event_kind(state.wave).is_empty() else cfg.intermission_seconds)
 
 func tactical_defaults() -> Dictionary:
 	return {"stone_blocks": int(cfg.stone_blocks), "stone": {}, "stone_last_wave": 0,
-		"stone_ready_tick": 0, "swap_tokens": int(cfg.swap_tokens), "wave_swaps": {}}
+		"stone_ready_tick": 0, "swap_tokens": int(cfg.swap_tokens), "wave_swaps": {}, "last_interest": 0}
 
 func effective_tower(tower: Dictionary) -> Dictionary:
 	var element: String = state.wave_swaps.get(tower.kind, "")
@@ -64,10 +100,22 @@ func preview(wave: int, include_trial: bool = true) -> Dictionary:
 	var current: bool = wave == int(state.wave)
 	var trial: Dictionary = state.trial if include_trial and current else {}
 	var current_active: bool = current and state.phase == "wave"
+	var pacing: String = ""
+	if uses_acts():
+		var event: String = event_kind(wave)
+		if event == "finale":
+			pacing = state.run_mode
+		elif event.is_empty():
+			pacing = "short" if (wave - 1) % int(cfg.selection_every) < 3 else "medium"
+		else:
+			pacing = event
 	var wave_data: Dictionary = Waves.generate(state.seed, wave, trial,
 		not current_active or state.wave_has_rolled_weaknesses,
-		not current_active or state.wave_uses_expanded_boss_roster, track if track.layout_id != Track.LEGACY else null)
+		not current_active or state.wave_uses_expanded_boss_roster, track if track.layout_id != Track.LEGACY else null, pacing)
+	var finale: Dictionary = DataDB.read("waves").finales.get(state.run_mode, {}) if wave == run_limit() else {}
+	var lead_in_scale: float = finale.get("lead_in_health_scale", 1.0)
 	for boss: Dictionary in wave_data.bosses:
+		boss.hp *= lead_in_scale
 		if boss.boss_type == "prismheart":
 			var forms := PackedStringArray()
 			for element: String in DataDB.ELEMENTS:
@@ -146,9 +194,12 @@ func fusion_fee(first: Dictionary, second: Dictionary) -> int:
 		return base_fee
 	return TowerRules.fusion_fee(first, second, state.tiers, base_fee)
 
-func record_boss_kill() -> void:
+func record_boss_kill(finale: bool = false) -> void:
 	var boss_kills: int = int(state.stats.get("bosses_defeated", 0)) + 1
 	state.stats.bosses_defeated = boss_kills
+	if finale:
+		state.finale_defeated = true
+		return
 	state.boon_queue.append({"source": "boss", "wave": int(state.wave), "index": state.boon_queue.size(),
 		"potency": RunBoons.reward_potency(boss_kills)})
 
@@ -248,6 +299,7 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = TowerRules.level_requirement(tower, state.tiers)
 				cost = TowerRules.upgrade_cost(tower)
 		"empower_pure":
+			cost = int(cfg.pure_tower_cost)
 			if tower.get("kind", "") == "ascended":
 				reason = DataDB.text("max_level")
 			elif not TowerRules.can_socket_crystal(tower):
@@ -316,11 +368,27 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 		"start_wave":
 			if not state.boon_queue.is_empty():
 				reason = "Choose a run boon first."
+			elif state.act_pending:
+				reason = "Choose whether to bank or continue the run."
+			elif merchant_pending():
+				reason = "Visit or leave the merchant first."
 			elif state.selection_pending:
 				reason = DataDB.text("choose_spirit")
+		"continue_act", "bank_run":
+			if not state.act_pending or not state.boon_queue.is_empty():
+				reason = "There is no act decision ready."
+		"merchant":
+			if not merchant_pending() or not state.boon_queue.is_empty():
+				reason = "The merchant is unavailable."
+			elif action.get("offer", "") == "repair":
+				if int(state.lives) >= int(cfg.start_lives) and int(state.barrier) >= int(cfg.gate_barrier_cap):
+					reason = "The gate and its barrier are full."
+				cost = Economy.scaled(DataDB.read("waves").merchant.price, state.wave)
+			elif action.get("offer", "") != "leave":
+				reason = "Choose a merchant offer."
 		"select_element":
 			var choice: Dictionary = {"element": action.get("element", ""), "tier": int(action.get("tier", 0))}
-			if not state.boon_queue.is_empty() or not state.selection_pending or not choices().has(choice):
+			if not state.boon_queue.is_empty() or state.act_pending or not state.selection_pending or not choices().has(choice):
 				reason = DataDB.text("unavailable_trial")
 		"undo":
 			if undo_stack.is_empty():
@@ -339,7 +407,7 @@ func apply(action: Dictionary) -> Dictionary:
 	var slot: String = action.get("slot", action.get("slot_a", ""))
 	var tower: Dictionary = state.towers.get(slot, {})
 	history.append({"tick": int(state.tick), "action": action.duplicate(true)})
-	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon", "swap_element"]:
+	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon", "swap_element", "continue_act", "bank_run", "merchant"]:
 		undo_stack.append(state.duplicate(true))
 		if undo_stack.size() > int(cfg.undo_limit):
 			undo_stack.pop_front()
@@ -367,6 +435,7 @@ func apply(action: Dictionary) -> Dictionary:
 		"empower_pure":
 			state.stats.pure_built = int(state.stats.get("pure_built", 0)) + 1
 			TowerRules.empower_pure(tower)
+			tower.invested += int(result.cost)
 			state.stats.pure_crystals_spent = int(state.stats.get("pure_crystals_spent", 0)) + 1
 		"infuse":
 			tower.infusion = action.element
@@ -415,6 +484,15 @@ func apply(action: Dictionary) -> Dictionary:
 			state.selection_pending = false
 		"start_wave":
 			_start_wave()
+		"continue_act":
+			state.act_pending = false
+			undo_stack.clear()
+		"bank_run":
+			_end_run("banked")
+		"merchant":
+			if action.offer == "repair":
+				_repair_gate(int(DataDB.read("waves").merchant.repair_points))
+			_advance_wave()
 		"undo":
 			state = undo_stack.pop_back()
 			refresh_boon()
@@ -464,9 +542,13 @@ func lose_lives(enemy: Dictionary) -> void:
 	if enemy.kind == "spirit":
 		resolve_spirit(enemy, previous - int(state.lives), absorbed)
 	if int(state.lives) == 0:
-		state.trial = {}
-		state.phase = "game_over"
-		emit_event("game_over")
+		_end_run("lost")
+
+func _end_run(outcome: String) -> void:
+	state.trial = {}
+	state.outcome = outcome
+	state.phase = "game_over"
+	emit_event("game_over")
 
 func resolve_spirit(enemy: Dictionary, lost: int = 0, absorbed: int = 0) -> void:
 	state.gold += int(enemy.gold)
@@ -494,10 +576,12 @@ func _start_wave() -> void:
 	state.rally_cd = 0
 	var interest: int = Economy.interest(state.gold)
 	state.gold += interest
+	state.last_interest = interest
 	emit_event("interest_paid", {"gold": interest})
 	for tower: Dictionary in state.towers.values():
 		tower.cooldown = 0
 		tower.stun = 0
+		tower.erase("reflect")
 		tower.hits = 0
 		tower.beam_target = -1
 	var wave: Dictionary = preview(state.wave)
@@ -513,14 +597,24 @@ func _start_wave() -> void:
 	emit_event("wave_started", {"bonus": not wave.spirit.is_empty()})
 
 func _finish_wave() -> void:
-	intermission_left = float(cfg.intermission_seconds)
 	state.stone = {}
 	state.wave_swaps = {}
+	for tower: Dictionary in state.towers.values():
+		tower.erase("reflect")
+	if event_kind(state.wave) == "finale":
+		_end_run("win" if state.finale_defeated else "lost")
+		return
 	if not state.trial.is_empty():
 		state.trial = {}
-		state.phase = "build"
-		emit_event("bonus_finished")
-		return
+		if not uses_acts():
+			state.phase = "build"
+			intermission_left = float(cfg.intermission_seconds)
+			emit_event("bonus_finished")
+			return
+	_advance_wave()
+
+func _advance_wave() -> void:
+	undo_stack.clear()
 	var cleared: int = state.wave
 	state.gold += Economy.clear_reward(cleared)
 	state.wave += 1
@@ -532,8 +626,10 @@ func _finish_wave() -> void:
 		if tower.get("stone_pending", false):
 			tower.petrified = true
 			tower.erase("stone_pending")
-	if int(state.wave) % int(cfg.selection_every) == 0:
-		state.selection_pending = not choices().is_empty()
+	state.act_pending = uses_acts() and cleared % int(cfg.waves_per_act) == 0
+	var next: int = int(state.wave)
+	state.selection_pending = not choices().is_empty() and (event_kind(next) == "spirit" if uses_acts() else next % int(cfg.selection_every) == 0)
+	intermission_left = breather()
 	emit_event("wave_cleared", {"wave": cleared, "pure_crystal": int(state.wave) % int(cfg.pure_crystal_every) == 0})
 
 func _place_stone(tile: Vector2i) -> void:
@@ -560,9 +656,11 @@ func next_gate_repair() -> int:
 	return ceili(float(state.wave) / every) * every
 
 func _restore_gate() -> void:
+	_repair_gate(gate_repair_per_cycle())
+
+func _repair_gate(charge: int) -> void:
 	var old_lives: int = state.lives
 	var old_barrier: int = state.barrier
-	var charge: int = gate_repair_per_cycle()
 	var restored: int = mini(int(cfg.start_lives) - old_lives, charge)
 	state.lives += restored
 	state.barrier = mini(int(cfg.gate_barrier_cap), old_barrier + charge - restored)

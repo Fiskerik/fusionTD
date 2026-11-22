@@ -9,6 +9,12 @@
   "unit_cap": 48,
   "first_tick": 30,
   "interval": 27,
+  "short_wave": {"count_scale": 0.8, "interval_scale": 0.72},
+  "merchant": {"first_wave": 35, "every": 30, "repair_points": 5, "price": [95, 4]},
+  "finales": {
+    "quick": {"boss": "ram", "health_scale": 2.15, "armor_bonus": 8},
+    "standard": {"boss": "prismheart", "health_scale": 1.55, "armor_bonus": 8, "speed_scale": 0.8, "lead_in_health_scale": 0.85}
+  },
   "elemental_from": 6,
   "all_elements_from": 16,
   "elemental_chance": 0.5,

@@ -12,7 +12,7 @@
     63,
     3
   ],
-  "interest": 0.1,
+  "interest": 0.04,
   "pure_tower_cost": 1500,
   "pure_tower_limit": 3,
   "pure_crystal_every": 30,
@@ -23,6 +23,8 @@
   "sim_hz": 30,
   "opening_seconds": 30,
   "intermission_seconds": 10,
+  "event_break_seconds": 20,
+  "waves_per_act": 15,
   "stone_blocks": 3,
   "stone_seconds": 5,
   "stone_cooldown_seconds": 60,
@@ -45,8 +47,8 @@
     4,
     6
   ],
-  "fuse_cost": 313,
-  "triple_fuse_cost": 638,
+  "fuse_cost": 344,
+  "triple_fuse_cost": 798,
   "dual_damage_scale": 1.25,
   "dual_min_hit_ratio": 1.2,
   "fuse_min_level": 2,

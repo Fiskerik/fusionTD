@@ -54,7 +54,7 @@ func _build() -> void:
 		var title_key: String = "continue_wave" if checkpoint.state.trial.is_empty() else "continue_bonus"
 		var title_args: Variant = checkpoint.state.wave if checkpoint.state.trial.is_empty() else String(checkpoint.state.trial.element).capitalize()
 		buttons.add_child(UIKit.button(DataDB.text(title_key) % title_args, _open_game.bind(checkpoint), true, 68))
-	buttons.add_child(UIKit.button(DataDB.text("survival"), _new_run, checkpoint == null, 68))
+	buttons.add_child(UIKit.button("New Run", _new_run, checkpoint == null, 68))
 	var foot: HBoxContainer = UIKit.row(7)
 	foot.add_child(UIKit.button(DataDB.text("how"), _help, false, 47))
 	foot.add_child(UIKit.button("Settings", _show_settings, false, 47))
@@ -74,7 +74,11 @@ func _build_recent(parent: VBoxContainer) -> void:
 	if runs.is_empty():
 		rows.add_child(UIKit.label("Finished runs appear here.", 15, UIKit.MUTED))
 	for run: Dictionary in runs:
-		var label: String = "Wave %d    ·    %d kills    ·    %d fusions   ›\n%s" % [int(run.reached), int(run.kills), int(run.fusions), run.date]
+		var labels: Dictionary = {"win": "Victory", "banked": "Banked", "lost": "Lost"}
+		var mode: String = run.get("mode", "legacy")
+		var summary: String = "Wave %d" % int(run.reached) if mode == "legacy" else "%s · %s · %d waves" % [
+			mode.capitalize(), labels.get(run.get("outcome", ""), ""), int(run.cleared)]
+		var label: String = "%s  ·  %d kills   ›\n%s" % [summary, int(run.kills), run.date]
 		var button: Button = UIKit.button(label, _show_run.bind(run), false, 53)
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.add_theme_font_size_override("font_size", 16)
@@ -146,27 +150,29 @@ func _help() -> void:
 	body.add_child(UIKit.button(DataDB.text("close"), _close, true))
 
 func _new_run() -> void:
-	if checkpoint == null:
-		_open_game()
-		return
-	var popup: Dictionary = UIKit.dialog(self, 520)
+	_close()
+	var popup: Dictionary = UIKit.dialog(self, 555)
 	overlay = popup.overlay
 	var body: VBoxContainer = popup.body
-	body.add_child(UIKit.label(DataDB.text("new_title"), 33))
-	body.add_child(UIKit.label(DataDB.text("new_info"), 24, UIKit.MUTED, true))
-	var actions: HBoxContainer = UIKit.row()
-	actions.add_child(UIKit.button(DataDB.text("cancel"), _close))
-	actions.add_child(UIKit.button(DataDB.text("new_start"), _open_game, true))
-	body.add_child(actions)
+	body.add_child(UIKit.label("Choose a run", 33))
+	if checkpoint != null:
+		body.add_child(UIKit.label(DataDB.text("new_info"), 19, UIKit.MUTED, true))
+	for mode: String in ["quick", "standard", "endless"]:
+		var length: int = Sim.RUN_LENGTHS[mode]
+		var detail: String = "%d waves + finale" % length if length > 0 else "Bank after any 15-wave act"
+		var choice: Button = UIKit.button("%s\n%s" % [mode.capitalize(), detail], _open_game.bind(null, mode), mode == "standard", 72)
+		choice.name = "Run" + mode.capitalize()
+		body.add_child(choice)
+	body.add_child(UIKit.button(DataDB.text("cancel"), _close, false, 48))
 
 func _close() -> void:
 	if is_instance_valid(overlay):
 		overlay.queue_free()
 	overlay = null
 
-func _open_game(saved: Sim = null) -> void:
+func _open_game(saved: Sim = null, mode: String = "endless") -> void:
 	var game: Control = GAME.instantiate()
-	game.sim = saved if saved != null else Sim.campaign(int(randi()))
+	game.sim = saved if saved != null else Sim.campaign(int(randi()), mode)
 	get_tree().root.add_child(game)
 	get_tree().current_scene = game
 	queue_free()

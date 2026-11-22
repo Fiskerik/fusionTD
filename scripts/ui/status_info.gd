@@ -23,6 +23,7 @@ const TRAITS: Dictionary = {
 	"ironwood": ["Elemental plating", "", "armor"],
 	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
 	"boss_guard": ["Damage reduction", "Reduces damage from all sources, including damage over time.", "armor"],
+	"reflect": ["Reflect shield", "", "phasing"],
 	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
 	"chameleon": ["Chameleon", "Adapts to the last element that damaged it. Neutral hits always work.", "nature"],
 	"banner": ["Banner Bearer", "Nearby enemies move 20% faster. Banners do not stack.", "light"],
@@ -104,6 +105,7 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 			boss_trait = "armored"
 		result.append(boss_trait)
 		result.append("boss_guard")
+		result.append("reflect")
 	elif enemy.kind == "bonus":
 		result.append("bonus")
 	if float(enemy.get("control_resistance", 0.0)) > 0.0:
@@ -122,6 +124,10 @@ static func trait_description(id: String) -> String:
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").ram.turn_seconds)
 	if id == "prismheart":
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").prismheart.morph_seconds)
+	if id == "reflect":
+		var reflect: Dictionary = DataDB.read("bosses").reflect
+		return "Disables the first tower that hits the boss for %d seconds. Recharges in %d seconds." % [
+			int(reflect.disable_seconds), int(reflect.cooldown_seconds)]
 	if id == "ironwood":
 		var plating: Dictionary = DataDB.read("bosses").ironwood
 		return "Takes %s of elemental damage. Uninfused Arrow and Cannon towers deal %s damage." % [

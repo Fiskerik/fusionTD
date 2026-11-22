@@ -72,6 +72,11 @@ static func advance(sim: RefCounted) -> void:
 			ready.append(enemy)
 	for tower: Dictionary in towers:
 		tower.stun = maxi(0, int(tower.stun) - 1)
+		if tower.has("reflect"):
+			tower.reflect -= 1
+			if int(tower.reflect) <= 0:
+				tower.erase("reflect")
+				sim.emit_event("tower_reflect_ended", {"slot": tower.slot})
 		tower.cooldown = maxi(0, int(tower.cooldown) - 1)
 		if int(tower.stun) == 0 and int(tower.cooldown) == 0 and not TowerRules.disabled(tower):
 			_attack(sim, tower, support_sources, exposed if tower.dual == "null" else ready, points)
@@ -160,6 +165,11 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			scale = float(profile.splash_fringe)
 		var multiplier: float = Damage.against(split, victim, adaptive)
 		var adjusted: float = raw * multiplier * scale
+		if adjusted > 0.0 and EnemyRules.reflect_ready(victim, int(sim.state.tick)):
+			var mirror: Dictionary = DataDB.read("bosses").reflect
+			tower.reflect = Effects.ticks(mirror.disable_seconds, sim.hz)
+			victim.reflect_ready_tick = int(sim.state.tick) + Effects.ticks(mirror.cooldown_seconds, sim.hz)
+			sim.emit_event("boss_reflected", {"slot": tower.slot, "s": victim.s})
 		if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
 			victim.silence_time = Effects.ticks(trait_profile.silence, sim.hz)
 		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick)
@@ -260,7 +270,7 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 		killer.kills = int(killer.get("kills", 0)) + 1
 	sim.state.stats.kills += 1
 	if enemy.kind == "boss":
-		sim.record_boss_kill()
+		sim.record_boss_kill(enemy.get("finale", false))
 	if enemy.kind == "spirit":
 		sim.resolve_spirit(enemy)
 	else:

@@ -304,7 +304,7 @@ static func toggle_row(title: String, active: bool, callback: Callable) -> HBoxC
 	result.add_child(toggle)
 	return result
 
-static func creature_forecast(button: Button, group: Dictionary, wave: int, total: int, icons: PackedStringArray, bosses: Array) -> void:
+static func creature_forecast(button: Button, group: Dictionary, wave: int, total: int, icons: PackedStringArray, bosses: Array, wave_caption: String = "") -> void:
 	var card: HBoxContainer = row(3)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -327,7 +327,7 @@ static func creature_forecast(button: Button, group: Dictionary, wave: int, tota
 	var head: HBoxContainer = row(2)
 	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	details.add_child(head)
-	var wave_text: Label = label("W%d" % wave, 15, MINT if bosses.is_empty() else WARN)
+	var wave_text: Label = label("W%d" % wave if wave_caption.is_empty() else wave_caption, 15, MINT if bosses.is_empty() else WARN)
 	wave_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(wave_text)
 	for element: String in icons:
@@ -346,7 +346,8 @@ static func creature_forecast(button: Button, group: Dictionary, wave: int, tota
 	var caption: Label = label(title, 13, INK)
 	caption.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	details.add_child(caption)
-	button.tooltip_text = "Wave %d · %s · %d enemies" % [wave, description, total]
+	var round_name: String = "Wave %d" % wave if wave_caption.is_empty() else wave_caption
+	button.tooltip_text = "%s · %s · %d enemies" % [round_name, description, total]
 
 static func gate_fill(ratio: float) -> Color:
 	if ratio <= .25:

@@ -12,6 +12,7 @@
   "health_adjustment": {"from": 20, "multiplier": 0.8},
   "control_resistance": 0.5,
   "damage_reduction": 0.25,
+  "reflect": {"disable_seconds": 5, "cooldown_seconds": 3},
   "gold": [
     225,
     15

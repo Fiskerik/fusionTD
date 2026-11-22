@@ -1,5 +1,32 @@
 extends "res://tests/test_base.gd"
 
+func test_reflect_disables_only_the_triggering_tower_and_recharges() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	var first: Dictionary = TowerRules.create(sim.next_id(), "s1", "arrow", "normal", "", 50)
+	var second: Dictionary = TowerRules.create(sim.next_id(), "s2", "arrow", "normal", "", 50)
+	sim.state.towers = {"s1": first, "s2": second}
+	var group: Dictionary = sim.preview(10).boss
+	group.merge({"hp": 10000.0, "armor": 0.0, "speed": 0.0}, true)
+	Combat.spawn(sim, group, 10.0)
+	var boss: Dictionary = sim.state.mobs[0]
+	sim.step()
+	equal(first.reflect, 150)
+	check(not second.has("reflect"))
+	check(TowerRules.disabled(first))
+	check(float(first.damage_dealt) > 0.0 and float(second.damage_dealt) > 0.0)
+	equal(boss.reflect_ready_tick, 91)
+	for tick: int in range(89):
+		sim.step()
+	check(not second.has("reflect"))
+	second.cooldown = 0
+	sim.step()
+	equal(second.reflect, 150)
+	equal(boss.reflect_ready_tick, 181)
+	for tick: int in range(60):
+		sim.step()
+	check(not TowerRules.disabled(first) and TowerRules.disabled(second))
+
 func test_road_stone_pushes_occupants_and_stops_followers_until_it_expires() -> void:
 	var sim := Sim.new()
 	sim.state.phase = "wave"
@@ -181,6 +208,7 @@ func test_root_upgrades_increase_hold_time_and_frequency() -> void:
 
 func test_ascended_water_uses_the_bonus_range_attack_rate_and_slow_in_combat() -> void:
 	var sim := Sim.new()
+	sim.state.gold = 1500
 	sim.state.wave = 30
 	sim.state.phase = "wave"
 	sim.state.tiers.water = 3
@@ -333,9 +361,9 @@ func test_all_fusion_recipes_and_tier_gate() -> void:
 			check(sim.apply({"type": "upgrade", "slot": slot}).ok)
 		var before: int = sim.state_hash()
 		var invested: int = int(sim.state.towers.s1.invested) + int(sim.state.towers.s2.invested)
-		equal(sim.apply(fusion).cost, 313)
+		equal(sim.apply(fusion).cost, 344)
 		equal(sim.state.towers.s1.dual, recipe)
-		equal(sim.state.towers.s1.invested, invested + 313)
+		equal(sim.state.towers.s1.invested, invested + 344)
 		check(not sim.state.towers.has("s2"))
 		check(sim.apply({"type": "undo"}).ok)
 		equal(sim.state_hash(), before)

@@ -10,6 +10,7 @@ var speed_button: Button
 var status: Label
 var stats: Label
 var wave_label: Label
+var event_status: Label
 var wave_effects: HFlowContainer
 var element_status: HBoxContainer
 var gate_charge: int = 0
@@ -28,7 +29,6 @@ var swap_options: Dictionary = {}
 var stone_status: Label
 var swap_status: Label
 var interest_status: Label
-var interest_awarded: int = 0
 var interest_notice: float = 0.0
 var interest_toast: PanelContainer
 var interest_toast_text: Label
@@ -101,8 +101,8 @@ func _ready() -> void:
 	_build_layout()
 	_hint(0)
 	_checkpoint()
-	if not sim.state.boon_queue.is_empty() or sim.state.selection_pending:
-		_show_intermission_choice()
+	if not sim.state.boon_queue.is_empty() or sim.state.act_pending or sim.state.selection_pending or sim.merchant_pending():
+		_show_intermission_choice(false)
 	elif sim.state.phase == "build" and not sim.state.trial.is_empty():
 		_apply({"type": "start_wave"})
 	resized.connect(_resized)
@@ -120,6 +120,8 @@ func _resized() -> void:
 		"select": _show_selection()
 		"boon_choice": _show_boon_choice()
 		"boon_details": _show_active_boon()
+		"act": _show_act_choice()
+		"merchant": _show_merchant()
 		"pause": _show_pause()
 		"end": _show_game_over()
 		"preview": _show_preview(overlay_wave, overlay_bonus)
@@ -174,6 +176,8 @@ func _build_layout() -> void:
 	wave_heading.add_child(combat_status)
 	stats = UIKit.label("", 18, Color("#d6e7bf"))
 	heading.add_child(stats)
+	event_status = UIKit.label("", 15, Color("#ffe2a0"))
+	heading.add_child(event_status)
 	var gate_row: HBoxContainer = UIKit.row(8)
 	gate_row.custom_minimum_size.y = 28
 	heading.add_child(gate_row)
@@ -391,6 +395,11 @@ func _build_tactics(parent: VBoxContainer) -> void:
 	stone_status = UIKit.label("", 15, Color("#e7ebd4"))
 	stone_status.mouse_filter = Control.MOUSE_FILTER_STOP
 	row.add_child(stone_status)
+	var library: Button = UIKit.button("Library", _show_legend, false, 40)
+	library.name = "HudLibrary"
+	library.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	library.add_theme_font_size_override("font_size", 16)
+	row.add_child(library)
 	interest_status = UIKit.label("", 16, Color("#ffe2a0"))
 	interest_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	interest_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -412,8 +421,9 @@ func _update_tactics() -> void:
 	if cooldown > 0 and int(sim.state.stone_blocks) > 0:
 		stone_status.text += " · %ds" % cooldown
 	stone_status.tooltip_text = "Double-tap the road during combat. One block per numbered wave."
-	interest_status.text = "Interest +%d g" % Economy.interest(sim.state.gold) if sim.state.phase == "build" else ""
-	interest_status.tooltip_text = "10% of unspent gold is paid at the start of each round."
+	var interest: int = Economy.interest(sim.state.gold) if sim.state.phase == "build" else sim.state.last_interest
+	interest_status.text = "Interest +%d g" % interest
+	interest_status.tooltip_text = "%s of unspent gold is paid at the start of each round." % TowerInspector.percent(float(sim.cfg.interest))
 
 func _build_interest_toast() -> void:
 	var layer := CanvasLayer.new()
@@ -437,7 +447,7 @@ func _update_interest_toast() -> void:
 	interest_toast.visible = interest_notice > 0.0
 	if interest_toast.visible:
 		interest_toast.modulate.a = minf(1.0, interest_notice / .48)
-		interest_toast_text.text = "Interest: %d gold" % interest_awarded
+		interest_toast_text.text = "Interest +%d g" % int(sim.state.last_interest)
 
 func _try_road_stone(tile: Vector2i) -> void:
 	if not paused and overlay_type.is_empty():
@@ -527,11 +537,16 @@ func _read_swap_drag(position: Vector2) -> String:
 	return chosen
 
 func _count_down(delta: float) -> void:
-	if not sim.state.boon_queue.is_empty() or sim.state.selection_pending or not sim.state.trial.is_empty():
+	if not sim.state.boon_queue.is_empty() or sim.state.act_pending or not sim.state.trial.is_empty():
+		return
+	if (not sim.uses_acts() and sim.state.selection_pending) or overlay_type in ["select", "merchant"]:
 		return
 	sim.intermission_left = maxf(0.0, sim.intermission_left - delta)
 	if sim.intermission_left == 0.0:
-		_apply({"type": "start_wave"})
+		if sim.state.selection_pending or sim.merchant_pending():
+			_show_intermission_choice()
+		else:
+			_apply({"type": "start_wave"})
 		return
 	var seconds: int = ceili(sim.intermission_left)
 	if seconds != last_countdown:
@@ -540,10 +555,15 @@ func _count_down(delta: float) -> void:
 			audio.play("countdown")
 
 func _update_countdown() -> void:
-	if not is_instance_valid(start_button) or not sim.state.boon_queue.is_empty() or sim.state.selection_pending or not sim.state.trial.is_empty():
+	if not is_instance_valid(start_button) or not sim.state.boon_queue.is_empty() or sim.state.act_pending or not sim.state.trial.is_empty():
+		return
+	if sim.state.selection_pending and not sim.uses_acts():
 		return
 	last_countdown = ceili(sim.intermission_left)
-	start_button.text = DataDB.text("start_countdown") % last_countdown
+	if sim.state.selection_pending or sim.merchant_pending():
+		start_button.text = "%s  ·  %ds" % ["Visit Merchant" if sim.merchant_pending() else "Choose Spirit", last_countdown]
+	else:
+		start_button.text = DataDB.text("start_countdown") % last_countdown
 	start_button.tooltip_text = DataDB.text("start_early")
 
 func _input(event: InputEvent) -> void:
@@ -594,14 +614,13 @@ func _input(event: InputEvent) -> void:
 func _can_swipe_to_start() -> bool:
 	return sim != null and sim.state.phase == "build" and not paused and overlay_type.is_empty() \
 		and is_instance_valid(start_button) and start_button.is_visible_in_tree() and not start_button.disabled \
-		and not sim.state.selection_pending and sim.state.boon_queue.is_empty()
+		and not sim.state.selection_pending and not sim.state.act_pending and not sim.merchant_pending() and sim.state.boon_queue.is_empty()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and is_node_ready():
 		_checkpoint()
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_WINDOW_FOCUS_OUT] and is_node_ready():
-		if sim.state.phase != "game_over" and not paused:
-			_show_pause()
+		_checkpoint()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
@@ -656,10 +675,18 @@ func _refresh() -> void:
 	round_controls.visible = building
 	if building:
 		var boon: bool = not sim.state.boon_queue.is_empty()
-		var choose: bool = boon or sim.state.selection_pending
+		var choose: bool = boon or sim.state.act_pending or sim.state.selection_pending or sim.merchant_pending()
 		var action: Callable = _show_intermission_choice if choose else _apply.bind({"type": "start_wave"})
-		var start_key: String = "choose_spirit" if choose else ("start_bonus" if not sim.state.trial.is_empty() else "start_wave")
-		start_button = UIKit.button("Choose a boon" if boon else DataDB.text(start_key), action, true, 54)
+		var caption: String = DataDB.text("start_bonus" if not sim.state.trial.is_empty() else "start_wave")
+		if boon:
+			caption = "Choose a boon"
+		elif sim.state.act_pending:
+			caption = "Act complete"
+		elif sim.merchant_pending():
+			caption = "Visit Merchant"
+		elif sim.state.selection_pending:
+			caption = DataDB.text("choose_spirit")
+		start_button = UIKit.button(caption, action, true, 54)
 		round_controls.add_child(start_button)
 		var style: StyleBoxFlat = start_button.get_theme_stylebox("normal")
 		var pulse: Tween = start_button.create_tween().set_loops()
@@ -763,6 +790,16 @@ func _render_wave_heading() -> void:
 	var wave: int = int(sim.state.wave)
 	wave_label.tooltip_text = sim.track.title
 	wave_label.text = ("Current wave %d" if sim.state.phase == "wave" else "Upcoming wave %d") % wave
+	var event: String = sim.event_kind(wave)
+	if event == "finale":
+		wave_label.text = "%s finale" % String(sim.state.run_mode).capitalize()
+	event_status.visible = sim.uses_acts()
+	if sim.uses_acts():
+		var next: int = sim.next_event_wave()
+		var remaining: int = maxi(0, next - wave)
+		event_status.text = "Next event in %d %s · %s" % [remaining, "wave" if remaining == 1 else "waves", sim.event_kind(next).capitalize()]
+		if remaining == 0:
+			event_status.text = "Defeat the boss to win" if event == "finale" else "%s event" % event.capitalize()
 	UIKit.clear(wave_effects)
 	var summary: Dictionary = sim.preview(wave)
 	if not summary.spirit.is_empty():
@@ -811,7 +848,9 @@ func _render_wave_heading() -> void:
 				var property_info: Array = StatusInfo.TRAITS[id]
 				_effect_chip(wave_effects, property_info[0], Glyphs.hue(property_info[2]).darkened(.57), property_info[2],
 					StatusInfo.trait_description(id))
-	if wave_effects.get_child_count() == 0:
+	if event == "merchant":
+		_effect_chip(wave_effects, "Gate repairs", UIKit.UPGRADE, "gold")
+	if wave_effects.get_child_count() == 0 and not summary.groups.is_empty():
 		var group: Dictionary = summary.groups[0]
 		_effect_chip(wave_effects, "%s · %d enemies" % [StatusInfo.enemy_name(group), int(group.count)], UIKit.MINT)
 
@@ -825,9 +864,19 @@ func _render_preview() -> void:
 		UIKit.element_button(chip, sim.state.trial.element)
 		chip.tooltip_text = StatusInfo.enemy_name(sim.preview(int(sim.state.wave)).spirit)
 		preview_row.add_child(chip)
-	var first: int = int(sim.state.wave) + (1 if sim.state.phase == "wave" and not bonus else 0)
-	for wave: int in range(first, first + (2 if bonus else 3)):
+	var first: int = int(sim.state.wave) + (1 if (sim.state.phase == "wave" and not bonus) or (bonus and sim.uses_acts()) else 0)
+	var end: int = first + (2 if bonus else 3)
+	if sim.run_limit() > 0:
+		end = mini(end, sim.run_limit() + 2)
+	for wave: int in range(first, end):
 		var preview: Dictionary = sim.preview(wave, false)
+		var event: String = sim.event_kind(wave)
+		if preview.bosses.is_empty() and preview.groups.is_empty():
+			var caption: String = "Spirit trial" if event == "spirit" else "Merchant"
+			var event_card: Button = UIKit.button("W%d · %s" % [wave, caption], _show_preview.bind(wave), false, 48)
+			event_card.add_theme_font_size_override("font_size", 16)
+			preview_row.add_child(event_card)
+			continue
 		var total: int = preview.bosses.size()
 		var icons := PackedStringArray()
 		var descriptions := PackedStringArray()
@@ -868,7 +917,7 @@ func _render_preview() -> void:
 			descriptions.append("Weaknesses: " + ", ".join(names))
 		var chip: Button = UIKit.button("", _show_matchups.bind(wave), false, 48)
 		var representative: Dictionary = preview.groups[0] if preview.bosses.is_empty() else preview.bosses[0]
-		UIKit.creature_forecast(chip, representative, wave, total, icons, preview.bosses)
+		UIKit.creature_forecast(chip, representative, wave, total, icons, preview.bosses, "Finale" if event == "finale" else "")
 		var threats: Array = sim.wave_matchups(preview).weak
 		if not threats.is_empty():
 			var names := PackedStringArray()
@@ -939,6 +988,8 @@ func _render_site() -> void:
 	_add_tower_effects(tower_effects, tower)
 	if tower.get("sabotaged", false):
 		_effect_chip(tower_effects, "Jammed", UIKit.WARN, "electric", "Upgrade or fuse this tower to restore it.")
+	if int(tower.get("reflect", 0)) > 0:
+		_effect_chip(tower_effects, "Reflected", UIKit.WARN, "phasing", StatusInfo.trait_description("reflect"))
 	if tower.get("petrified", false):
 		_effect_chip(tower_effects, "Petrified", UIKit.MUTED, "armor", "This tower is inactive until the numbered wave ends.")
 	elif tower.get("stone_pending", false):
@@ -1028,7 +1079,7 @@ func _render_tower_toolbar(tower: Dictionary, upgrade: Dictionary, quote: Dictio
 	var previewing: bool = not upgrade_slot.is_empty()
 	var use_crystal: bool = upgrade.type == "empower_pure"
 	var title: String = "Use Crystal" if use_crystal else "Upgrade"
-	var price: String = "1 Crystal" if use_crystal else "%d g" % int(quote.cost)
+	var price: String = "%d g + ◈1" % int(quote.cost) if use_crystal else "%d g" % int(quote.cost)
 	upgrade_button.text = "%s\n%s" % ["Confirm" if previewing else title, price]
 	upgrade_button.disabled = not quote.ok
 	upgrade_button.tooltip_text = quote.reason
@@ -1101,12 +1152,12 @@ func _confirm_ascension() -> void:
 	var action: Dictionary = {"type": "empower_pure", "slot": upgrade_slot}
 	var body: VBoxContainer = _dialog("Use a Pure Crystal?", 535)
 	overlay_type = "ascend"
-	body.add_child(UIKit.label("%s will become %s at level 7. This uses one Pure Crystal." % [
-		TowerRules.display_name(tower), TowerRules.stats(tower).pure_name], 20, UIKit.INK, true))
+	body.add_child(UIKit.label("%s will become %s at level 7. Costs %d gold and one Pure Crystal." % [
+		TowerRules.display_name(tower), TowerRules.stats(tower).pure_name, int(sim.cfg.pure_tower_cost)], 20, UIKit.INK, true))
 	var controls: HBoxContainer = UIKit.row(8)
 	body.add_child(controls)
 	controls.add_child(UIKit.button(DataDB.text("cancel"), _close_overlay, false, 52))
-	var confirm: Button = UIKit.button("Use 1 Crystal", _apply.bind(action), true, 52)
+	var confirm: Button = UIKit.button("Ascend", _apply.bind(action), true, 52)
 	confirm.name = "ConfirmPureCrystal"
 	overlay_actions[confirm] = action
 	_update_action_button(confirm, action)
@@ -1430,7 +1481,7 @@ func _apply(action: Dictionary) -> void:
 		return
 	message = ""
 	var boon_decision: bool = action.type in ["choose_boon", "keep_boon"]
-	if boon_decision or action.type in ["select_element", "fuse", "infuse", "remove_infusion", "swap_element", "empower_pure"]:
+	if boon_decision or action.type in ["select_element", "fuse", "infuse", "remove_infusion", "swap_element", "empower_pure", "continue_act", "merchant", "bank_run"]:
 		_close_overlay()
 	if action.type in ["upgrade", "empower_pure", "sell", "fuse"]:
 		upgrade_slot = ""
@@ -1477,17 +1528,16 @@ func _apply(action: Dictionary) -> void:
 	_take_events()
 	_refresh()
 	if boon_decision:
-		_show_intermission_choice()
+		_show_intermission_choice(false)
 
 func _take_events() -> void:
 	for event: Dictionary in sim.events:
 		field.animate(event)
 		match event.type:
 			"interest_paid":
-				interest_awarded = int(event.data.gold)
 				interest_notice = 3.0
 				_update_interest_toast()
-				if interest_awarded > 0:
+				if int(event.data.gold) > 0:
 					audio.play("interest")
 			"stone_placed":
 				audio.play("stone")
@@ -1510,7 +1560,7 @@ func _take_events() -> void:
 				_refresh()
 				if sim.state.selection_pending:
 					_hint(3)
-				_show_intermission_choice()
+				_show_intermission_choice(false)
 			"special_spawned":
 				if event.data.kind == "spirit":
 					_hint(4)
@@ -1560,7 +1610,7 @@ func _take_events() -> void:
 			"mob_killed":
 				if int(event.data.gold) > 0 and event.data.kind != "spirit":
 					audio.play("coin")
-			"tower_stunned":
+			"tower_stunned", "boss_reflected", "tower_reflect_ended":
 				if selected == event.data.slot:
 					_render_site()
 			"fused":
@@ -1650,13 +1700,44 @@ func _close_overlay() -> void:
 	overlay = null
 	overlay_type = ""
 
-func _show_intermission_choice() -> void:
+func _show_intermission_choice(allow_early: bool = true) -> void:
 	if paused or sim.state.phase != "build":
 		return
 	if not sim.state.boon_queue.is_empty():
 		_show_boon_choice()
+	elif sim.state.act_pending:
+		_show_act_choice()
+	elif not allow_early and sim.uses_acts() and sim.intermission_left > 0.0:
+		return
 	elif sim.state.selection_pending:
 		_show_selection()
+	elif sim.merchant_pending():
+		_show_merchant()
+
+func _show_act_choice() -> void:
+	var cleared: int = int(sim.state.wave) - 1
+	var body: VBoxContainer = _dialog("Act %d complete" % (cleared / int(sim.cfg.waves_per_act)), 550)
+	overlay_type = "act"
+	body.add_child(UIKit.label("%d waves cleared · %d gate HP" % [cleared, int(sim.state.lives)], 22, UIKit.MINT))
+	body.add_child(UIKit.label("Bank your result or continue with this board and boon.", 19, UIKit.MUTED, true))
+	var buttons: HBoxContainer = UIKit.row(8)
+	body.add_child(buttons)
+	buttons.add_child(UIKit.button("Bank Run", _apply.bind({"type": "bank_run"}), false, 55))
+	var next: String = "Face Finale" if sim.event_kind(sim.state.wave) == "finale" else "Continue"
+	buttons.add_child(UIKit.button(next, _apply.bind({"type": "continue_act"}), true, 55))
+
+func _show_merchant() -> void:
+	var body: VBoxContainer = _dialog("Roadside Merchant", 510)
+	overlay_type = "merchant"
+	var repair: Dictionary = {"type": "merchant", "offer": "repair"}
+	var quote: Dictionary = sim.describe(repair)
+	var points: int = int(DataDB.read("waves").merchant.repair_points)
+	body.add_child(UIKit.label("Restore up to %d gate HP. Excess repairs add to the barrier." % points, 20, UIKit.MUTED, true))
+	var buy: Button = UIKit.button("Repair gate · %d g" % int(quote.cost), _apply.bind(repair), true, 52)
+	overlay_actions[buy] = repair
+	_update_action_button(buy, repair)
+	body.add_child(buy)
+	body.add_child(UIKit.button("Leave", _apply.bind({"type": "merchant", "offer": "leave"}), false, 48))
 
 func _boon_tint(tags: PackedStringArray) -> Color:
 	for tag: String in tags:
@@ -1797,7 +1878,8 @@ func _show_matchups(wave: int, bonus: bool = false) -> void:
 	var next: int = wave if bonus else wave + 1
 	var current: Dictionary = sim.wave_matchups(sim.preview(wave, bonus))
 	var strong: Array = current.good
-	var weak: Array = sim.wave_matchups(sim.preview(next, false)).weak
+	var has_next: bool = sim.event_kind(wave) != "finale"
+	var weak: Array = sim.wave_matchups(sim.preview(next, false)).weak if has_next else []
 	for entry: Dictionary in strong:
 		field.matchups[entry.slot] = 1
 	for entry: Dictionary in weak:
@@ -1829,8 +1911,9 @@ func _show_matchups(wave: int, bonus: bool = false) -> void:
 	var risks := PackedStringArray()
 	for entry: Dictionary in weak:
 		risks.append(entry.name)
-	var bottom: String = "Wave %d · %s" % [next, " / ".join(risks) if not risks.is_empty() else "No weak matchups"]
-	body.add_child(UIKit.label(bottom, 16, UIKit.WARN, true))
+	if has_next:
+		var bottom: String = "Wave %d · %s" % [next, " / ".join(risks) if not risks.is_empty() else "No weak matchups"]
+		body.add_child(UIKit.label(bottom, 16, UIKit.WARN, true))
 	var actions: HBoxContainer = UIKit.row(6)
 	actions.add_child(UIKit.button("Enemy details", _show_preview.bind(wave, bonus), false, 43))
 	actions.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true, 43))
@@ -1839,6 +1922,8 @@ func _show_matchups(wave: int, bonus: bool = false) -> void:
 func _show_preview(wave: int, bonus: bool = false) -> void:
 	var preview: Dictionary = sim.preview(wave, bonus)
 	var title: String = DataDB.text("bonus_forecast") if bonus else DataDB.text("forecast_title") % wave
+	if sim.event_kind(wave) == "finale":
+		title = "%s finale" % String(sim.state.run_mode).capitalize()
 	var body: VBoxContainer = _dialog(title, 650)
 	overlay_type = "preview"
 	overlay_wave = wave
@@ -1848,6 +1933,11 @@ func _show_preview(wave: int, bonus: bool = false) -> void:
 	var entries: Array = preview.bosses + preview.groups
 	if not preview.spirit.is_empty():
 		entries.push_front(preview.spirit)
+	if entries.is_empty():
+		var event: String = sim.event_kind(wave)
+		body.add_child(UIKit.label("Choose an elemental spirit to face alone." if event == "spirit" else "Trade gold for gate and barrier repairs.", 20, UIKit.MUTED, true))
+		body.add_child(UIKit.button(DataDB.text("close"), _close_overlay, true))
+		return
 	scroller.custom_minimum_size.y = clampf(float(entries.size()) * 121, 134, minf(410, get_viewport_rect().size.y * .54))
 	body.add_child(scroller)
 	var list: VBoxContainer = UIKit.column(7)
@@ -2267,7 +2357,7 @@ func _resume() -> void:
 	paused = false
 	field.animation_paused = false
 	_close_overlay()
-	_show_intermission_choice()
+	_show_intermission_choice(false)
 
 func _confirm_restart() -> void:
 	var body: VBoxContainer = _dialog(DataDB.text("restart_title"), 510)
@@ -2281,7 +2371,8 @@ func _confirm_restart() -> void:
 func _restart() -> void:
 	_close_overlay()
 	paused = false
-	sim = Sim.campaign(int(randi()))
+	var mode: String = sim.state.run_mode
+	sim = Sim.campaign(int(randi()), "endless" if mode == "legacy" else mode)
 	selected = ""
 	upgrade_slot = ""
 	pure_palette = false
@@ -2298,9 +2389,17 @@ func _restart() -> void:
 	_refresh()
 
 func _show_game_over() -> void:
-	var body: VBoxContainer = _dialog(DataDB.text("game_over"), 490)
+	var headings: Dictionary = {"win": "Victory", "banked": "Run Banked"}
+	var body: VBoxContainer = _dialog(headings.get(sim.state.outcome, DataDB.text("game_over")), 490)
 	overlay_type = "end"
-	body.add_child(UIKit.label(DataDB.text("game_over_wave") % [sim.state.wave, profile.best_wave], 25, UIKit.MINT))
+	var subtitle: String = DataDB.text("game_over_wave") % [sim.state.wave, profile.best_wave]
+	if sim.state.outcome == "win":
+		subtitle = "%s finale defeated" % String(sim.state.run_mode).capitalize()
+	elif sim.state.outcome == "banked":
+		subtitle = "%s · %d waves cleared" % [String(sim.state.run_mode).capitalize(), int(sim.state.wave) - 1]
+	elif sim.event_kind(sim.state.wave) == "finale" and int(sim.state.lives) > 0:
+		subtitle = "The finale boss reached the gate."
+	body.add_child(UIKit.label(subtitle, 25, UIKit.MINT))
 	body.add_child(UIKit.label(DataDB.text("game_over_stats") % [
 		int(sim.state.wave) - 1, sim.state.stats.kills, sim.state.stats.spirits, sim.state.stats.fusions,
 	], 22, UIKit.MUTED))

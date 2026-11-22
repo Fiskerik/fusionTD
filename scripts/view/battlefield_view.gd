@@ -173,6 +173,12 @@ func animate(event: Dictionary) -> void:
 			var site: Vector2 = sim.track.slots[data.slot].position
 			bursts.append({"at": site, "color": Color("#a4d5bd"), "time": .75, "max": .75, "radius": .67})
 			fusion_trails.append({"from": sim.track.at(data.s), "to": site, "elements": ["nature"], "time": .78})
+		"boss_reflected":
+			var origin: Vector2 = sim.track.at(data.s)
+			var target: Vector2 = sim.track.slots[data.slot].position
+			bursts.append({"at": origin, "color": Color("#c4eeff"), "time": .46, "max": .46, "radius": .76})
+			bursts.append({"at": target, "color": Color("#bdc9ff"), "time": .6, "max": .6, "radius": .53})
+			fusion_trails.append({"from": origin, "to": target, "elements": ["light", "water"], "time": .48})
 		"stone_placed", "stone_expired":
 			var tile: Vector2i = data.tile
 			bursts.append({"at": sim.track.road_tiles[tile], "color": Color("#d2c1a1"),
@@ -720,6 +726,9 @@ func _draw_tower(tower: Dictionary) -> void:
 		draw_arc(p, .49, elapsed * 2, elapsed * 2 + PI * .7, 18, Color("#bb8de4"), .05, true)
 	if int(tower.stun) > 0:
 		Glyphs.draw(self, "electric", p + Vector2(.30, -.30), .19, Color("#aa64c6"))
+	if int(tower.get("reflect", 0)) > 0:
+		draw_arc(p, .49, elapsed * 2.0, elapsed * 2.0 + TAU * .77, 24, Color("#9aaaff"), .061, true)
+		Glyphs.draw(self, "phasing", p + Vector2(.30, -.30), .17, Color("#a7b9ff"))
 	_set_board_transform()
 
 func _draw_petrification(p: Vector2) -> void:
@@ -834,6 +843,8 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	var impact: float = float(hit_times.get(int(enemy.id), 0.0)) / .15
 	tint = tint.lerp(Color("#fffcef"), impact * .62)
 	var shielded: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
+	if EnemyRules.reflect_ready(enemy, int(sim.state.tick)):
+		draw_arc(p, radius + .19, elapsed * 2.4, elapsed * 2.4 + TAU * .83, 32, Color("#f2d9ff"), .059, true)
 	if shielded:
 		draw_circle(p, radius + .10, Color("#9bdcff", .48))
 		tint = tint.lerp(Color("#d2effe"), .36)

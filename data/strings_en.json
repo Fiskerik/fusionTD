@@ -10,7 +10,7 @@
   "choose_spirit": "Choose a Spirit",
   "inspect": "Tap a tower or an open tile.",
   "spirit_help": "One spirit takes the field in each bonus round. You earn its tier and gold either way. If it reaches the gate, it deals 5 damage to the barrier or gate.",
-  "help": "Build, upgrade, infuse, and sell during an assault or between waves. Tap a tower or enemy to inspect it. The first wave starts after 30 seconds and later waves start after 10 seconds. A solo spirit trial runs before waves 5, 10, 15, and so on. Level 2+ elemental towers with distinct elements can fuse.",
+  "help": "Build, upgrade, infuse, and sell during an assault or between waves. Tap a tower or enemy to inspect it. Each five-wave block has three short waves, a medium wave, and an event. You get 10 seconds between regular waves and 20 before events. Level 2+ elemental towers with distinct elements can fuse.",
   "hints": [
     "Choose a tower and tap an open tile to build.",
     "Start the wave when your defenses are ready.",
