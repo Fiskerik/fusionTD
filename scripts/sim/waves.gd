@@ -59,7 +59,8 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 				"speed": float(stats.speed) * float(finale.get("speed_scale", 1.0)), "gold": Economy.scaled(bosses.gold, wave),
 				"leak": int(balance.leak.boss), "slow_cap": float(base.slow_cap),
 				"control_resistance": float(bosses.control_resistance),
-				"boss_type": boss_type, "spawn": int(bosses.spawn_tick) + index * Effects.ticks(late.boss_spacing_seconds, balance.sim_hz),
+				"boss_type": boss_type, "reflect_wave": wave,
+				"spawn": int(bosses.spawn_tick) + index * Effects.ticks(late.boss_spacing_seconds, balance.sim_hz),
 				"armor_rank": EnemyRules.armor_rank(wave),
 				"heal_aura": late_waves > 0 and boss_type == "necromancer",
 			})

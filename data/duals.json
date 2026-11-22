@@ -103,7 +103,7 @@
     "effect": {
       "pierce": 0.6,
       "curse": [
-        0.15,
+        0.12,
         3
       ]
     },
@@ -468,7 +468,7 @@
     "role": "Stone shards curse the enemies they hit.",
     "effect": {
       "curse": [
-        0.19,
+        0.152,
         2.8
       ]
     }

@@ -1,16 +1,17 @@
 extends "res://tests/test_base.gd"
 
-func test_run_picker_and_hud_library_keep_combat_live() -> void:
+func test_survival_menu_and_hud_library_keep_combat_live() -> void:
 	var menu: Control = load("res://scenes/main_menu.tscn").instantiate()
 	runner.root.add_child(menu)
+	menu.checkpoint = Sim.campaign(7, "quick")
 	menu._new_run()
-	for mode: String in ["Quick", "Standard", "Endless"]:
-		check(menu.find_child("Run" + mode, true, false) is Button)
+	check(menu.overlay.find_child("RunSurvival", true, false) is Button)
+	equal(menu.overlay.find_children("*", "Button", true, false).size(), 2)
 	menu.queue_free()
 	await runner.process_frame
 	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
 	game.persistence_enabled = false
-	game.sim = Sim.campaign(7, "quick")
+	game.sim = Sim.campaign(7)
 	runner.root.add_child(game)
 	game.set_process(false)
 	check(game.event_status.text.begins_with("Next event in 4 waves"))
@@ -57,6 +58,7 @@ func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() ->
 	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
 	game.persistence_enabled = false
 	game.sim = Sim.campaign(7)
+	game.sim.state.tiers.fire = 1
 	runner.root.add_child(game)
 	game.set_process(false)
 	game.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -71,6 +73,9 @@ func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() ->
 	equal(game.overlay_type, "boon_choice")
 	var first: Array[Node] = game.overlay.find_children("*", "Button", true, false)
 	equal(first.size(), 3)
+	check(first[0].text.begins_with("General"))
+	check(first[1].text.begins_with("Unlocked element"))
+	check(first[2].text.begins_with("Empowered"))
 	var choose: Button = first[0]
 	choose.pressed.emit()
 	var active: Dictionary = game.sim.state.active_boon.duplicate()
@@ -178,6 +183,39 @@ func test_palette_placement_commits_on_release() -> void:
 	equal(game.sim.state.towers.s2.kind, "arrow")
 	equal(game.sim.state.gold, gold - int(DataDB.read("towers").arrow.cost))
 	check(view.placement_preview.is_empty())
+	game.queue_free()
+	await runner.process_frame
+
+func test_landscape_keeps_the_full_height_board_left_of_the_controls() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	game.sim = Sim.campaign(7)
+	for element: String in DataDB.ELEMENTS:
+		game.sim.state.tiers[element] = 3
+	runner.root.add_child(game)
+	game.set_process(false)
+	game.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	game.size = Vector2(1280, 720)
+	for frame: int in range(3):
+		await runner.process_frame
+	var board: Rect2 = game.field.get_global_rect()
+	check(game.wide)
+	check(board.position.x < 20 and board.position.y < 20)
+	check(board.end.y >= game.size.y - 20)
+	near(board.size.x, ceilf(game.field.width_for_height(board.size.y)))
+	for control: Control in [game.speed_button, game.preview_row, game.round_controls, game.inspector_panel]:
+		check(control.get_global_rect().position.x > board.end.x, "Landscape controls stay to the right of the board")
+	game._apply({"type": "start_wave"})
+	for frame: int in range(3):
+		await runner.process_frame
+	equal(game.field.get_global_rect(), board, "Starting a wave leaves the full-height board in place")
+	game.size = Vector2(900, 720)
+	for frame: int in range(3):
+		await runner.process_frame
+	check(game.wide and game.field.size.x < board.size.x, "Narrow landscape adjusts the width without changing orientation")
+	check(game.inspector_panel.get_global_rect().end.x <= game.size.x, "Narrow landscape keeps the palette on screen (%s)" % game.inspector_panel.get_global_rect())
+	check(game.speed_button.get_global_rect().position.x > game.field.get_global_rect().end.x, "Narrow landscape keeps speed controls to the right")
+	check(game.field.get_global_rect().end.y >= game.size.y - 20, "Narrow landscape preserves the canvas height")
 	game.queue_free()
 	await runner.process_frame
 
@@ -372,7 +410,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	for label: Label in after.find_children("*", "Label", true, false):
 		after_labels.append(label.text)
 	check(after_labels.has("After upgrade · Pure ★7"))
-	check(after_labels.has("418.5") and after_labels.has("4.5") and after_labels.has("0.93/s"))
+	check(after_labels.has(TowerInspector.number(418.5 * 1.15)) and after_labels.has("4.5") and after_labels.has("0.93/s"))
 	equal(sim.pure_crystals(), 1)
 	game._upgrade_pressed()
 	equal(game.overlay_type, "ascend")

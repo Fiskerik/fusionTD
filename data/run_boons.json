@@ -1,4 +1,9 @@
 {
+  "general_damage": {"name": "Battle Drill", "general": true, "mods": [{"scope": "all", "stat": "damage", "amount": 0.07}]},
+  "general_rate": {"name": "Steady Rhythm", "general": true, "mods": [{"scope": "all", "stat": "rate", "amount": 0.065}]},
+  "general_range": {"name": "Clear Sight", "general": true, "mods": [{"scope": "all", "stat": "range", "amount": 0.07}]},
+  "general_gold": {"name": "Guard's Stipend", "general": true, "mods": [{"scope": "economy", "stat": "clear_gold", "amount": 0.12}]},
+  "general_fusion": {"name": "Apprentice Rates", "general": true, "mods": [{"scope": "fusion", "stat": "fusion_discount", "amount": 0.14}]},
   "fire_damage": {"name": "Ember Edge","mods": [{"scope": "fire","stat": "damage","amount": 0.09}]},
   "fire_rate": {"name": "Kindling","mods": [{"scope": "fire","stat": "rate","amount": 0.075}]},
   "fire_reach": {"name": "Burning Reach","mods": [{"scope": "fire","stat": "range","amount": 0.08}]},

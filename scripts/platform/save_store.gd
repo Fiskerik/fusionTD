@@ -46,9 +46,11 @@ static func decode(payload: Variant) -> Sim:
 	sim.refresh_boon()
 	_ascend_legacy_towers(state.towers)
 	var bosses_by_type: Dictionary = {}
-	if int(state.wave) > int(DataDB.read("waves").late_game.after):
+	if state.phase == "wave":
+		var late_game: bool = int(state.wave) > int(DataDB.read("waves").late_game.after)
 		for boss: Dictionary in sim.preview(state.wave).bosses:
-			bosses_by_type[boss.boss_type] = boss
+			if late_game or boss.boss_type in ["prismheart", "tempest"]:
+				bosses_by_type[boss.boss_type] = boss
 	for enemy: Dictionary in state.mobs:
 		EnemyRules.apply_wave_traits(enemy, int(state.wave))
 		_retune_enemy(enemy, int(state.wave), bosses_by_type)
@@ -94,6 +96,8 @@ static func _retune_enemy(enemy: Dictionary, wave: int, bosses: Dictionary) -> v
 	else:
 		enemy.hp = tuned.hp
 	enemy.armor = tuned.armor
+	if enemy.get("boss_type", "") in ["prismheart", "tempest"]:
+		enemy.speed = tuned.speed
 
 static func _legacy_boon(picks: Variant) -> Dictionary:
 	if not picks is Array or picks.is_empty():

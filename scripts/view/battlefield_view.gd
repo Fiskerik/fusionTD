@@ -46,9 +46,13 @@ var tap_point := Vector2.ZERO
 var inspected_enemy: int = -1
 var status_vfx := StatusVfx.new()
 
-const MEADOW: Texture2D = preload("res://assets/woodland/greenmarch.webp")
-const CASTLE_HORIZON: Texture2D = preload("res://assets/woodland/castle_horizon.webp")
-const HORIZON_HEIGHT: float = 2.1
+const MEADOW: Texture2D = preload("res://assets/woodland/greenmarch-meadow.webp")
+const CASTLE_HORIZON: Texture2D = preload("res://assets/woodland/greenmarch-horizon.webp")
+const CASTLE_GATE: Texture2D = preload("res://assets/woodland/greenmarch-gate.webp")
+const PETRIFIED_TOWER: Texture2D = preload("res://assets/woodland/petrified-tower.webp")
+const ROAD_BOULDER: Texture2D = preload("res://assets/woodland/road-boulder.webp")
+const HORIZON_HEIGHT: float = 2.35
+const FRAME_PADDING: float = 8.0
 const PATH: Color = Color("#ecd0a5")
 const GOLD: Color = Color("#f5c57c")
 const REWARD: Color = Color("#ffdc64")
@@ -378,8 +382,8 @@ func _draw() -> void:
 		return
 	var field_size: Vector2 = sim.track.bounds
 	var horizon: float = HORIZON_HEIGHT if gate_on_top else 0.0
-	var frame_size: Vector2 = field_size + Vector2(0, horizon)
-	zoom = minf((size.x - 8) / frame_size.x, (size.y - 8) / frame_size.y)
+	var frame_size: Vector2 = _frame_size()
+	zoom = minf((size.x - FRAME_PADDING) / frame_size.x, (size.y - FRAME_PADDING) / frame_size.y)
 	if zoom <= 1:
 		return
 	origin = (size - frame_size * zoom) * .5 + Vector2(0, horizon * zoom)
@@ -439,12 +443,19 @@ func _draw() -> void:
 	if not matchups.is_empty():
 		_draw_matchups()
 
+func width_for_height(height: float) -> float:
+	var frame: Vector2 = _frame_size()
+	return FRAME_PADDING + maxf(0.0, height - FRAME_PADDING) * frame.aspect()
+
+func _frame_size() -> Vector2:
+	return sim.track.bounds + Vector2(0, HORIZON_HEIGHT if gate_on_top else 0.0)
+
 func _draw_road_stone() -> void:
 	var tile: Vector2i = sim.state.stone.tile
 	var p: Vector2 = sim.track.road_tiles[tile]
 	_set_upright(p)
-	_draw_oval(p + Vector2(.04, .24), Vector2(.45, .22), Color("#503f3f69"))
-	_draw_petrification(p)
+	_draw_oval(p + Vector2(.04, .22), Vector2(.43, .14), Color("#503f3f69"))
+	_draw_scenery_sprite(ROAD_BOULDER, p + Vector2(0, .02), 1.06)
 	var left: float = clampf(float(int(sim.state.stone.until) - int(sim.state.tick)) / (sim.hz * float(sim.cfg.stone_seconds)), .001, 1.0)
 	draw_arc(p, .49, -.5 * PI, -.5 * PI + TAU * left, 28, Color("#fff0bd"), .049, true)
 	_set_board_transform()
@@ -522,7 +533,8 @@ func _draw_pollen() -> void:
 		draw_circle(p, .026 + .009 * sin(phase), Color("#fff9d1", .22 + .16 * sin(phase + .5)))
 
 func _draw_gate(p: Vector2) -> void:
-	TowerArt.draw_landmark(self, "gate", p, Vector2(1.66, 1.48) if gate_on_top else Vector2(1.42, 1.13))
+	_draw_oval(p + Vector2(.02, .38), Vector2(.65, .18), Color("#51473175"))
+	_draw_scenery_sprite(CASTLE_GATE, p + Vector2(0, -.05), 1.53 if gate_on_top else 1.36)
 	if int(sim.state.barrier) > 0:
 		var field_shield: PackedVector2Array = PackedVector2Array([p + Vector2(-.64,.14), p + Vector2(-.63,-.31),
 			p + Vector2(-.29,-.61), p + Vector2(.29,-.61), p + Vector2(.63,-.31), p + Vector2(.64,.14)])
@@ -688,9 +700,11 @@ func _draw_tower(tower: Dictionary) -> void:
 		direction = -direction
 	var recoil: float = float(aim.get("recoil", 0.0)) / .18
 	var rim: Color = tint.darkened(.32)
-	TowerArt.draw(self, tower, p, .47, elapsed, direction, recoil)
 	if tower.get("petrified", false):
-		_draw_petrification(p)
+		_draw_oval(p + Vector2(.03, .27), Vector2(.40, .16), Color("#37413985"))
+		_draw_scenery_sprite(PETRIFIED_TOWER, p + Vector2(0, -.075), .92)
+	else:
+		TowerArt.draw(self, tower, p, .47, elapsed, direction, recoil)
 	if tower.get("stone_pending", false):
 		draw_arc(p, .49, elapsed * 1.9, elapsed * 1.9 + TAU * .72, 26, Color("#baf9c3"), .05, true)
 		var mark: Vector2 = p + Vector2(.29, -.32)
@@ -731,17 +745,9 @@ func _draw_tower(tower: Dictionary) -> void:
 		Glyphs.draw(self, "phasing", p + Vector2(.30, -.30), .17, Color("#a7b9ff"))
 	_set_board_transform()
 
-func _draw_petrification(p: Vector2) -> void:
-	var rock := PackedVector2Array()
-	for point: Vector2 in [Vector2(-.41,.24), Vector2(-.43,-.14), Vector2(-.25,-.44),
-			Vector2(.14,-.48), Vector2(.35,-.34), Vector2(.41,.10), Vector2(.31,.31), Vector2(-.18,.39)]:
-		rock.append(p + point)
-	draw_colored_polygon(rock, Color("#728782ed"))
-	rock.append(rock[0])
-	draw_polyline(rock, Color("#425751"), .031, true)
-	draw_polyline(PackedVector2Array([p + Vector2(-.29, -.39), p + Vector2(-.15, -.12), p + Vector2(.03, -.13),
-		p + Vector2(.16, .15), p + Vector2(.35, .18)]), Color("#43564f"), .030, true)
-	draw_line(p + Vector2(.035, -.13), p + Vector2(.23, -.37), Color("#a2bbb0"), .031, true)
+func _draw_scenery_sprite(texture: Texture2D, center: Vector2, width: float) -> void:
+	var span: Vector2 = texture.get_size() * (width / texture.get_width())
+	draw_texture_rect(texture, Rect2(center - span * .5, span), false)
 
 func _draw_pure_badge(p: Vector2) -> void:
 	var star := PackedVector2Array()
@@ -843,7 +849,7 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	var impact: float = float(hit_times.get(int(enemy.id), 0.0)) / .15
 	tint = tint.lerp(Color("#fffcef"), impact * .62)
 	var shielded: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
-	if EnemyRules.reflect_ready(enemy, int(sim.state.tick)):
+	if EnemyRules.reflect_ready(enemy, int(sim.state.tick), sim.hz):
 		draw_arc(p, radius + .19, elapsed * 2.4, elapsed * 2.4 + TAU * .83, 32, Color("#f2d9ff"), .059, true)
 	if shielded:
 		draw_circle(p, radius + .10, Color("#9bdcff", .48))

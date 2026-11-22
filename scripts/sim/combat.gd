@@ -165,11 +165,8 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			scale = float(profile.splash_fringe)
 		var multiplier: float = Damage.against(split, victim, adaptive)
 		var adjusted: float = raw * multiplier * scale
-		if adjusted > 0.0 and EnemyRules.reflect_ready(victim, int(sim.state.tick)):
-			var mirror: Dictionary = DataDB.read("bosses").reflect
-			tower.reflect = Effects.ticks(mirror.disable_seconds, sim.hz)
-			victim.reflect_ready_tick = int(sim.state.tick) + Effects.ticks(mirror.cooldown_seconds, sim.hz)
-			sim.emit_event("boss_reflected", {"slot": tower.slot, "s": victim.s})
+		if adjusted > 0.0 and victim.kind == "boss" and int(tower.get("reflect", 0)) == 0:
+			_reflect(sim, tower, victim)
 		if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
 			victim.silence_time = Effects.ticks(trait_profile.silence, sim.hz)
 		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick)
@@ -200,6 +197,21 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			"range": radius if is_finite(radius) else float(stats.range),
 		})
 		previous = victim
+
+static func _reflect(sim: RefCounted, tower: Dictionary, boss: Dictionary) -> void:
+	var tick: int = sim.state.tick
+	var rule: Dictionary = EnemyRules.reflect_rule(int(boss.reflect_wave))
+	var window: int = EnemyRules.reflect_window_start(boss, tick, sim.hz, rule)
+	if window < 0:
+		return
+	if int(boss.get("reflect_window", -1)) != window:
+		boss.reflect_window = window
+		boss.reflect_hits = 0
+	boss.reflect_hits += 1
+	if int(boss.reflect_hits) >= int(rule.targets):
+		boss.reflect_ready_tick = tick + Effects.ticks(rule.cooldown_seconds, sim.hz)
+	tower.reflect = Effects.ticks(rule.disable_seconds, sim.hz)
+	sim.emit_event("boss_reflected", {"slot": tower.slot, "s": boss.s})
 
 static func _sabotage(sim: RefCounted, enemy: Dictionary, position: Vector2, towers: Array) -> void:
 	enemy.sabotage_used = true

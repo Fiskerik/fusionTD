@@ -104,7 +104,7 @@
     "role": "Scalding smoke weakens enemies and drags down their speed.",
     "effect": {
       "curse": [
-        0.23,
+        0.184,
         3.5
       ],
       "slow": [
@@ -200,7 +200,7 @@
         3.8
       ],
       "curse": [
-        0.23,
+        0.184,
         3.25
       ]
     }
@@ -442,7 +442,7 @@
         2
       ],
       "curse": [
-        0.21,
+        0.168,
         3
       ]
     }
@@ -553,7 +553,7 @@
     "effect": {
       "disease": {"fraction": 0.12, "duration": 4, "radius": 1.5},
       "curse": [
-        0.26,
+        0.208,
         3.5
       ],
       "heal_block": 4,
@@ -730,7 +730,7 @@
         4
       ],
       "curse": [
-        0.2,
+        0.16,
         3.2
       ]
     }
@@ -837,7 +837,7 @@
     "role": "Silt freezes periodic targets and makes them take more damage.",
     "effect": {
       "curse": [
-        0.23,
+        0.184,
         3
       ],
       "freeze": [
@@ -928,7 +928,7 @@
         4.8
       ],
       "curse": [
-        0.21,
+        0.168,
         3.15
       ]
     }
@@ -1011,7 +1011,7 @@
     "role": "Curses targets, pierces armor, and keeps enemies from healing.",
     "effect": {
       "curse": [
-        0.21,
+        0.168,
         3.2
       ],
       "pierce": 0.38,

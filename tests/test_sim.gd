@@ -1,7 +1,7 @@
 extends "res://tests/test_base.gd"
 
 func test_campaign_beats_and_merchant_are_numbered_events() -> void:
-	var sim := Sim.campaign(51, "endless")
+	var sim := Sim.campaign(51)
 	equal(sim.next_event_wave(), 5)
 	for wave: int in range(1, 5):
 		var timed: Dictionary = sim.preview(wave)
@@ -35,6 +35,21 @@ func test_campaign_beats_and_merchant_are_numbered_events() -> void:
 	equal(sim.state.barrier, 3)
 	equal(sim.state.wave, 36)
 	check(not sim.apply({"type": "merchant", "offer": "repair"}).ok)
+
+func test_survival_continues_beyond_the_old_act_breaks() -> void:
+	var sim := Sim.campaign(7)
+	equal(sim.state.run_mode, "survival")
+	for milestone: int in [15, 30, 45, 120]:
+		sim.state.wave = milestone
+		sim.state.phase = "wave"
+		sim.step()
+		equal(sim.state.wave, milestone + 1)
+		check(not sim.state.act_pending)
+		check(sim.event_kind(milestone + 1).is_empty())
+		check(sim.describe({"type": "start_wave"}).ok)
+	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	equal(restored.state.run_mode, "survival")
+	check(restored.describe({"type": "start_wave"}).ok)
 
 func test_runs_bank_or_continue_at_act_breaks_and_win_only_by_killing_the_finale() -> void:
 	for mode: String in ["quick", "standard", "endless"]:
@@ -901,6 +916,25 @@ func test_water_upgrades_and_elemental_specialties() -> void:
 	near(TowerRules.attack_profile(dark).rate, 2.2)
 	near(TowerRules.attack_profile(dark).damage, 5.0)
 
+func test_element_damage_boost_and_reduced_curse_follow_tower_loadout() -> void:
+	var towers: Dictionary = DataDB.read("towers")
+	for element: String in DataDB.ELEMENTS:
+		var tower: Dictionary = TowerRules.create(1, "s1", "pure", element, "", 0)
+		near(TowerRules.attack_profile(tower).damage, float(towers[element].damage) * (1.0 if element == "dark" else 1.15))
+	var arrow: Dictionary = TowerRules.create(1, "s1", "arrow", "normal", "", 0)
+	near(TowerRules.attack_profile(arrow).damage, towers.arrow.damage)
+	arrow.infusion = "fire"
+	near(TowerRules.attack_profile(arrow).damage, float(towers.arrow.damage) * 1.15)
+	var curse_fusion: Dictionary = TowerRules.fusion_result(TowerRules.recipe("dark", "earth"))
+	var earth_share: float = TowerRules.damage_split(curse_fusion).earth
+	near(TowerRules.element_damage_scale(curse_fusion), 1.0 + .15 * earth_share)
+	near(TowerRules.trait_profile(curse_fusion, {}).curse[0], .152)
+	var dark: Dictionary = TowerRules.create(1, "s1", "pure", "dark", "", 0)
+	for level: int in [1, 3, 5]:
+		dark.level = level
+		var original: Array[float] = [.15, .28, .44]
+		near(TowerRules.trait_profile(dark, {"dark": 3}).curse[0], original[(level - 1) / 2] * .8)
+
 func test_light_nature_triples_heal_then_shield_the_gate() -> void:
 	var sim := Sim.new()
 	var ids: Array[String] = ["daystar", "pearllotus", "auroraarbor", "moonorchid"]
@@ -1207,6 +1241,7 @@ func test_campaign_boons_queue_one_seeded_choice_per_boss_kill() -> void:
 	var sim := Sim.campaign(7)
 	var library: Dictionary = DataDB.read("run_boons")
 	check(library.has("earth_splash") and library.size() >= 50)
+	sim.state.tiers.earth = 2
 	sim.state.wave = 70
 	var bosses: Array[Dictionary] = sim.preview(70).bosses
 	sim.state.phase = "wave"
@@ -1223,6 +1258,9 @@ func test_campaign_boons_queue_one_seeded_choice_per_boss_kill() -> void:
 	equal(sim.state.boon_queue.size(), 2)
 	var choices: PackedStringArray = sim.boon_choices()
 	equal(choices.size(), 3)
+	check(library[choices[0]].general)
+	equal(library[choices[1]].mods[0].scope, "earth")
+	check(DataDB.ELEMENTS.has(library[choices[2]].mods[0].scope))
 	near(sim.state.boon_queue[0].potency, 1.0)
 	near(sim.state.boon_queue[1].potency, 1.1)
 	check(choices[0] != choices[1] and choices[0] != choices[2] and choices[1] != choices[2])
@@ -1233,13 +1271,15 @@ func test_campaign_boons_queue_one_seeded_choice_per_boss_kill() -> void:
 	equal(restored.track.layout_id, sim.track.layout_id)
 	equal(restored.boon_choices(), choices)
 	check(restored.apply({"type": "choose_boon", "id": choices[0]}).ok)
-	var first_pick: Dictionary = {"id": choices[0], "wave": 70, "potency": 1.0}
+	var first_pick: Dictionary = {"id": choices[0], "wave": 70, "potency": .65}
 	equal(restored.state.active_boon, first_pick)
 	check(not restored.boon_choices().has(choices[0]))
 	var replacement_run: Sim = SaveStore.decode(SaveStore.encode(restored).duplicate(true))
-	var replacement: String = replacement_run.boon_choices()[0]
+	var replacement: String = replacement_run.boon_choices()[2]
 	check(replacement_run.apply({"type": "choose_boon", "id": replacement}).ok)
-	equal(replacement_run.state.active_boon, {"id": replacement, "wave": 70, "potency": 1.1})
+	equal(replacement_run.state.active_boon.id, replacement)
+	equal(replacement_run.state.active_boon.wave, 70)
+	near(replacement_run.state.active_boon.potency, 1.65)
 	check(restored.apply({"type": "keep_boon"}).ok)
 	equal(restored.state.active_boon, first_pick)
 	check(not restored.apply({"type": "keep_boon"}).ok)
@@ -1262,6 +1302,29 @@ func test_campaign_boons_queue_one_seeded_choice_per_boss_kill() -> void:
 	var late_mod: Dictionary = library.fire_damage.mods[0]
 	check(RunBoons.amount(late_mod, RunBoons.reward_potency(3)) > RunBoons.amount(late_mod, RunBoons.reward_potency(2)))
 	near(RunBoons.reward_potency(80), 1.8)
+
+func test_empowered_boons_can_target_a_locked_element_and_general_boons_apply() -> void:
+	var library: Dictionary = DataDB.read("run_boons")
+	var reward: Dictionary = {"index": 0, "wave": 10, "potency": 1.0}
+	var offered: Dictionary = {}
+	for seed_value: int in range(1, 30):
+		var choices: PackedStringArray = RunBoons.offers(seed_value, reward, {}, {"water": 1})
+		equal(library[choices[1]].mods[0].scope, "water")
+		offered[library[choices[2]].mods[0].scope] = true
+		check(choices[1] != choices[2])
+	equal(offered.size(), DataDB.ELEMENTS.size())
+	var sim := Sim.campaign(8)
+	sim.state.active_boon = {"id": "general_damage", "wave": 10, "potency": .65}
+	sim.refresh_boon()
+	for kind: String in ["arrow", "cannon", "pure", "dual"]:
+		var tower: Dictionary = TowerRules.create(1, "s1", kind, "water", "prism", 0)
+		near(sim.tower_boon(tower).damage, .0455)
+	sim.state.active_boon.id = "general_gold"
+	sim.refresh_boon()
+	sim.state.phase = "wave"
+	var gold: int = sim.state.gold
+	sim.step()
+	equal(sim.state.gold - gold, roundi(Economy.clear_reward(1) * 1.078))
 
 func test_legacy_save_keeps_the_most_recent_boon_at_its_original_potency() -> void:
 	var sim := Sim.campaign(7)

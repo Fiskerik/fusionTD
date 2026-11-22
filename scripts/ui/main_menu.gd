@@ -54,7 +54,7 @@ func _build() -> void:
 		var title_key: String = "continue_wave" if checkpoint.state.trial.is_empty() else "continue_bonus"
 		var title_args: Variant = checkpoint.state.wave if checkpoint.state.trial.is_empty() else String(checkpoint.state.trial.element).capitalize()
 		buttons.add_child(UIKit.button(DataDB.text(title_key) % title_args, _open_game.bind(checkpoint), true, 68))
-	buttons.add_child(UIKit.button("New Run", _new_run, checkpoint == null, 68))
+	buttons.add_child(UIKit.button("Start Survival" if checkpoint == null else "New Survival", _new_run, checkpoint == null, 68))
 	var foot: HBoxContainer = UIKit.row(7)
 	foot.add_child(UIKit.button(DataDB.text("how"), _help, false, 47))
 	foot.add_child(UIKit.button("Settings", _show_settings, false, 47))
@@ -150,19 +150,18 @@ func _help() -> void:
 	body.add_child(UIKit.button(DataDB.text("close"), _close, true))
 
 func _new_run() -> void:
+	if checkpoint == null:
+		_open_game()
+		return
 	_close()
 	var popup: Dictionary = UIKit.dialog(self, 555)
 	overlay = popup.overlay
 	var body: VBoxContainer = popup.body
-	body.add_child(UIKit.label("Choose a run", 33))
-	if checkpoint != null:
-		body.add_child(UIKit.label(DataDB.text("new_info"), 19, UIKit.MUTED, true))
-	for mode: String in ["quick", "standard", "endless"]:
-		var length: int = Sim.RUN_LENGTHS[mode]
-		var detail: String = "%d waves + finale" % length if length > 0 else "Bank after any 15-wave act"
-		var choice: Button = UIKit.button("%s\n%s" % [mode.capitalize(), detail], _open_game.bind(null, mode), mode == "standard", 72)
-		choice.name = "Run" + mode.capitalize()
-		body.add_child(choice)
+	body.add_child(UIKit.label("Start a new Survival run?", 29))
+	body.add_child(UIKit.label(DataDB.text("new_info"), 19, UIKit.MUTED, true))
+	var start: Button = UIKit.button("Start Survival", _open_game, true, 64)
+	start.name = "RunSurvival"
+	body.add_child(start)
 	body.add_child(UIKit.button(DataDB.text("cancel"), _close, false, 48))
 
 func _close() -> void:
@@ -170,9 +169,9 @@ func _close() -> void:
 		overlay.queue_free()
 	overlay = null
 
-func _open_game(saved: Sim = null, mode: String = "endless") -> void:
+func _open_game(saved: Sim = null) -> void:
 	var game: Control = GAME.instantiate()
-	game.sim = saved if saved != null else Sim.campaign(int(randi()), mode)
+	game.sim = saved if saved != null else Sim.campaign(int(randi()))
 	get_tree().root.add_child(game)
 	get_tree().current_scene = game
 	queue_free()

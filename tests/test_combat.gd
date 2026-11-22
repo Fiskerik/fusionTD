@@ -11,7 +11,7 @@ func test_reflect_disables_only_the_triggering_tower_and_recharges() -> void:
 	Combat.spawn(sim, group, 10.0)
 	var boss: Dictionary = sim.state.mobs[0]
 	sim.step()
-	equal(first.reflect, 150)
+	equal(first.reflect, 60)
 	check(not second.has("reflect"))
 	check(TowerRules.disabled(first))
 	check(float(first.damage_dealt) > 0.0 and float(second.damage_dealt) > 0.0)
@@ -19,13 +19,68 @@ func test_reflect_disables_only_the_triggering_tower_and_recharges() -> void:
 	for tick: int in range(89):
 		sim.step()
 	check(not second.has("reflect"))
+	check(not TowerRules.disabled(first))
 	second.cooldown = 0
 	sim.step()
-	equal(second.reflect, 150)
+	equal(second.reflect, 60)
 	equal(boss.reflect_ready_tick, 181)
 	for tick: int in range(60):
 		sim.step()
-	check(not TowerRules.disabled(first) and TowerRules.disabled(second))
+	check(not TowerRules.disabled(first) and not TowerRules.disabled(second))
+
+func test_reflect_windows_and_target_limits_scale_with_boss_wave() -> void:
+	for wave: int in [10, 20, 30, 40, 50, 60, 70]:
+		var sim := Sim.new()
+		sim.state.wave = wave
+		sim.state.phase = "wave"
+		var group: Dictionary = sim.preview(wave).boss
+		group.merge({"hp": 100000.0, "armor": 0.0, "speed": 0.0}, true)
+		Combat.spawn(sim, group, 0.0)
+		var boss: Dictionary = sim.state.mobs[0]
+		var window: int = 60 if wave < 40 else (120 if wave < 60 else 150)
+		var cooldown: int = 90 if wave < 60 else 150
+		check(EnemyRules.reflect_ready(boss, window - 1, sim.hz))
+		check(not EnemyRules.reflect_ready(boss, window, sim.hz))
+		check(EnemyRules.reflect_ready(boss, window + cooldown, sim.hz))
+		var hits: int = 2 if wave >= 60 else 1
+		var penalty: int = 60 if wave < 40 else (90 if wave < 60 else 150)
+		check(StatusInfo.trait_description("reflect", group).contains("for %d s" % (penalty / 30)))
+		for slot: String in ["s1", "s2", "s3"]:
+			sim.state.towers[slot] = TowerRules.create(sim.next_id(), slot, "pure", "light", "", 130)
+		sim.step()
+		var reflected: int = 0
+		for tower: Dictionary in sim.ordered_towers():
+			if TowerRules.disabled(tower):
+				reflected += 1
+				equal(tower.reflect, penalty)
+		equal(reflected, hits)
+		check(not EnemyRules.reflect_ready(boss, sim.state.tick, sim.hz))
+		equal(boss.reflect_ready_tick, 1 + cooldown)
+
+func test_prismheart_and_stormwing_keep_their_speed_and_health_nerf_on_resume() -> void:
+	for wave: int in [40, 50]:
+		var sim := Sim.new()
+		sim.state.wave = wave
+		sim.state.phase = "wave"
+		var boss: Dictionary = sim.preview(wave).boss
+		near(boss.speed, .495 if wave == 40 else .666)
+		var hp_mult: float = 10.8 if wave == 40 else 9.0
+		var pressure: Dictionary = DataDB.read("waves").pressure
+		var hp: float = Waves.base_enemy_hp(wave) * (1 + (wave - int(pressure.after)) * float(pressure.hp_per_wave))
+		near(boss.hp, hp * .9 * .8 * hp_mult)
+		Combat.spawn(sim, boss, 3.0)
+		var save: Dictionary = SaveStore.encode(sim).duplicate(true)
+		var old_boss: Dictionary = save.state.mobs[0]
+		old_boss.erase("reflect_wave")
+		old_boss.max_hp = float(boss.hp) / .9
+		old_boss.hp = float(old_boss.max_hp) * .6
+		old_boss.speed = float(boss.speed) / .9
+		var restored: Sim = SaveStore.decode(save)
+		var rebalanced: Dictionary = restored.state.mobs[0]
+		near(rebalanced.hp, float(boss.hp) * .6)
+		near(rebalanced.max_hp, boss.hp)
+		near(rebalanced.speed, boss.speed)
+		equal(rebalanced.reflect_wave, wave)
 
 func test_road_stone_pushes_occupants_and_stops_followers_until_it_expires() -> void:
 	var sim := Sim.new()
@@ -237,7 +292,7 @@ func test_spirit_victories_apply_to_actual_hits() -> void:
 	sim.state.towers.s1 = tower
 	Combat.spawn(sim, _enemy(), 10.0)
 	sim.step()
-	near(tower.damage_dealt, 12.0)
+	near(tower.damage_dealt, 13.8)
 
 func test_rolled_weakness_controls_elemental_damage() -> void:
 	var group: Dictionary = _enemy()
@@ -253,7 +308,7 @@ func test_rolled_weakness_controls_elemental_damage() -> void:
 	sim.state.towers.s1 = tower
 	Combat.spawn(sim, group, 10.0)
 	sim.step()
-	near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * 1.5)
+	near(tower.damage_dealt, float(TowerRules.attack_profile(tower).damage) * 1.5)
 
 func test_attacking_duals_out_hit_each_level_two_ingredient() -> void:
 	for id: String in DataDB.read("duals"):
@@ -390,7 +445,7 @@ func test_all_fusion_recipes_and_tier_gate() -> void:
 		else:
 			near(sim.state.mobs[0].hp, 1000.0, recipe + " is a support")
 		if recipe == "eclipse":
-			near(sim.state.mobs[0].hp, 1000.0 - 44.0 * 2.6 * 1.5 * float(sim.cfg.dual_damage_scale))
+			near(sim.state.mobs[0].hp, 1000.0 - float(TowerRules.attack_profile(sim.state.towers.s1).damage) * 1.5)
 
 func test_prism_ramp_and_non_stacking_bloom() -> void:
 	var sim := Sim.new()
@@ -551,9 +606,10 @@ func test_chain_falloff_and_fire_spread() -> void:
 	for distance: float in [9.0, 9.3, 9.6, 10.0]:
 		Combat.spawn(sim, _enemy(), distance)
 	sim.step()
-	near(sim.state.mobs[3].hp, 986)
-	near(sim.state.mobs[2].hp, 990.2)
-	near(sim.state.mobs[1].hp, 993.14)
+	var damage: float = TowerRules.attack_profile(sim.state.towers.s1).damage
+	near(sim.state.mobs[3].hp, 1000 - damage)
+	near(sim.state.mobs[2].hp, 1000 - damage * .7)
+	near(sim.state.mobs[1].hp, 1000 - damage * .49)
 	near(sim.state.mobs[0].hp, 1000)
 	sim.state.mobs[3].hp = 0.0
 	Effects.add_dot(sim.state.mobs[3], "burn", 10, 10, 6, 120, 1.2)
@@ -761,7 +817,7 @@ func test_stormwing_ignores_ground_control_and_ironwood_resists_elements() -> vo
 		sim.state.towers.s1 = tower
 		Combat.spawn(sim, engine, 10.0)
 		sim.step()
-		near(tower.damage_dealt, float(TowerRules.stats(tower).damage) * (2.0 if infusion.is_empty() else .75) * .75)
+		near(tower.damage_dealt, float(TowerRules.attack_profile(tower).damage) * (2.0 if infusion.is_empty() else .75) * .75)
 	near(Damage.against({"fire": .5, "water": .5}, engine, false), .75)
 	near(Damage.against({}, engine, true), .75)
 	check(StatusInfo.trait_description("ironwood").contains("75% of elemental damage"))

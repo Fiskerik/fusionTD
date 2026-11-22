@@ -20,12 +20,32 @@ static func create(id: int, group: Dictionary, distance: float, born: int) -> Di
 		enemy.forms = group.forms
 	if group.has("turn_seconds"):
 		enemy.turn_seconds = group.turn_seconds
+	if group.kind == "boss":
+		enemy.reflect_wave = int(group.get("reflect_wave", 1))
 	if group.get("finale", false):
 		enemy.finale = true
 	return enemy
 
-static func reflect_ready(enemy: Dictionary, tick: int) -> bool:
-	return enemy.kind == "boss" and tick >= int(enemy.get("reflect_ready_tick", 0))
+static func reflect_rule(wave: int) -> Dictionary:
+	var rules: Array = DataDB.read("bosses").reflect
+	for rule: Dictionary in rules:
+		if wave >= int(rule.from_wave):
+			return rule
+	return rules.back()
+
+static func reflect_window_start(enemy: Dictionary, tick: int, hz: float, rule: Dictionary) -> int:
+	var start: int = int(enemy.get("reflect_ready_tick", enemy.born))
+	if tick < start:
+		return -1
+	var active: int = Effects.ticks(rule.active_seconds, hz)
+	var elapsed: int = (tick - start) % (active + Effects.ticks(rule.cooldown_seconds, hz))
+	return tick - elapsed if elapsed < active else -1
+
+static func reflect_ready(enemy: Dictionary, tick: int, hz: float) -> bool:
+	if enemy.kind != "boss":
+		return false
+	var rule: Dictionary = reflect_rule(int(enemy.get("reflect_wave", 1)))
+	return reflect_window_start(enemy, tick, hz, rule) >= 0
 
 static func airborne(enemy: Dictionary) -> bool:
 	return enemy.get("boss_type", "") == "tempest"
@@ -99,6 +119,7 @@ static func apply_wave_traits(enemy: Dictionary, wave: int) -> void:
 		enemy.control_resistance = control_resistance(wave)
 	if enemy.kind == "boss":
 		var bosses: Dictionary = DataDB.read("bosses")
+		enemy.reflect_wave = int(enemy.get("reflect_wave", wave))
 		if enemy.boss_type == "ram" and enemy.has("turn_seconds"):
 			var previous: float = enemy.turn_seconds
 			var duration: float = bosses.ram.turn_seconds

@@ -1,6 +1,8 @@
 class_name GameScreen
 extends Control
 
+const LANDSCAPE_SIDEBAR_WIDTH: float = 438.0
+
 var sim: Sim
 var persistence_enabled: bool = true
 var profile: Dictionary
@@ -72,6 +74,7 @@ var selected: String = ""
 var fuse_origin: String = ""
 var paused: bool = false
 var wide: bool = false
+var landscape_split: HBoxContainer
 var speed: int = 1
 var accumulator: float = 0.0
 var message: String = ""
@@ -111,9 +114,13 @@ func _is_wide() -> bool:
 	return size.x > size.y * 1.17
 
 func _resized() -> void:
-	if wide == _is_wide() or sim == null:
+	if sim == null:
 		return
-	wide = _is_wide()
+	var landscape: bool = _is_wide()
+	if wide == landscape:
+		_fit_landscape_board()
+		return
+	wide = landscape
 	var previous: String = overlay_type
 	_build_layout()
 	match previous:
@@ -157,7 +164,21 @@ func _build_layout() -> void:
 	UIKit.screen_background(self)
 	var margin: MarginContainer = UIKit.screen_margin(self, 10)
 	var stack: VBoxContainer = UIKit.column(6)
-	margin.add_child(stack)
+	landscape_split = null
+	if wide:
+		landscape_split = UIKit.row(12)
+		margin.add_child(landscape_split)
+		var sidebar := ScrollContainer.new()
+		sidebar.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sidebar.custom_minimum_size.x = LANDSCAPE_SIDEBAR_WIDTH
+		sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sidebar.follow_focus = true
+		landscape_split.add_child(sidebar)
+		stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		sidebar.add_child(stack)
+	else:
+		margin.add_child(stack)
 	var hud := PanelContainer.new()
 	hud.add_theme_stylebox_override("panel", UIKit.style(Color("#284c40"), Color("#487763"), 16, 7))
 	stack.add_child(hud)
@@ -170,20 +191,28 @@ func _build_layout() -> void:
 	header.add_child(heading)
 	var wave_heading: HBoxContainer = UIKit.row(8)
 	heading.add_child(wave_heading)
-	wave_label = UIKit.label("", 26, Color("#fff4d6"))
+	wave_label = UIKit.label("", 24 if wide else 26, Color("#fff4d6"))
 	wave_heading.add_child(wave_label)
 	combat_status = UIKit.label("", 16, Color("#d6e7bf"))
+	if wide:
+		combat_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		combat_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		combat_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	wave_heading.add_child(combat_status)
-	stats = UIKit.label("", 18, Color("#d6e7bf"))
-	heading.add_child(stats)
+	var wave_details: VBoxContainer = heading
+	if wide:
+		wave_details = UIKit.column(0)
+		header_stack.add_child(wave_details)
+	stats = UIKit.label("", 17 if wide else 18, Color("#d6e7bf"), wide)
+	wave_details.add_child(stats)
 	event_status = UIKit.label("", 15, Color("#ffe2a0"))
-	heading.add_child(event_status)
+	wave_details.add_child(event_status)
 	var gate_row: HBoxContainer = UIKit.row(8)
 	gate_row.custom_minimum_size.y = 28
-	heading.add_child(gate_row)
+	wave_details.add_child(gate_row)
 	var meters: VBoxContainer = UIKit.column(3)
 	meters.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	meters.custom_minimum_size.x = 250
+	meters.custom_minimum_size.x = 180 if wide else 250
 	gate_row.add_child(meters)
 	life_bar = ProgressBar.new()
 	life_bar.max_value = float(sim.cfg.start_lives)
@@ -202,6 +231,10 @@ func _build_layout() -> void:
 	meters.add_child(barrier_bar)
 	hud_boon = UIKit.button("", _show_active_boon, true, 28)
 	hud_boon.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	if wide:
+		hud_boon.custom_minimum_size.x = 216
+		hud_boon.clip_text = true
+		hud_boon.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	hud_boon.add_theme_font_size_override("font_size", 14)
 	for style: String in ["normal", "focus", "hover", "pressed"]:
 		var fill: Color = Color("#ffe7af") if style in ["hover", "focus"] else Color("#f4d48f")
@@ -219,7 +252,7 @@ func _build_layout() -> void:
 	var menu_button: Button = UIKit.icon_button("menu", DataDB.text("game_menu"), _show_pause, 54)
 	menu_button.custom_minimum_size.x = 58
 	controls.add_child(menu_button)
-	var ribbon: HBoxContainer = UIKit.row(8)
+	var ribbon: BoxContainer = UIKit.column(4) if wide else UIKit.row(8)
 	header_stack.add_child(ribbon)
 	wave_effects = HFlowContainer.new()
 	wave_effects.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -234,29 +267,42 @@ func _build_layout() -> void:
 	preview_row = UIKit.row(4)
 	stack.add_child(preview_row)
 
-	var play_area := Control.new()
-	play_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	play_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stack.add_child(play_area)
-	var play: BoxContainer = UIKit.row(14) if wide else UIKit.column(8)
-	play_area.add_child(play)
-	play.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var play_area: Control
+	var dock_parent: VBoxContainer = stack
+	if not wide:
+		play_area = Control.new()
+		play_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		play_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stack.add_child(play_area)
+		dock_parent = UIKit.column(8)
+		play_area.add_child(dock_parent)
+		dock_parent.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if field == null:
 		field = BattlefieldView.new()
 		field.sim = sim
 		field.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		field.site_pressed.connect(_site_pressed)
 		field.enemy_pressed.connect(_enemy_pressed)
 		field.road_double_tapped.connect(_try_road_stone)
-	play.add_child(field)
 	field.gate_on_top = bool(profile.get("gate_on_top", false))
+	field.custom_minimum_size.x = 0.0
+	field.size_flags_horizontal = Control.SIZE_FILL if wide else Control.SIZE_EXPAND_FILL
+	round_controls = UIKit.row(6)
+	round_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if wide:
+		landscape_split.add_child(field)
+		landscape_split.move_child(field, 0)
+		_fit_landscape_board()
+		round_controls.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		round_controls.custom_minimum_size.x = 256
+		stack.add_child(round_controls)
+	else:
+		dock_parent.add_child(field)
 
 	var dock: VBoxContainer = UIKit.column(4)
 	if wide:
-		dock.custom_minimum_size.x = clampf(size.x * .33, 365, 520)
-		dock.alignment = BoxContainer.ALIGNMENT_CENTER
-	play.add_child(dock)
+		dock.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dock_parent.add_child(dock)
 	status = UIKit.label("", 16, UIKit.MINT)
 	status.custom_minimum_size.y = 20
 	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -340,15 +386,24 @@ func _build_layout() -> void:
 	secondary_button.add_theme_font_size_override("font_size", 16)
 	tower_toolbar.add_child(secondary_button)
 
-	round_controls = UIKit.row(6)
-	round_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	play_area.add_child(round_controls)
-	round_controls.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	round_controls.offset_left = -128
-	round_controls.offset_right = 128
-	round_controls.offset_top = 6
-	round_controls.offset_bottom = 60
+	if not wide:
+		play_area.add_child(round_controls)
+		round_controls.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		round_controls.offset_left = -128
+		round_controls.offset_right = 128
+		round_controls.offset_top = 6
+		round_controls.offset_bottom = 60
 	_refresh()
+
+func _fit_landscape_board() -> void:
+	if landscape_split == null:
+		return
+	var margin: MarginContainer = landscape_split.get_parent()
+	var insets := Vector2(margin.get_theme_constant("margin_left") + margin.get_theme_constant("margin_right"),
+		margin.get_theme_constant("margin_top") + margin.get_theme_constant("margin_bottom"))
+	var bounds: Vector2 = size - insets
+	var available_width: float = maxf(0.0, bounds.x - LANDSCAPE_SIDEBAR_WIDTH - landscape_split.get_theme_constant("separation"))
+	field.custom_minimum_size.x = minf(available_width, ceilf(field.width_for_height(bounds.y)))
 
 func _process(delta: float) -> void:
 	if interest_notice > 0.0:
@@ -375,7 +430,10 @@ func _process(delta: float) -> void:
 		_update_hud()
 
 func _build_tactics(parent: VBoxContainer) -> void:
-	var row: HBoxContainer = UIKit.row(6)
+	var row: Container = HFlowContainer.new() if wide else UIKit.row(6)
+	if wide:
+		row.add_theme_constant_override("h_separation", 6)
+		row.add_theme_constant_override("v_separation", 3)
 	parent.add_child(row)
 	swap_buttons.clear()
 	for kind: String in ["arrow", "cannon"]:
@@ -403,6 +461,9 @@ func _build_tactics(parent: VBoxContainer) -> void:
 	interest_status = UIKit.label("", 16, Color("#ffe2a0"))
 	interest_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	interest_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	if wide:
+		interest_status.custom_minimum_size = Vector2(178, 32)
+		interest_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(interest_status)
 
 func _update_tactics() -> void:
@@ -433,12 +494,12 @@ func _build_interest_toast() -> void:
 	interest_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	interest_toast.add_theme_stylebox_override("panel", UIKit.style(Color("#273d35f5"), Color("#e2b675"), 17, 10))
 	layer.add_child(interest_toast)
-	interest_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	interest_toast.offset_left = -125
-	interest_toast.offset_right = 125
-	interest_toast.offset_top = 48
-	interest_toast.offset_bottom = 92
-	interest_toast_text = UIKit.label("", 20, Color("#ffe4a0"))
+	interest_toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT if wide else Control.PRESET_CENTER_TOP)
+	interest_toast.offset_left = -280 if wide else -125
+	interest_toast.offset_right = -30 if wide else 125
+	interest_toast.offset_top = 68 if wide else 48
+	interest_toast.offset_bottom = 112 if wide else 92
+	interest_toast_text = UIKit.label("", 16 if wide else 20, Color("#ffe4a0"))
 	interest_toast_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	interest_toast.add_child(interest_toast_text)
 	_update_interest_toast()
@@ -448,6 +509,12 @@ func _update_interest_toast() -> void:
 	if interest_toast.visible:
 		interest_toast.modulate.a = minf(1.0, interest_notice / .48)
 		interest_toast_text.text = "Interest +%d g" % int(sim.state.last_interest)
+		if wide and is_instance_valid(interest_status) and interest_status.is_inside_tree():
+			var label_rect: Rect2 = interest_status.get_global_rect()
+			interest_toast.offset_right = label_rect.end.x - get_viewport_rect().end.x
+			interest_toast.offset_left = interest_toast.offset_right - interest_status.custom_minimum_size.x
+			interest_toast.offset_top = label_rect.get_center().y - 18.0
+			interest_toast.offset_bottom = label_rect.get_center().y + 18.0
 
 func _try_road_stone(tile: Vector2i) -> void:
 	if not paused and overlay_type.is_empty():
@@ -539,7 +606,7 @@ func _read_swap_drag(position: Vector2) -> String:
 func _count_down(delta: float) -> void:
 	if not sim.state.boon_queue.is_empty() or sim.state.act_pending or not sim.state.trial.is_empty():
 		return
-	if (not sim.uses_acts() and sim.state.selection_pending) or overlay_type in ["select", "merchant"]:
+	if (not sim.uses_event_cadence() and sim.state.selection_pending) or overlay_type in ["select", "merchant"]:
 		return
 	sim.intermission_left = maxf(0.0, sim.intermission_left - delta)
 	if sim.intermission_left == 0.0:
@@ -557,7 +624,7 @@ func _count_down(delta: float) -> void:
 func _update_countdown() -> void:
 	if not is_instance_valid(start_button) or not sim.state.boon_queue.is_empty() or sim.state.act_pending or not sim.state.trial.is_empty():
 		return
-	if sim.state.selection_pending and not sim.uses_acts():
+	if sim.state.selection_pending and not sim.uses_event_cadence():
 		return
 	last_countdown = ceili(sim.intermission_left)
 	if sim.state.selection_pending or sim.merchant_pending():
@@ -738,10 +805,12 @@ func _update_hud(refresh_upgrades: bool = false) -> void:
 	combat_status.visible = sim.state.phase == "wave"
 	if combat_status.visible:
 		var remaining: int = sim.state.mobs.size() + sim.state.spawn_queue.size()
+		var caption: String
 		if remaining == 1:
-			combat_status.text = DataDB.text("spirit_remaining" if not sim.state.trial.is_empty() else "enemy_remaining")
+			caption = DataDB.text("spirit_remaining" if not sim.state.trial.is_empty() else "enemy_remaining")
 		else:
-			combat_status.text = DataDB.text("enemies_remaining") % remaining
+			caption = DataDB.text("enemies_remaining") % remaining
+		combat_status.text = "%d left" % remaining if wide else caption
 	var gold_changed: bool = last_gold != int(sim.state.gold)
 	if refresh_upgrades or gold_changed:
 		field.upgrade_ready.clear()
@@ -793,8 +862,8 @@ func _render_wave_heading() -> void:
 	var event: String = sim.event_kind(wave)
 	if event == "finale":
 		wave_label.text = "%s finale" % String(sim.state.run_mode).capitalize()
-	event_status.visible = sim.uses_acts()
-	if sim.uses_acts():
+	event_status.visible = sim.uses_event_cadence()
+	if sim.uses_event_cadence():
 		var next: int = sim.next_event_wave()
 		var remaining: int = maxi(0, next - wave)
 		event_status.text = "Next event in %d %s · %s" % [remaining, "wave" if remaining == 1 else "waves", sim.event_kind(next).capitalize()]
@@ -864,7 +933,7 @@ func _render_preview() -> void:
 		UIKit.element_button(chip, sim.state.trial.element)
 		chip.tooltip_text = StatusInfo.enemy_name(sim.preview(int(sim.state.wave)).spirit)
 		preview_row.add_child(chip)
-	var first: int = int(sim.state.wave) + (1 if (sim.state.phase == "wave" and not bonus) or (bonus and sim.uses_acts()) else 0)
+	var first: int = int(sim.state.wave) + (1 if (sim.state.phase == "wave" and not bonus) or (bonus and sim.uses_event_cadence()) else 0)
 	var end: int = first + (2 if bonus else 3)
 	if sim.run_limit() > 0:
 		end = mini(end, sim.run_limit() + 2)
@@ -930,6 +999,9 @@ func _render_preview() -> void:
 		preview_row.add_child(chip)
 
 func _render_site() -> void:
+	if wide:
+		var inspecting: bool = sim.state.towers.has(selected) or inspected_enemy >= 0
+		inspector_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL if inspecting else Control.SIZE_FILL
 	inspector_scroll.scroll_vertical = 0
 	UIKit.clear(site_actions)
 	UIKit.clear(tower_composition)
@@ -989,7 +1061,7 @@ func _render_site() -> void:
 	if tower.get("sabotaged", false):
 		_effect_chip(tower_effects, "Jammed", UIKit.WARN, "electric", "Upgrade or fuse this tower to restore it.")
 	if int(tower.get("reflect", 0)) > 0:
-		_effect_chip(tower_effects, "Reflected", UIKit.WARN, "phasing", StatusInfo.trait_description("reflect"))
+		_effect_chip(tower_effects, "Reflected", UIKit.WARN, "phasing", "Temporarily disabled by a boss’s Reflect shield.")
 	if tower.get("petrified", false):
 		_effect_chip(tower_effects, "Petrified", UIKit.MUTED, "armor", "This tower is inactive until the numbered wave ends.")
 	elif tower.get("stone_pending", false):
@@ -1067,6 +1139,9 @@ func _render_palette() -> void:
 			button = _action_button(title, action)
 		button.name = ("BuildPure" if pure_palette else "Build") + kind.capitalize()
 		button.add_theme_font_size_override("font_size", 15)
+		if wide:
+			button.clip_text = true
+			button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		UIKit.element_button(button, kind, true, true)
 		button.mouse_entered.connect(_preview_range.bind(kind))
 		button.focus_entered.connect(_preview_range.bind(kind))
@@ -1407,7 +1482,7 @@ func _render_enemy_details(enemy: Dictionary, traits: PackedStringArray, active:
 		_enemy_detail_line("Immune to " + immune.capitalize(), "Adapted after the last elemental hit.", immune)
 	for id: String in traits:
 		var property_info: Array = StatusInfo.TRAITS[id]
-		_enemy_detail_line(StatusInfo.trait_title(id, enemy), StatusInfo.trait_description(id), property_info[2])
+		_enemy_detail_line(StatusInfo.trait_title(id, enemy), StatusInfo.trait_description(id, enemy), property_info[2])
 	for i: int in range(active.size()):
 		var id: String = active[i]
 		_enemy_detail_line(lines[i], StatusInfo.description(id), StatusInfo.ICONS[id])
@@ -1665,6 +1740,7 @@ func _toggle_haptics() -> void:
 func _toggle_gate_view() -> void:
 	profile.gate_on_top = not field.gate_on_top
 	field.gate_on_top = profile.gate_on_top
+	_fit_landscape_board()
 	_settings_changed()
 
 func _settings_changed() -> void:
@@ -1707,7 +1783,7 @@ func _show_intermission_choice(allow_early: bool = true) -> void:
 		_show_boon_choice()
 	elif sim.state.act_pending:
 		_show_act_choice()
-	elif not allow_early and sim.uses_acts() and sim.intermission_left > 0.0:
+	elif not allow_early and sim.uses_event_cadence() and sim.intermission_left > 0.0:
 		return
 	elif sim.state.selection_pending:
 		_show_selection()
@@ -1764,13 +1840,19 @@ func _show_boon_choice() -> void:
 			_apply.bind({"type": "keep_boon"}), true, 72)
 		keep.add_theme_font_size_override("font_size", 19)
 		body.add_child(keep)
-	for id: String in options:
+	var categories: Array[String] = ["General", "Unlocked element", "Empowered · Any element"]
+	if RunBoons.unlocked_elements(sim.state.tiers).is_empty():
+		categories[1] = "Any element"
+	for index: int in range(options.size()):
+		var id: String = options[index]
 		var boon: Dictionary = library[id]
 		var tags: PackedStringArray = RunBoons.tags(boon)
 		var tint: Color = _boon_tint(tags)
-		var button: Button = UIKit.button(boon.name + "\n" + RunBoons.describe(boon, float(encounter.potency)),
+		var detail: String = RunBoons.describe(boon, RunBoons.offer_potency(float(encounter.potency), index))
+		var button: Button = UIKit.button("%s · %s\n%s" % [categories[index], boon.name, detail],
 			_apply.bind({"type": "choose_boon", "id": id}), false, 72)
-		button.add_theme_font_size_override("font_size", 19)
+		button.add_theme_font_size_override("font_size", 17)
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_stylebox_override("normal", UIKit.raised(UIKit.SURFACE.lerp(tint, .19), tint.lerp(UIKit.BORDER, .52)))
 		button.add_theme_stylebox_override("hover", UIKit.raised(UIKit.SURFACE.lerp(tint, .32), tint))
 		body.add_child(button)
@@ -2010,7 +2092,7 @@ func _forecast_card(list: VBoxContainer, group: Dictionary, hint: Label) -> void
 			StatusInfo.weakness_description(weakness, multiplier))
 	for key: String in StatusInfo.enemy_traits(group):
 		var icon: String = StatusInfo.TRAITS[key][2]
-		var effect := {"detail": StatusInfo.trait_description(key), "tint": Glyphs.hue(icon).darkened(.52)}
+		var effect := {"detail": StatusInfo.trait_description(key, group), "tint": Glyphs.hue(icon).darkened(.52)}
 		var button: Button = UIKit.button(StatusInfo.trait_title(key, group), _read_effect.bind(hint, effect), false, 29)
 		button.size_flags_horizontal = Control.SIZE_FILL
 		button.add_theme_font_size_override("font_size", 14)
@@ -2371,8 +2453,7 @@ func _confirm_restart() -> void:
 func _restart() -> void:
 	_close_overlay()
 	paused = false
-	var mode: String = sim.state.run_mode
-	sim = Sim.campaign(int(randi()), "endless" if mode == "legacy" else mode)
+	sim = Sim.campaign(int(randi()))
 	selected = ""
 	upgrade_slot = ""
 	pure_palette = false
@@ -2384,6 +2465,7 @@ func _restart() -> void:
 	accumulator = 0
 	message = ""
 	field.sim = sim
+	_fit_landscape_board()
 	field.reset_animation()
 	_checkpoint()
 	_refresh()

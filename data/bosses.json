@@ -12,7 +12,11 @@
   "health_adjustment": {"from": 20, "multiplier": 0.8},
   "control_resistance": 0.5,
   "damage_reduction": 0.25,
-  "reflect": {"disable_seconds": 5, "cooldown_seconds": 3},
+  "reflect": [
+    {"from_wave": 60, "active_seconds": 5, "disable_seconds": 5, "cooldown_seconds": 5, "targets": 2},
+    {"from_wave": 40, "active_seconds": 4, "disable_seconds": 3, "cooldown_seconds": 3, "targets": 1},
+    {"from_wave": 1, "active_seconds": 2, "disable_seconds": 2, "cooldown_seconds": 3, "targets": 1}
+  ],
   "gold": [
     225,
     15
@@ -50,9 +54,9 @@
   "prismheart": {
     "name": "Prismheart",
     "element": "none",
-    "hp_mult": 12,
+    "hp_mult": 10.8,
     "armor": 12,
-    "speed": 0.55,
+    "speed": 0.495,
     "morph_seconds": 5.0,
     "same_element_damage": 0.65
   },
@@ -60,9 +64,9 @@
     "name": "Stormwing",
     "element": "water",
     "weakness": "electric",
-    "hp_mult": 10,
+    "hp_mult": 9,
     "armor": 8,
-    "speed": 0.74
+    "speed": 0.666
   },
   "ironwood": {
     "name": "Ironwood Engine",

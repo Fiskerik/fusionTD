@@ -119,15 +119,16 @@ static func trait_title(id: String, enemy: Dictionary) -> String:
 		return "%s damage reduction" % TowerInspector.percent(float(DataDB.read("bosses").damage_reduction))
 	return TRAITS[id][0]
 
-static func trait_description(id: String) -> String:
+static func trait_description(id: String, enemy: Dictionary = {}) -> String:
 	if id == "ram":
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").ram.turn_seconds)
 	if id == "prismheart":
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").prismheart.morph_seconds)
 	if id == "reflect":
-		var reflect: Dictionary = DataDB.read("bosses").reflect
-		return "Disables the first tower that hits the boss for %d seconds. Recharges in %d seconds." % [
-			int(reflect.disable_seconds), int(reflect.cooldown_seconds)]
+		var reflect: Dictionary = EnemyRules.reflect_rule(int(enemy.get("reflect_wave", 1)))
+		var targets: String = "first two towers to hit" if int(reflect.targets) == 2 else "first tower to hit"
+		return "Active for up to %d s. Disables the %s for %d s. Recharges in %d s." % [
+			int(reflect.active_seconds), targets, int(reflect.disable_seconds), int(reflect.cooldown_seconds)]
 	if id == "ironwood":
 		var plating: Dictionary = DataDB.read("bosses").ironwood
 		return "Takes %s of elemental damage. Uninfused Arrow and Cannon towers deal %s damage." % [

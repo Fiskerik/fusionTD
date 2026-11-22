@@ -330,9 +330,21 @@ static func creature_forecast(button: Button, group: Dictionary, wave: int, tota
 	var wave_text: Label = label("W%d" % wave if wave_caption.is_empty() else wave_caption, 15, MINT if bosses.is_empty() else WARN)
 	wave_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(wave_text)
+	var badges: Array[Control] = []
 	for element: String in icons:
-		head.add_child(badge(element, 12))
-	head.add_child(label("×%d" % total, 13, MUTED))
+		var icon: Control = badge(element, 12)
+		badges.append(icon)
+		head.add_child(icon)
+	var count_text: Label = label("×%d" % total, 13, MUTED)
+	head.add_child(count_text)
+	var fit_badges := func() -> void:
+		var gap: float = head.get_theme_constant("separation")
+		var base_width: float = card.offset_left - card.offset_right + pet.custom_minimum_size.x \
+			+ card.get_theme_constant("separation") + gap + wave_text.get_combined_minimum_size().x + count_text.get_combined_minimum_size().x
+		for index: int in range(badges.size()):
+			badges[index].visible = button.size.x >= base_width + (index + 1) * (12.0 + gap)
+	button.resized.connect(fit_badges)
+	fit_badges.call()
 	var title: String = StatusInfo.enemy_name(pet.enemy)
 	var description: String = title
 	if bosses.size() == 1:

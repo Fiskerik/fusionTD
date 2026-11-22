@@ -1,7 +1,7 @@
 class_name Sim
 extends RefCounted
 
-const RUN_LENGTHS: Dictionary = {"quick": 15, "standard": 30, "endless": 0, "legacy": 0}
+const RUN_LENGTHS: Dictionary = {"survival": 0, "quick": 15, "standard": 30, "endless": 0, "legacy": 0}
 
 var state: Dictionary
 var track: Track
@@ -13,7 +13,7 @@ var events: Array[Dictionary] = []
 var history: Array[Dictionary] = []
 var undo_stack: Array[Dictionary] = []
 
-static func campaign(seed_value: int, mode: String = "endless") -> Sim:
+static func campaign(seed_value: int, mode: String = "survival") -> Sim:
 	return Sim.new(seed_value, Track.campaign_layout(seed_value), mode)
 
 func _init(seed_value: int = 1, layout: String = Track.LEGACY, mode: String = "legacy") -> void:
@@ -30,7 +30,7 @@ func _init(seed_value: int = 1, layout: String = Track.LEGACY, mode: String = "l
 		"selection_pending": false, "rally_cd": 0, "stats": {"kills": 0, "spirits": 0, "fusions": 0, "leaked": 0},
 	}
 	state.merge(tactical_defaults())
-	state.run_mode = mode if RUN_LENGTHS.has(mode) else "endless"
+	state.run_mode = mode if RUN_LENGTHS.has(mode) else "survival"
 	state.act_pending = false
 	state.outcome = ""
 	state.finale_defeated = false
@@ -38,7 +38,7 @@ func _init(seed_value: int = 1, layout: String = Track.LEGACY, mode: String = "l
 func run_limit() -> int:
 	return int(RUN_LENGTHS[state.run_mode])
 
-func uses_acts() -> bool:
+func uses_event_cadence() -> bool:
 	return state.run_mode != "legacy"
 
 func event_kind(wave: int) -> String:
@@ -50,7 +50,7 @@ func event_kind(wave: int) -> String:
 		return ""
 	var merchant: Dictionary = DataDB.read("waves").merchant
 	var since_first: int = wave - int(merchant.first_wave)
-	return "merchant" if uses_acts() and ((since_first >= 0 and since_first % int(merchant.every) == 0) or choices().is_empty()) else "spirit"
+	return "merchant" if uses_event_cadence() and ((since_first >= 0 and since_first % int(merchant.every) == 0) or choices().is_empty()) else "spirit"
 
 func next_event_wave() -> int:
 	var wave: int = int(state.wave) + (1 if state.phase == "wave" and not event_kind(state.wave).is_empty() else 0)
@@ -58,12 +58,12 @@ func next_event_wave() -> int:
 	return mini(next_mark, run_limit() + 1) if run_limit() > 0 else next_mark
 
 func merchant_pending() -> bool:
-	return uses_acts() and state.phase == "build" and not state.act_pending and event_kind(state.wave) == "merchant"
+	return uses_event_cadence() and state.phase == "build" and not state.act_pending and event_kind(state.wave) == "merchant"
 
 func breather() -> float:
 	if int(state.wave) == 1:
 		return float(cfg.opening_seconds)
-	return float(cfg.event_break_seconds if uses_acts() and not event_kind(state.wave).is_empty() else cfg.intermission_seconds)
+	return float(cfg.event_break_seconds if uses_event_cadence() and not event_kind(state.wave).is_empty() else cfg.intermission_seconds)
 
 func tactical_defaults() -> Dictionary:
 	return {"stone_blocks": int(cfg.stone_blocks), "stone": {}, "stone_last_wave": 0,
@@ -101,7 +101,7 @@ func preview(wave: int, include_trial: bool = true) -> Dictionary:
 	var trial: Dictionary = state.trial if include_trial and current else {}
 	var current_active: bool = current and state.phase == "wave"
 	var pacing: String = ""
-	if uses_acts():
+	if uses_event_cadence():
 		var event: String = event_kind(wave)
 		if event == "finale":
 			pacing = state.run_mode
@@ -129,7 +129,7 @@ func preview(wave: int, include_trial: bool = true) -> Dictionary:
 func boon_choices() -> PackedStringArray:
 	if state.boon_queue.is_empty():
 		return PackedStringArray()
-	return RunBoons.offers(int(state.seed), state.boon_queue[0], state.active_boon)
+	return RunBoons.offers(int(state.seed), state.boon_queue[0], state.active_boon, state.tiers)
 
 func refresh_boon() -> void:
 	_boon_modifiers = RunBoons.modifiers(state.active_boon)
@@ -474,9 +474,10 @@ func apply(action: Dictionary) -> Dictionary:
 			state.rally_cd = int(cfg.rally_cooldown_ticks)
 			emit_event("tower_rallied", {"slot": slot})
 		"choose_boon", "keep_boon":
+			var index: int = boon_choices().find(String(action.get("id", ""))) if type == "choose_boon" else -1
 			var reward: Dictionary = state.boon_queue.pop_front()
 			if type == "choose_boon":
-				state.active_boon = {"id": action.id, "wave": reward.wave, "potency": reward.potency}
+				state.active_boon = {"id": action.id, "wave": reward.wave, "potency": RunBoons.offer_potency(reward.potency, index)}
 				refresh_boon()
 			undo_stack.clear()
 		"select_element":
@@ -606,7 +607,7 @@ func _finish_wave() -> void:
 		return
 	if not state.trial.is_empty():
 		state.trial = {}
-		if not uses_acts():
+		if not uses_event_cadence():
 			state.phase = "build"
 			intermission_left = float(cfg.intermission_seconds)
 			emit_event("bonus_finished")
@@ -616,7 +617,8 @@ func _finish_wave() -> void:
 func _advance_wave() -> void:
 	undo_stack.clear()
 	var cleared: int = state.wave
-	state.gold += Economy.clear_reward(cleared)
+	var clear_gold: float = _boon_modifiers.get("economy", {}).get("clear_gold", 0.0)
+	state.gold += roundi(Economy.clear_reward(cleared) * (1.0 + clear_gold))
 	state.wave += 1
 	state.phase = "build"
 	if cleared % int(cfg.gate_repair_every) == 0:
@@ -626,9 +628,9 @@ func _advance_wave() -> void:
 		if tower.get("stone_pending", false):
 			tower.petrified = true
 			tower.erase("stone_pending")
-	state.act_pending = uses_acts() and cleared % int(cfg.waves_per_act) == 0
+	state.act_pending = state.run_mode in ["quick", "standard", "endless"] and cleared % int(cfg.waves_per_act) == 0
 	var next: int = int(state.wave)
-	state.selection_pending = not choices().is_empty() and (event_kind(next) == "spirit" if uses_acts() else next % int(cfg.selection_every) == 0)
+	state.selection_pending = not choices().is_empty() and (event_kind(next) == "spirit" if uses_event_cadence() else next % int(cfg.selection_every) == 0)
 	intermission_left = breather()
 	emit_event("wave_cleared", {"wave": cleared, "pure_crystal": int(state.wave) % int(cfg.pure_crystal_every) == 0})
 

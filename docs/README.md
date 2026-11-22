@@ -1,6 +1,6 @@
 # Elemental TD
 
-Hold Greenmarch Gate in Quick (15 waves plus a finale), Standard (30 waves plus a finale), or Endless. After each 15-wave act you can bank the run or continue. Quick ends with the Ram Captain and Standard ends with Prismheart. Defeat the finale to win.
+Hold Greenmarch Gate for as many waves as you can in Survival. The run continues until the gate falls. You can leave and resume from a checkpoint. Older Quick, Standard, and Endless checkpoints can still be resumed.
 
 ## Run on Windows
 
@@ -10,7 +10,7 @@ To build for iPhone from Windows, follow the [Codemagic and TestFlight setup](IO
 
 ## Play
 
-1. Choose a run, tap an open terrain tile beside the road, and build an Arrow or Cannon. Arrow starts at 13 damage and 3.7 tiles of range. Cannon covers 2.6 tiles and deals splash damage.
+1. Start Survival, tap an open terrain tile beside the road, and build an Arrow or Cannon. Arrow starts at 13 damage and 3.7 tiles of range. Cannon covers 2.6 tiles and deals splash damage.
 2. You get 30 seconds before the first wave, 10 seconds before regular waves, and 20 seconds before events. Swipe right or tap **Start Wave** to launch early. Each combat round pays 4% interest on unspent gold before the first enemy spawns. **Menu** pauses the game. **Library** opens the tower overview while combat continues. Tap a forecast card to view strong and weak tower matchups on the board.
 3. Each five-wave block has three short waves, one medium wave, and an event. Spirit trials take one numbered wave, and every tenth wave is a boss encounter. Roadside Merchants offer gate repairs from wave 35. Boss shields disable the first tower that hits them for five seconds and recharge after three seconds. Regular enemy waves have a 5% chance to include a Gilded Courier whose bounty is 40% of the combined bounty of the other enemies in that wave.
 4. Infuse an Arrow or Cannon from level 2, including during combat. The maximum infusion tiers are I at levels 2–3, II at 4–5, and III at 6. Standard elemental towers cap at levels 2, 4, and 6 with Tier I, II, and III, respectively. A Tier III unlock also lets you build a **Pure** tower of that element. The three Pure slots are shared across all elements. Each Tier II or III spirit defeated grants +10% damage for its element, and mixed towers weight the bonus by their damage split.
@@ -26,7 +26,7 @@ Dual fusions cost 344 gold and triple fusions cost 798 gold before discounts and
 
 Waves schedule up to 48 enemies, with a matching on-field cap. From wave 41, regular enemies gain extra health and armor.
 
-New campaigns draw one of ten centered Greenmarch routes from the run seed. The saved route, active boon, and pending choices travel with the checkpoint. After the fight, choose a new boon or keep your active one for each boss you defeated. Only one boon applies at a time. New offers gain 10% of their base potency per boss defeated after the first, up to +80% and each effect's cap. Tap the boon in the HUD or open **Active boon** in the pause menu to see its full effects.
+New campaigns draw one of ten centered Greenmarch routes from the run seed. The saved route, active boon, and pending choices travel with the checkpoint. After the fight, each defeated boss offers a weaker general boon, a boon for an unlocked element, and a stronger boon from the full elemental roster. The unlocked slot draws from the full roster if you have yet to unlock an element. Choose one offer or keep the active boon. New offers gain 10% of their base potency per boss defeated after the first, up to +80% and each effect's cap. Tap the boon in the HUD or open **Active boon** in the pause menu to see its full effects.
 
 Chameleons adapt to elemental hits, Banner Bearers rally nearby enemies, Burrowers hide underground, Thieves steal gold at the gate, and Saboteurs jam the closest upgradeable tower. Upgrade or fuse a jammed tower to restore it.
 
