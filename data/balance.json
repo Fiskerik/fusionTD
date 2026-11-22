@@ -19,6 +19,7 @@
   "pure_crystal_damage": 0.25,
   "spirit_victory_damage": 0.1,
   "non_dark_element_damage_scale": 1.15,
+  "upgraded_tower_strength": 1.05,
   "selection_every": 5,
   "boss_every": 10,
   "sim_hz": 30,

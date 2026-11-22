@@ -30,6 +30,7 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: 
 	var levels: Dictionary = progression(tower)
 	var level: int = int(tower.level) - 1
 	var config: Dictionary = DataDB.read("balance")
+	var upgrade: float = upgrade_strength(tower)
 	var recipe_scale: float = float(config.fusion_starting_damage_scale) if is_fusion(tower) and level == 0 else 1.0
 	var elemental_scale: float = element_damage_scale(tower)
 	var base_hit: float = float(rule.damage) * recipe_scale * elemental_scale
@@ -41,27 +42,36 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: 
 			stronger = maxf(stronger, float(towers[element].damage) * scale)
 		var reference: int = int(config.fuse_min_level if level == 0 else config.dual_damage_reference_level)
 		var input_hit: float = stronger * float(towers.pure_levels.damage[reference - 1])
+		if level == 0 and reference > 1:
+			input_hit *= float(config.upgraded_tower_strength)
 		base_hit = maxf(base_hit * float(config.dual_damage_scale), input_hit * float(config.dual_min_hit_ratio))
-	var potency: float = float(levels.potency[level]) if levels.has("potency") else 1.0
-	if tower.infusion != "":
-		potency = float(config.infusion.potency) * (1.0 + .14 * float(level - 1))
 	var boost: float = spirit_multiplier(tower, victories)
 	var stored_floor: float = float(tower.get("fusion_damage_floor", 0.0)) * elemental_scale
 	var damage: float = maxf(base_hit * float(levels.damage[level]), stored_floor)
-	damage *= boost * (1.0 + crystal_damage_bonus(tower)) * (1.0 + float(boon.get("damage", 0.0)))
-	potency *= 1.0 + float(boon.get("effect", 0.0))
+	damage *= upgrade * boost * (1.0 + crystal_damage_bonus(tower)) * (1.0 + float(boon.get("damage", 0.0)))
 	var splash_level: int = 5 if tower.kind == "ascended" else level
 	var splash: float = float(rule.get("splash", 0.0)) + float(rule.get("splash_per_level", 0.0)) * splash_level
 	if tower.infusion == "earth":
 		splash += .72 + .08 * level
-	splash *= 1.0 + float(boon.get("splash", 0.0))
+	splash *= upgrade * (1.0 + float(boon.get("splash", 0.0)))
 	return {"damage": damage, "rate": float(rule.rate) * float(levels.rate[level]) * (1.0 + float(boon.get("rate", 0.0))),
 		"range": attack_range(tower, float(boon.get("range", 0.0))),
-		"potency": potency, "splash": splash, "splash_core": splash * float(config.splash_core_ratio),
+		"potency": effect_potency(tower, boon), "splash": splash, "splash_core": splash * float(config.splash_core_ratio),
 		"splash_fringe": float(config.splash_fringe_damage)}
 
 static func crystal_damage_bonus(tower: Dictionary) -> float:
 	return int(tower.get("crystals", 0)) * float(DataDB.read("balance").pure_crystal_damage)
+
+static func upgrade_strength(tower: Dictionary) -> float:
+	return float(DataDB.read("balance").upgraded_tower_strength) if int(tower.level) > 1 or tower.kind == "ascended" else 1.0
+
+static func effect_potency(tower: Dictionary, boon: Dictionary = {}) -> float:
+	var level: int = int(tower.level) - 1
+	var levels: Dictionary = progression(tower)
+	var potency: float = float(levels.potency[level]) if levels.has("potency") else 1.0
+	if tower.infusion != "":
+		potency = float(DataDB.read("balance").infusion.potency) * (1.0 + .14 * float(level - 1))
+	return potency * upgrade_strength(tower) * (1.0 + float(boon.get("effect", 0.0)))
 
 static func element_damage_scale(tower: Dictionary) -> float:
 	var split: Dictionary = damage_split(tower)
@@ -112,7 +122,7 @@ static func support_bonuses(tower: Dictionary, sources: Array[Dictionary], track
 		var origin: Vector2 = track.slots[source.slot].position
 		if aura_reaches_tile(origin, at, float(rule.range)):
 			var effect: Dictionary = rule.effect
-			var potency: float = float(progression(source).potency[int(source.level) - 1]) * (1.0 + float(RunBoons.for_tower(source, scopes).get("effect", 0)))
+			var potency: float = effect_potency(source, RunBoons.for_tower(source, scopes))
 			bonuses.x = maxf(bonuses.x, float(effect.get("aura_damage", 0.0)) * potency)
 			bonuses.y = maxf(bonuses.y, float(effect.get("aura_speed", 0.0)) * potency)
 			bonuses.z = maxf(bonuses.z, float(effect.get("aura_range", 0.0)) * potency)
@@ -172,9 +182,15 @@ static func infusion_cost(tier: int) -> int:
 
 static func trait_profile(tower: Dictionary, unlocked: Dictionary, boon: Dictionary = {}) -> Dictionary:
 	var traits: Dictionary = _base_traits(tower, unlocked)
-	if boon.is_empty():
+	var upgrade: float = upgrade_strength(tower)
+	var scale_fixed_effects: bool = upgrade > 1.0 and (traits.has("silence") or traits.has("heal_block"))
+	if boon.is_empty() and not scale_fixed_effects:
 		return traits
 	traits = traits.duplicate(true)
+	if scale_fixed_effects:
+		for effect: String in ["silence", "heal_block"]:
+			if traits.has(effect):
+				traits[effect] = float(traits[effect]) * upgrade
 	if traits.has("burn"):
 		traits.burn[0] = maxi(1, int(traits.burn[0]) + roundi(float(boon.get("burn_stacks", 0))))
 	if traits.has("slow"):
@@ -300,7 +316,7 @@ static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Di
 			result[status] = true
 	if float(stats(result).rate) > 0.0:
 		var strongest_hit: float = maxf(attack_profile(first, victories).damage, attack_profile(second, victories).damage)
-		var scale: float = element_damage_scale(result) * spirit_multiplier(result, victories)
+		var scale: float = element_damage_scale(result) * spirit_multiplier(result, victories) * upgrade_strength(result)
 		result.fusion_damage_floor = strongest_hit / (scale * (1.0 + crystal_damage_bonus(result)))
 	inherit_record(result, first, second)
 	return result

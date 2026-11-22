@@ -296,6 +296,9 @@ static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array
 	var age: int = int(sim.state.tick) - int(enemy.born)
 	match enemy.boss_type:
 		"warlock":
+			if EnemyRules.is_first_boss(enemy):
+				enemy.telegraph.clear()
+				return
 			if not enemy.telegraph.is_empty() and int(sim.state.tick) >= int(enemy.telegraph.tick):
 				var tower: Dictionary = sim.state.towers.get(enemy.telegraph.slot, {})
 				if not tower.is_empty():

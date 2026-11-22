@@ -862,13 +862,21 @@ func _render_wave_heading() -> void:
 	var event: String = sim.event_kind(wave)
 	if event == "finale":
 		wave_label.text = "%s finale" % String(sim.state.run_mode).capitalize()
+	var pre_boss_trial: bool = sim.has_pre_boss_trial(wave) and not sim.state.trial.is_empty()
+	if pre_boss_trial:
+		wave_label.text = "Spirit trial · Wave %d" % wave
 	event_status.visible = sim.uses_event_cadence()
 	if sim.uses_event_cadence():
 		var next: int = sim.next_event_wave()
 		var remaining: int = maxi(0, next - wave)
-		event_status.text = "Next event in %d %s · %s" % [remaining, "wave" if remaining == 1 else "waves", sim.event_kind(next).capitalize()]
+		var next_label: String = sim.event_kind(next).capitalize()
+		if next > wave and sim.has_pre_boss_trial(next) and not sim.choices().is_empty():
+			next_label = "Spirit + boss"
+		event_status.text = "Next event in %d %s · %s" % [remaining, "wave" if remaining == 1 else "waves", next_label]
 		if remaining == 0:
 			event_status.text = "Defeat the boss to win" if event == "finale" else "%s event" % event.capitalize()
+		if pre_boss_trial or (sim.has_pre_boss_trial(wave) and sim.state.selection_pending):
+			event_status.text = "Spirit trial · Boss next"
 	UIKit.clear(wave_effects)
 	var summary: Dictionary = sim.preview(wave)
 	if not summary.spirit.is_empty():
@@ -898,7 +906,7 @@ func _render_wave_heading() -> void:
 		var trait_id: String = StatusInfo.enemy_traits(boss)[0]
 		var ability: Array = StatusInfo.TRAITS[trait_id]
 		_effect_chip(wave_effects, ability[0], Glyphs.hue(ability[2]).darkened(.57), ability[2],
-			StatusInfo.trait_description(trait_id))
+			StatusInfo.trait_description(trait_id, boss))
 	var resistance: float = EnemyRules.control_resistance(wave) if summary.bosses.is_empty() else float(summary.boss.control_resistance)
 	if resistance > 0.0:
 		_effect_chip(wave_effects, "%s tenacity" % TowerInspector.percent(resistance),
@@ -933,7 +941,9 @@ func _render_preview() -> void:
 		UIKit.element_button(chip, sim.state.trial.element)
 		chip.tooltip_text = StatusInfo.enemy_name(sim.preview(int(sim.state.wave)).spirit)
 		preview_row.add_child(chip)
-	var first: int = int(sim.state.wave) + (1 if (sim.state.phase == "wave" and not bonus) or (bonus and sim.uses_event_cadence()) else 0)
+	var wave_number: int = sim.state.wave
+	var show_later_waves: bool = not sim.spirit_is_bonus(wave_number) if bonus else sim.state.phase == "wave"
+	var first: int = wave_number + int(show_later_waves)
 	var end: int = first + (2 if bonus else 3)
 	if sim.run_limit() > 0:
 		end = mini(end, sim.run_limit() + 2)
@@ -1957,7 +1967,7 @@ func _show_matchups(wave: int, bonus: bool = false) -> void:
 	overlay_type = "matchups"
 	overlay_wave = wave
 	overlay_bonus = bonus
-	var next: int = wave if bonus else wave + 1
+	var next: int = wave if bonus and sim.spirit_is_bonus(wave) else wave + 1
 	var current: Dictionary = sim.wave_matchups(sim.preview(wave, bonus))
 	var strong: Array = current.good
 	var has_next: bool = sim.event_kind(wave) != "finale"

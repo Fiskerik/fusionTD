@@ -36,6 +36,58 @@ func test_campaign_beats_and_merchant_are_numbered_events() -> void:
 	equal(sim.state.wave, 36)
 	check(not sim.apply({"type": "merchant", "offer": "repair"}).ok)
 
+func test_survival_spirit_trials_precede_bosses_without_advancing_the_wave() -> void:
+	for wave: int in [10, 20, 60, 130]:
+		var sim := Sim.campaign(7)
+		sim.state.wave = wave - 1
+		sim.state.phase = "wave"
+		sim.step()
+		equal(sim.state.wave, wave)
+		check(sim.state.selection_pending)
+		check(not sim.describe({"type": "start_wave"}).ok)
+		check(sim.apply({"type": "select_element", "element": "fire", "tier": 1}).ok)
+		check(sim.apply({"type": "start_wave"}).ok)
+		equal(sim.state.spawn_queue.size(), 1)
+		var trial: Dictionary = sim.state.spawn_queue.pop_front().group
+		equal(trial.kind, "spirit")
+		Combat.spawn(sim, trial, 0.0)
+		Damage.deal(sim.state.mobs[0], float(trial.hp), {})
+		sim.step()
+		equal(sim.state.wave, wave)
+		equal(sim.state.phase, "build")
+		equal(sim.state.tiers.fire, 1)
+		near(sim.intermission_left, 10.0)
+		var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+		check(not restored.state.selection_pending)
+		check(restored.apply({"type": "start_wave"}).ok)
+		check(not restored.state.spawn_queue.is_empty())
+		for entry: Dictionary in restored.state.spawn_queue:
+			equal(entry.group.kind, "boss")
+
+func test_older_survival_checkpoint_restores_the_first_pre_boss_trial() -> void:
+	var sim := Sim.new(7, Track.LEGACY, "survival")
+	sim.state.wave = 10
+	sim.state.towers.s1 = TowerRules.create(sim.next_id(), "s1", "arrow", "normal", "", 50)
+	sim.state.towers.s1.petrified = true
+	var payload: Dictionary = SaveStore.encode(sim).duplicate(true)
+	payload.version = 1
+	var resumed: Sim = SaveStore.decode(payload)
+	check(resumed.state.selection_pending)
+	check(not TowerRules.disabled(resumed.state.towers.s1))
+	check(resumed.apply({"type": "select_element", "element": "fire", "tier": 1}).ok)
+	for wave: int in [9, 14]:
+		var old_run := Sim.campaign(7)
+		old_run.state.wave = wave
+		old_run.state.phase = "wave"
+		var old_enemy: Dictionary = old_run.preview(wave).groups[0]
+		old_enemy.kind = "petrifier" if wave == 9 else "wizard"
+		old_enemy.props = [old_enemy.kind]
+		old_run.schedule(old_enemy, 60)
+		var old_save: Dictionary = SaveStore.encode(old_run).duplicate(true)
+		old_save.version = 1
+		var migrated: Sim = SaveStore.decode(old_save)
+		equal(migrated.state.spawn_queue[0].group.kind, "grunt")
+
 func test_survival_continues_beyond_the_old_act_breaks() -> void:
 	var sim := Sim.campaign(7)
 	equal(sim.state.run_mode, "survival")
@@ -618,6 +670,7 @@ func test_special_encounters_are_seeded_and_respect_wave_types() -> void:
 	var sim := Sim.campaign(5)
 	var petrifiers: int = 0
 	var wizards: int = 0
+	var wave_fifteen_wizards: int = 0
 	for seed_value: int in range(1, 201):
 		var common: Dictionary = Waves.generate(seed_value, 18, {}, true, true, sim.track)
 		var warning: Dictionary = Waves.generate(seed_value, 19, {}, true, true, sim.track)
@@ -627,19 +680,24 @@ func test_special_encounters_are_seeded_and_respect_wave_types() -> void:
 		petrifiers += stones
 		wizards += portals
 		equal(warning.groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier").size(), 1)
-		check(not Waves.generate(seed_value, 9).groups.any(func(group: Dictionary) -> bool: return group.kind == "wizard"))
+		check(not Waves.generate(seed_value, 9).groups.any(func(group: Dictionary) -> bool: return group.kind == "petrifier"))
+		for wave: int in range(11, 15):
+			check(not Waves.generate(seed_value, wave).groups.any(func(group: Dictionary) -> bool: return group.kind == "wizard"))
+		if Waves.generate(seed_value, 15).groups.any(func(group: Dictionary) -> bool: return group.kind == "wizard"):
+			wave_fifteen_wizards += 1
 	check(petrifiers >= 8 and petrifiers <= 35)
 	check(wizards >= 34 and wizards <= 70)
+	check(wave_fifteen_wizards > 0)
 	check(sim.preview(20).groups.is_empty())
 	check(Waves.generate(5, 20, {"element": "fire", "tier": 1}).groups.is_empty())
 
 func test_petrification_survives_a_save_and_the_spirit_trial() -> void:
-	var sim := Sim.new()
-	sim.state.wave = 9
+	var sim := Sim.new(1, Track.LEGACY, "survival")
+	sim.state.wave = 19
 	sim.state.phase = "wave"
 	for slot: String in ["s2", "s1", "s7"]:
 		sim.state.towers[slot] = TowerRules.create(sim.next_id(), slot, "arrow", "normal", "", 50)
-	var basilisk: Dictionary = sim.preview(9).groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier")[0]
+	var basilisk: Dictionary = sim.preview(19).groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier")[0]
 	Combat.spawn(sim, basilisk, 0.0)
 	var marked: Array[String] = []
 	for tower: Dictionary in sim.ordered_towers():
@@ -649,14 +707,14 @@ func test_petrification_survives_a_save_and_the_spirit_trial() -> void:
 	equal(marked.size(), 2)
 	sim.state.mobs[0].hp = 0.0
 	sim.step()
-	equal(sim.state.wave, 10)
+	equal(sim.state.wave, 20)
 	sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	for slot: String in marked:
 		check(TowerRules.disabled(sim.state.towers[slot]))
 	check(sim.apply({"type": "select_element", "element": "fire", "tier": 1}).ok)
 	check(sim.apply({"type": "start_wave"}).ok)
 	sim.state.spawn_queue.clear()
-	var enemy: Dictionary = Waves.spirit_group("fire", 1, 10)
+	var enemy: Dictionary = Waves.spirit_group("fire", 1, 20)
 	Combat.spawn(sim, enemy, 8.0)
 	sim.step()
 	for slot: String in marked:
@@ -668,7 +726,7 @@ func test_petrification_survives_a_save_and_the_spirit_trial() -> void:
 	check(sim.apply({"type": "start_wave"}).ok)
 	sim.state.spawn_queue.clear()
 	sim.step()
-	equal(sim.state.wave, 11)
+	equal(sim.state.wave, 21)
 	for slot: String in marked:
 		check(not TowerRules.disabled(sim.state.towers[slot]))
 
@@ -676,10 +734,10 @@ func test_basilisk_marks_different_tower_pairs_from_the_run_seed() -> void:
 	var picks: Dictionary = {}
 	for seed_value: int in range(1, 15):
 		var sim := Sim.new(seed_value)
-		sim.state.wave = 9
+		sim.state.wave = 19
 		for slot: String in ["s1", "s2", "s3", "s4", "s5"]:
 			sim.state.towers[slot] = TowerRules.create(sim.next_id(), slot, "arrow", "normal", "", 50)
-		var basilisk: Dictionary = sim.preview(9).groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier")[0]
+		var basilisk: Dictionary = sim.preview(19).groups.filter(func(group: Dictionary) -> bool: return group.kind == "petrifier")[0]
 		Combat.spawn(sim, basilisk, 0.0)
 		var marked := PackedStringArray()
 		for tower: Dictionary in sim.ordered_towers():
@@ -733,7 +791,7 @@ func test_upgrade_bands_and_infusion() -> void:
 	equal(sim.apply(infusion).cost, 100)
 	check(not sim.apply(infusion).ok)
 	var tower: Dictionary = sim.state.towers.s2
-	check("7.5%" in TowerInspector.effects(tower, sim.state.tiers)[0], "The inspector shows the real infused burn potency")
+	check("7.88%" in TowerInspector.effects(tower, sim.state.tiers)[0], "The inspector shows the real infused burn potency")
 	var view := BattlefieldView.new()
 	equal(view._tower_color(tower), Glyphs.hue("fire"), "Infused tower uses its element color")
 	view.free()
@@ -905,7 +963,7 @@ func test_water_upgrades_and_elemental_specialties() -> void:
 	var sim := Sim.new()
 	sim.state.tiers.water = 3
 	var water: Dictionary = TowerRules.create(1, "s1", "pure", "water", "", 0)
-	var expected_slows: Array[float] = [.15, .1851, .27, .33318, .42, .51828]
+	var expected_slows: Array[float] = [.15, .196605, .28755, .353889, .4473, .550494]
 	for level: int in range(1, 7):
 		water.level = level
 		near(Effects.slow_strength(TowerRules.trait_profile(water, sim.state.tiers).slow[0], TowerRules.attack_profile(water).potency), expected_slows[level - 1])
@@ -915,6 +973,31 @@ func test_water_upgrades_and_elemental_specialties() -> void:
 	var dark: Dictionary = TowerRules.create(2, "s1", "pure", "dark", "", 0)
 	near(TowerRules.attack_profile(dark).rate, 2.2)
 	near(TowerRules.attack_profile(dark).damage, 5.0)
+
+func test_upgraded_towers_gain_five_percent_damage_and_effect_potency() -> void:
+	var config: Dictionary = DataDB.read("balance")
+	var multiplier: float = config.upgraded_tower_strength
+	var arrow: Dictionary = TowerRules.create(1, "s1", "arrow", "normal", "", 50)
+	near(TowerRules.attack_profile(arrow).damage, 13.0)
+	var cannon: Dictionary = TowerRules.create(2, "s1", "cannon", "normal", "", 80)
+	cannon.infusion = "earth"
+	var elemental: Dictionary = TowerRules.create(3, "s1", "pure", "water", "", 110)
+	var ascended: Dictionary = TowerRules.create(4, "s1", "ascended", "fire", "", 1500)
+	for tower: Dictionary in [arrow, cannon, elemental, TowerRules.fusion_result("storm"), TowerRules.fusion_result("moonorchid"), ascended]:
+		if tower.kind != "ascended":
+			tower.level = 2
+		var boosted: Dictionary = TowerRules.attack_profile(tower)
+		config.upgraded_tower_strength = 1.0
+		var baseline: Dictionary = TowerRules.attack_profile(tower)
+		config.upgraded_tower_strength = multiplier
+		for stat: String in ["damage", "potency", "splash"]:
+			near(boosted[stat], float(baseline[stat]) * 1.05, "%s %s" % [tower.kind, stat])
+	var spring: Dictionary = TowerRules.fusion_result("spring", "s1")
+	spring.level = 2
+	arrow.slot = "s2"
+	var boost: Vector3 = TowerRules.support_bonuses(arrow, [spring], Track.new())
+	var aura: float = TowerRules.stats(spring).effect.aura_speed
+	near(boost.y, aura * 1.35 * 1.05)
 
 func test_element_damage_boost_and_reduced_curse_follow_tower_loadout() -> void:
 	var towers: Dictionary = DataDB.read("towers")

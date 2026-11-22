@@ -33,7 +33,12 @@ static func reflect_rule(wave: int) -> Dictionary:
 			return rule
 	return rules.back()
 
+static func is_first_boss(enemy: Dictionary) -> bool:
+	return enemy.get("boss_type", "") == "warlock" and int(enemy.get("reflect_wave", 0)) == int(DataDB.read("balance").boss_every)
+
 static func reflect_window_start(enemy: Dictionary, tick: int, hz: float, rule: Dictionary) -> int:
+	if is_first_boss(enemy) and enemy.has("reflect_ready_tick"):
+		return -1
 	var start: int = int(enemy.get("reflect_ready_tick", enemy.born))
 	if tick < start:
 		return -1

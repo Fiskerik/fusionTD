@@ -103,9 +103,10 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 			boss_trait = "heal_aura"
 		elif boss_trait == "ram" and not enemy.has("turn_seconds"):
 			boss_trait = "armored"
-		result.append(boss_trait)
-		result.append("boss_guard")
+		if not EnemyRules.is_first_boss(enemy):
+			result.append(boss_trait)
 		result.append("reflect")
+		result.append("boss_guard")
 	elif enemy.kind == "bonus":
 		result.append("bonus")
 	if float(enemy.get("control_resistance", 0.0)) > 0.0:
@@ -126,6 +127,8 @@ static func trait_description(id: String, enemy: Dictionary = {}) -> String:
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").prismheart.morph_seconds)
 	if id == "reflect":
 		var reflect: Dictionary = EnemyRules.reflect_rule(int(enemy.get("reflect_wave", 1)))
+		if EnemyRules.is_first_boss(enemy):
+			return "Active for up to %d s. Disables one tower for %d s once per fight." % [int(reflect.active_seconds), int(reflect.disable_seconds)]
 		var targets: String = "first two towers to hit" if int(reflect.targets) == 2 else "first tower to hit"
 		return "Active for up to %d s. Disables the %s for %d s. Recharges in %d s." % [
 			int(reflect.active_seconds), targets, int(reflect.disable_seconds), int(reflect.cooldown_seconds)]

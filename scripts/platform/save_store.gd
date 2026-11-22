@@ -4,7 +4,7 @@ extends RefCounted
 const CHECKPOINT: String = "user://survival_save.dat"
 const PROFILE: String = "user://profile.json"
 const REPLAY: String = "user://last_replay.json"
-const VERSION: int = 1
+const VERSION: int = 2
 const RECENT_LIMIT: int = 3
 
 static func encode(sim: Sim) -> Dictionary:
@@ -12,7 +12,10 @@ static func encode(sim: Sim) -> Dictionary:
 		"intermission_left": sim.intermission_left}
 
 static func decode(payload: Variant) -> Sim:
-	if not payload is Dictionary or int(payload.get("version", 0)) != VERSION:
+	if not payload is Dictionary:
+		return null
+	var version: int = int(payload.get("version", 0))
+	if version < 1 or version > VERSION:
 		return null
 	var state: Variant = payload.get("state")
 	if not state is Dictionary or state.get("phase") not in ["build", "wave"] or not state.has("seed"):
@@ -45,6 +48,12 @@ static func decode(payload: Variant) -> Sim:
 	sim.state = state
 	sim.refresh_boon()
 	_ascend_legacy_towers(state.towers)
+	var restore_trial: bool = version == 1 and state.phase == "build" and state.trial.is_empty() \
+		and sim.has_pre_boss_trial(int(state.wave)) and not sim.choices().is_empty()
+	if version == 1:
+		_upgrade_encounters(state, int(sim.cfg.boss_every))
+		if restore_trial:
+			state.selection_pending = true
 	var bosses_by_type: Dictionary = {}
 	if state.phase == "wave":
 		var late_game: bool = int(state.wave) > int(DataDB.read("waves").late_game.after)
@@ -78,9 +87,31 @@ static func decode(payload: Variant) -> Sim:
 		restored.wave_has_rolled_weaknesses = bool(restored.get("wave_has_rolled_weaknesses", false))
 		restored.wave_uses_expanded_boss_roster = bool(restored.get("wave_uses_expanded_boss_roster", false))
 		_ascend_legacy_towers(restored.get("towers", {}))
+		if version == 1:
+			_upgrade_encounters(restored, int(sim.cfg.boss_every))
+			if restore_trial and restored.wave == state.wave and restored.phase == "build" and restored.trial.is_empty():
+				restored.selection_pending = true
 		sim.undo_stack.append(restored)
 	sim.history.assign(payload.get("history", []))
 	return sim
+
+static func _upgrade_encounters(state: Dictionary, first_boss: int) -> void:
+	var wave: int = state.wave
+	if wave == first_boss - 1 or wave == first_boss:
+		for tower: Dictionary in state.towers.values():
+			tower.erase("stone_pending")
+			if wave == first_boss:
+				tower.erase("petrified")
+				tower.stun = 0
+	if wave >= int(DataDB.read("waves").wizard.first_wave):
+		return
+	var enemies: Array = state.mobs.duplicate()
+	for entry: Dictionary in state.spawn_queue:
+		enemies.append(entry.group)
+	for enemy: Dictionary in enemies:
+		if enemy.kind == "wizard" or (wave == first_boss - 1 and enemy.kind == "petrifier"):
+			enemy.kind = "grunt"
+			enemy.props = []
 
 static func _retune_enemy(enemy: Dictionary, wave: int, bosses: Dictionary) -> void:
 	var tuned: Dictionary = bosses.get(enemy.get("boss_type", ""), {})

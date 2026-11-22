@@ -2,11 +2,12 @@ extends "res://tests/test_base.gd"
 
 func test_reflect_disables_only_the_triggering_tower_and_recharges() -> void:
 	var sim := Sim.new()
+	sim.state.wave = 20
 	sim.state.phase = "wave"
 	var first: Dictionary = TowerRules.create(sim.next_id(), "s1", "arrow", "normal", "", 50)
 	var second: Dictionary = TowerRules.create(sim.next_id(), "s2", "arrow", "normal", "", 50)
 	sim.state.towers = {"s1": first, "s2": second}
-	var group: Dictionary = sim.preview(10).boss
+	var group: Dictionary = sim.preview(20).boss
 	group.merge({"hp": 10000.0, "armor": 0.0, "speed": 0.0}, true)
 	Combat.spawn(sim, group, 10.0)
 	var boss: Dictionary = sim.state.mobs[0]
@@ -27,6 +28,26 @@ func test_reflect_disables_only_the_triggering_tower_and_recharges() -> void:
 	for tick: int in range(60):
 		sim.step()
 	check(not TowerRules.disabled(first) and not TowerRules.disabled(second))
+
+func test_first_warlock_reflects_only_once_and_has_no_hex() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 10
+	sim.state.phase = "wave"
+	for slot: String in ["s1", "s2", "s3"]:
+		sim.state.towers[slot] = TowerRules.create(sim.next_id(), slot, "pure", "light", "", 130)
+	var warlock: Dictionary = sim.preview(10).boss
+	warlock.merge({"hp": 100000.0, "speed": 0.0}, true)
+	Combat.spawn(sim, warlock, 10.0)
+	sim.step()
+	equal(sim.state.towers.s1.reflect, 60)
+	check(StatusInfo.enemy_traits(warlock).has("reflect"))
+	check(not StatusInfo.enemy_traits(warlock).has("warlock"))
+	check(StatusInfo.trait_description("reflect", warlock).contains("once per fight"))
+	var resumed: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	for tick: int in range(700):
+		resumed.step()
+	check(not resumed.events.any(func(event: Dictionary) -> bool: return event.type in ["boss_reflected", "tower_stunned"]))
+	check(resumed.state.mobs[0].telegraph.is_empty())
 
 func test_reflect_windows_and_target_limits_scale_with_boss_wave() -> void:
 	for wave: int in [10, 20, 30, 40, 50, 60, 70]:
@@ -187,11 +208,12 @@ func test_support_range_bonus_reaches_enemies_outside_base_range() -> void:
 
 func test_live_move_retargets_pending_warlock_hex_and_preserves_cooldown() -> void:
 	var sim := Sim.new()
+	sim.state.wave = 70
 	sim.state.phase = "wave"
 	var tower: Dictionary = TowerRules.create(sim.next_id(), "s1", "arrow", "normal", "", 50)
 	tower.cooldown = 17
 	sim.state.towers.s1 = tower
-	Combat.spawn(sim, Waves.generate(1, 10).boss, 10)
+	Combat.spawn(sim, Waves.generate(1, 70).boss, 10)
 	sim.state.mobs[0].telegraph = {"slot": "s1", "tick": 1}
 	equal(sim.apply({"type": "move", "slot": "s1", "to": "s2"}).cost, 5)
 	equal(sim.state.towers.s2.id, tower.id)
@@ -259,7 +281,7 @@ func test_root_upgrades_increase_hold_time_and_frequency() -> void:
 	tower.level = 3
 	var upgraded: Dictionary = EnemyRules.create(2, _enemy(), 0.0, 0)
 	Effects.apply(upgraded, {"root": root}, TowerRules.attack_profile(tower).potency, false, 2, 0.0, sim.hz)
-	equal(upgraded.root_time, 57)
+	equal(upgraded.root_time, 60)
 
 func test_ascended_water_uses_the_bonus_range_attack_rate_and_slow_in_combat() -> void:
 	var sim := Sim.new()
@@ -694,8 +716,8 @@ func test_warlock_rally_ram_and_necromancer() -> void:
 	var sim := Sim.new()
 	check(sim.apply({"type": "build", "kind": "arrow", "slot": "s1"}).ok)
 	sim.state.phase = "wave"
-	sim.state.wave = 10
-	var warlock: Dictionary = Waves.generate(1, 10).boss
+	sim.state.wave = 70
+	var warlock: Dictionary = Waves.generate(1, 70).boss
 	warlock.speed = 0.0
 	warlock.hp = 50000.0
 	Combat.spawn(sim, warlock, 10)

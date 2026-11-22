@@ -28,7 +28,7 @@
   "health_boost": {"from": 10, "multiplier": 1.20},
   "bonus_mob": {"chance_percent": 5, "gold_share": 0.4, "armor_multiplier": 4.0, "travel_seconds": 12},
   "petrifier": {"chance_percent": 10, "targets": 2},
-  "wizard": {"chance_percent": 25, "first_wave": 11, "visible_seconds": 3, "void_seconds": 2},
+  "wizard": {"chance_percent": 25, "first_wave": 15, "visible_seconds": 3, "void_seconds": 2},
   "pressure": {
     "after": 10,
     "hp_per_wave": 0.026,

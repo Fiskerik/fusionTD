@@ -120,7 +120,8 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	if campaign_track != null:
 		_add_specials(groups, wave, SimRng.new((seed_value * 65537 + wave * 1879) ^ 0x6d1da1))
 	var encounter_rng := SimRng.new((seed_value * 43517 + wave * 9749) ^ 0x3b7af2)
-	if wave % int(balance.boss_every) == int(balance.boss_every) - 1 or encounter_rng.take(100) < int(rules.petrifier.chance_percent):
+	var boss_every: int = balance.boss_every
+	if wave != boss_every - 1 and (wave % boss_every == boss_every - 1 or encounter_rng.take(100) < int(rules.petrifier.chance_percent)):
 		_replace_with_encounter(groups, "petrifier")
 	if wave >= int(rules.wizard.first_wave) and encounter_rng.take(100) < int(rules.wizard.chance_percent):
 		_replace_with_encounter(groups, "wizard")

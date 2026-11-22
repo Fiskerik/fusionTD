@@ -41,6 +41,12 @@ func run_limit() -> int:
 func uses_event_cadence() -> bool:
 	return state.run_mode != "legacy"
 
+func has_pre_boss_trial(wave: int) -> bool:
+	return state.run_mode == "survival" and event_kind(wave) == "boss"
+
+func spirit_is_bonus(wave: int) -> bool:
+	return not uses_event_cadence() or has_pre_boss_trial(wave)
+
 func event_kind(wave: int) -> String:
 	if run_limit() > 0 and wave == run_limit() + 1:
 		return "finale"
@@ -607,7 +613,7 @@ func _finish_wave() -> void:
 		return
 	if not state.trial.is_empty():
 		state.trial = {}
-		if not uses_event_cadence():
+		if spirit_is_bonus(int(state.wave)):
 			state.phase = "build"
 			intermission_left = float(cfg.intermission_seconds)
 			emit_event("bonus_finished")
@@ -630,7 +636,10 @@ func _advance_wave() -> void:
 			tower.erase("stone_pending")
 	state.act_pending = state.run_mode in ["quick", "standard", "endless"] and cleared % int(cfg.waves_per_act) == 0
 	var next: int = int(state.wave)
-	state.selection_pending = not choices().is_empty() and (event_kind(next) == "spirit" if uses_event_cadence() else next % int(cfg.selection_every) == 0)
+	var spirit_due: bool = event_kind(next) == "spirit" or has_pre_boss_trial(next)
+	if not uses_event_cadence():
+		spirit_due = next % int(cfg.selection_every) == 0
+	state.selection_pending = spirit_due and not choices().is_empty()
 	intermission_left = breather()
 	emit_event("wave_cleared", {"wave": cleared, "pure_crystal": int(state.wave) % int(cfg.pure_crystal_every) == 0})
 

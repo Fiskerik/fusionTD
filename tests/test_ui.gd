@@ -30,6 +30,29 @@ func test_survival_menu_and_hud_library_keep_combat_live() -> void:
 	game.queue_free()
 	await runner.process_frame
 
+func test_pre_boss_spirit_picker_starts_the_trial_and_keeps_the_boss_in_forecast() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	game.sim = Sim.campaign(7)
+	game.sim.state.wave = 9
+	game.sim.state.phase = "wave"
+	game.sim.step()
+	runner.root.add_child(game)
+	game.set_process(false)
+	equal(game.event_status.text, "Spirit trial · Boss next")
+	game.start_button.pressed.emit()
+	equal(game.overlay_type, "select")
+	var spirit_option: Button = game.overlay.find_child("ChooseFire", true, false)
+	check(is_instance_valid(spirit_option))
+	spirit_option.pressed.emit()
+	equal(game.sim.state.phase, "wave")
+	equal(game.wave_label.text, "Spirit trial · Wave 10")
+	equal(game.sim.state.spawn_queue.size(), 1)
+	equal(game.sim.state.spawn_queue[0].group.kind, "spirit")
+	check(game.preview_row.get_child(1).tooltip_text.contains("Warlock"))
+	game.queue_free()
+	await runner.process_frame
+
 func test_tower_details_can_scroll_when_the_screen_is_short() -> void:
 	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
 	game.persistence_enabled = false
@@ -271,7 +294,7 @@ func test_scene_smoke_and_touch_layout() -> void:
 	check("Current · Lv 1" in panel_text and "After upgrade · Lv 2" in panel_text)
 	check(is_instance_valid(game.tower_comparison.find_child("Damage", true, false)))
 	game._apply({"type": "upgrade", "slot": "s1"})
-	equal(game.tower_stats.get_node("Damage/Value").text, "20.8", "The inspector updates after a live upgrade")
+	equal(game.tower_stats.get_node("Damage/Value").text, "21.84", "The inspector updates after a live upgrade")
 	game._site_pressed("s2")
 	check(game.site_actions.get_child_count() > 0, "Build buttons appear on an open tile during combat")
 	await runner.process_frame
@@ -410,7 +433,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	for label: Label in after.find_children("*", "Label", true, false):
 		after_labels.append(label.text)
 	check(after_labels.has("After upgrade · Pure ★7"))
-	check(after_labels.has(TowerInspector.number(418.5 * 1.15)) and after_labels.has("4.5") and after_labels.has("0.93/s"))
+	check(after_labels.has(TowerInspector.number(418.5 * 1.15 * 1.05)) and after_labels.has("4.5") and after_labels.has("0.93/s"))
 	equal(sim.pure_crystals(), 1)
 	game._upgrade_pressed()
 	equal(game.overlay_type, "ascend")
