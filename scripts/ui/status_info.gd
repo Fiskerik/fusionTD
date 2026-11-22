@@ -18,7 +18,7 @@ const TRAITS: Dictionary = {
 	"warlock": ["Hex", "Marks a tower, then temporarily stuns it.", "dark"],
 	"ram": ["Corner charge", "Rushes along straights, bounces at each bend, then spends %s seconds pivoting.", "speed"],
 	"necromancer": ["Raise husks", "Summons two husks every 10 seconds, up to four alive at once.", "dark"],
-	"prismheart": ["Shapeshifter", "Cycles through your unlocked elements every 5 seconds. Each form resists its own element and the element it counters.", "light"],
+	"prismheart": ["Shapeshifter", "Cycles through your unlocked elements every %s seconds. Each form resists its own element and the element it counters.", "light"],
 	"tempest": ["Airborne", "Flies over roots and ice puddles. Slows and freezes still work.", "water"],
 	"ironwood": ["Elemental plating", "", "armor"],
 	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
@@ -120,6 +120,8 @@ static func trait_title(id: String, enemy: Dictionary) -> String:
 static func trait_description(id: String) -> String:
 	if id == "ram":
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").ram.turn_seconds)
+	if id == "prismheart":
+		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").prismheart.morph_seconds)
 	if id == "ironwood":
 		var plating: Dictionary = DataDB.read("bosses").ironwood
 		return "Takes %s of elemental damage. Uninfused Arrow and Cannon towers deal %s damage." % [

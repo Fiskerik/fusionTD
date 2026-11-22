@@ -1,10 +1,12 @@
 class_name Damage
 extends RefCounted
 
-const RING: Dictionary = {"fire": "nature", "nature": "electric", "electric": "water", "water": "fire"}
 const WEAKNESS_MULTIPLIER: float = 1.5
 
 static func matchup(attacker: String, defender: String, rolled_weakness: String = "") -> float:
+	var fixed: String = fixed_weakness(defender)
+	if not fixed.is_empty():
+		rolled_weakness = fixed
 	if not rolled_weakness.is_empty():
 		if attacker == rolled_weakness:
 			return WEAKNESS_MULTIPLIER
@@ -16,15 +18,14 @@ static func _base_matchup(attacker: String, defender: String) -> float:
 		return 1.0
 	if attacker in ["light", "dark"] and defender in ["light", "dark"]:
 		return 0.75 if attacker == defender else WEAKNESS_MULTIPLIER
-	if (attacker == "water" and defender == "earth") or (attacker == "earth" and defender == "electric"):
+	var elements: Dictionary = DataDB.read("elements")
+	if elements.get(defender, {}).get("weak", "") == attacker:
 		return WEAKNESS_MULTIPLIER
-	if (attacker == "earth" and defender == "water") or (attacker == "electric" and defender == "earth"):
-		return .75
-	if RING.get(attacker) == defender:
-		return WEAKNESS_MULTIPLIER
-	if RING.get(defender) == attacker:
-		return 0.75
-	return 1.0
+	return .75 if elements.get(attacker, {}).get("weak", "") == defender else 1.0
+
+static func fixed_weakness(element: String) -> String:
+	var affinity: Dictionary = DataDB.read("elements").get(element, {})
+	return affinity.weak if affinity.get("fixed_weakness", false) else ""
 
 static func blend(split: Dictionary, defender: String, rolled_weakness: String = "") -> float:
 	var result: float = 0.0
@@ -80,6 +81,8 @@ static func weakness_multiplier(enemy: Dictionary) -> float:
 
 static func weakness(enemy: Dictionary) -> String:
 	var affinity: Dictionary = DataDB.read("elements").get(enemy.element, {})
+	if affinity.get("fixed_weakness", false):
+		return affinity.weak
 	return enemy.get("weakness", affinity.get("weak", ""))
 
 static func hit(raw: float, armor: float, pierce: float, shred: float, curse: float) -> float:

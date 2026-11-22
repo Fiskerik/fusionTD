@@ -104,7 +104,8 @@
   "electric": {
     "name": "Electric",
     "color": "#ffd470",
-    "weak": "nature",
+    "weak": "earth",
+    "fixed_weakness": true,
     "role": "Chain lightning",
     "effects": [
       {
@@ -184,7 +185,8 @@
   "earth": {
     "name": "Earth",
     "color": "#dba15c",
-    "weak": "water",
+    "weak": "nature",
+    "fixed_weakness": true,
     "role": "Heavy, short-range splash and armor pierce",
     "effects": [
       {

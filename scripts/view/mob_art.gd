@@ -8,6 +8,7 @@ const CASTER_DIRECTIONS: Texture2D = preload("res://assets/woodland/boss-directi
 const BOSS_CELLS: Dictionary = {"ram": 1, "tempest": 3, "ironwood": 4}
 const BOSS_CELL: int = 192
 const PRISMHEART: Texture2D = preload("res://assets/woodland/prismheart.webp")
+const PRISMHEART_EARTH: Texture2D = preload("res://assets/woodland/prismheart-earth.webp")
 const PRISMHEART_FORMS: Array[String] = ["none", "fire", "water", "nature", "electric", "light", "dark"]
 const PRISMHEART_CELL: int = 192
 const CELLS: Dictionary = {"acorn": 0, "beetle": 1, "hare": 2, "guard": 3, "cap": 4, "moth": 5, "boar": 6, "drake": 7}
@@ -232,10 +233,8 @@ static func _prismheart_sprite(canvas: CanvasItem, form: String, pivot: Vector2,
 	var breath: float = sin(clock * (3.7 if form == "water" else 5.7)) * .025
 	var span: Vector2 = Vector2(1.0 + breath, 1.0 - breath) * r * 3.4
 	var target := Rect2(pivot - span * Vector2(.5, 100.0 / PRISMHEART_CELL), span)
-	var wash: Color = Glyphs.hue(form).lightened(.40) if form == "earth" else Color.WHITE
-	canvas.draw_texture_rect_region(PRISMHEART, target, source, Color(wash, opacity))
-	if form == "earth":
-		Glyphs.draw(canvas, "earth", pivot - Vector2(0, .27) * r, r * .42, Color("#ffe0a9", opacity))
+	var sheet: Texture2D = PRISMHEART_EARTH if form == "earth" else PRISMHEART
+	canvas.draw_texture_rect_region(sheet, target, source, Color(Color.WHITE, opacity))
 
 static func _shape(canvas: CanvasItem, p: Vector2, direction: Vector2, r: float, points: Array[Vector2], tint: Color) -> void:
 	var geometry := PackedVector2Array()

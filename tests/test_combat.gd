@@ -684,8 +684,9 @@ func test_prismheart_uses_unlocked_forms_and_swaps_damage_matchups() -> void:
 	equal(sim.preview(40).boss.element, "none")
 	sim.state.tiers.fire = 2
 	sim.state.tiers.water = 1
+	sim.state.tiers.earth = 1
 	var group: Dictionary = sim.preview(40).boss
-	equal(group.forms, PackedStringArray(["fire", "water"]))
+	equal(group.forms, PackedStringArray(["fire", "water", "earth"]))
 	sim.state.phase = "wave"
 	Combat.spawn(sim, group, 3.0)
 	var boss: Dictionary = sim.state.mobs[0]
@@ -693,6 +694,7 @@ func test_prismheart_uses_unlocked_forms_and_swaps_damage_matchups() -> void:
 	near(Damage.against({"nature": 1.0}, boss, false), .75)
 	near(Damage.against({"water": 1.0}, boss, false), 1.5)
 	var period: int = EnemyRules.morph_period(sim.hz)
+	equal(period, roundi(sim.hz * 5.0))
 	for tick: int in range(period - 1):
 		sim.step()
 	equal(boss.element, "fire")
@@ -702,6 +704,11 @@ func test_prismheart_uses_unlocked_forms_and_swaps_damage_matchups() -> void:
 	equal(boss.element, "water")
 	near(Damage.against({"electric": 1.0}, boss, false), 1.5)
 	near(Damage.against({"fire": 1.0}, boss, false), .75)
+	for tick: int in range(period):
+		restored.step()
+	equal(boss.element, "earth")
+	near(Damage.against({"nature": 1.0}, boss, false), 1.5)
+	near(Damage.against({"electric": 1.0}, boss, false), .75)
 	for tick: int in range(period):
 		restored.step()
 	equal(boss.element, "fire")

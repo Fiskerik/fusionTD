@@ -4,7 +4,14 @@ extends RefCounted
 const INK: Color = Color("#41372d")
 const LANDMARKS: Texture2D = preload("res://assets/woodland/landmarks.png")
 const PAINTED: Texture2D = preload("res://assets/woodland/towers-painted.webp")
+const EARTH_PAINTED: Texture2D = preload("res://assets/woodland/earth-towers.webp")
 const CELL: int = 160
+const EARTH_FUSIONS: Dictionary = {
+	"lavafault": 7, "siltbasin": 8, "rootvault": 9, "faultcoil": 10, "sunstone": 11, "gravemason": 12,
+	"steamcrag": 13, "cinderroot": 14, "thunderfault": 15, "sunforgecaldera": 16, "obsidianmaw": 17,
+	"alluvialgrove": 18, "seismicsurge": 19, "opalreservoir": 20, "abyssalsilt": 21, "stormroot": 22,
+	"livingmenhir": 23, "gravebloom": 24, "quartzrelay": 25, "blackstonedynamo": 26, "eclipsecairn": 27,
+}
 const SPRITES: Dictionary = {
 	"arrow": 0, "cannon": 1, "fire": 2, "water": 3, "nature": 4, "electric": 5, "light": 6,
 	"dark": 7, "pure_fire": 8, "pure_water": 9, "pure_nature": 10, "pure_electric": 11, "pure_light": 12, "pure_dark": 13,
@@ -26,6 +33,14 @@ static func sprite_id(tower: Dictionary) -> String:
 		"pure": return tower.element
 		"ascended": return "pure_" + String(tower.element)
 	return tower.dual
+
+static func earth_sprite_index(tower: Dictionary) -> int:
+	var key: String = sprite_id(tower)
+	if key == "earth":
+		return int(tower.level) - 1
+	if key == "pure_earth":
+		return 6
+	return int(EARTH_FUSIONS.get(key, -1))
 
 static func draw(canvas: CanvasItem, tower: Dictionary, p: Vector2, r: float, clock: float,
 		heading: Vector2 = Vector2.UP, recoil: float = 0.0) -> void:
@@ -50,57 +65,23 @@ static func draw(canvas: CanvasItem, tower: Dictionary, p: Vector2, r: float, cl
 		canvas.draw_arc(plinth, r * 1.14, clock * .88, clock * .88 + PI * 1.4, 28, Color(halo_color, .79), r * .066, true)
 		canvas.draw_arc(plinth, r * 1.07, -clock * .67, -clock * .67 + PI * .58, 16, Color(halo_color.lightened(.3), .70), r * .048, true)
 	var center: Vector2 = p - Vector2(0, .19 + .022 * grade) * r - heading * recoil * r * .20
-	if ingredients.has("earth") and not is_launcher:
-		_draw_earth(canvas, center, r * scale, grade, ingredients, clock, heading)
+	var earth_index: int = earth_sprite_index(tower)
+	var texture: Texture2D = EARTH_PAINTED if earth_index >= 0 else PAINTED
+	var sprite: int = earth_index if earth_index >= 0 else int(SPRITES[sprite_id(tower)])
+	var cell_origin := Vector2(sprite % 8, sprite / 8) * CELL
+	var paint: Color = Color.WHITE
+	if not String(tower.get("infusion", "")).is_empty():
+		paint = paint.lerp(tint.lightened(.45), .31)
+	if is_launcher:
+		_draw_rotated(canvas, cell_origin, center, span, heading, paint)
 	else:
-		var sprite: int = int(SPRITES[sprite_id(tower)])
-		var cell_origin := Vector2(sprite % 8, sprite / 8) * CELL
-		var paint: Color = Color.WHITE
-		if not String(tower.get("infusion", "")).is_empty():
-			paint = paint.lerp(tint.lightened(.45), .31)
-		if is_launcher:
-			_draw_rotated(canvas, cell_origin, center, span, heading, paint)
-		else:
-			var rect := Rect2(center - Vector2.ONE * span * .5, Vector2.ONE * span)
-			canvas.draw_texture_rect_region(PAINTED, rect, Rect2(cell_origin, Vector2.ONE * CELL), paint)
+		var rect := Rect2(center - Vector2.ONE * span * .5, Vector2.ONE * span)
+		canvas.draw_texture_rect_region(texture, rect, Rect2(cell_origin, Vector2.ONE * CELL), paint)
 	if grade >= 4 or ascended:
 		_draw_power_motes(canvas, center, r, tint, grade, clock, int(tower.id))
 	if recoil > .02:
 		var muzzle: Vector2 = center + heading * r * (.76 if is_launcher else .66)
 		_draw_flash(canvas, muzzle, heading, r, recoil, tint)
-
-static func _draw_earth(canvas: CanvasItem, p: Vector2, r: float, grade: int, ingredients: PackedStringArray,
-		clock: float, heading: Vector2) -> void:
-	var accents: PackedStringArray = ingredients.duplicate()
-	accents.erase("earth")
-	var stone := Color("#6f513d")
-	var glow: Color = Glyphs.hue("earth").lightened(.31)
-	_oval(canvas, p + Vector2(0, .56) * r, Vector2(.94, .27) * r, INK)
-	_oval(canvas, p + Vector2(0, .47) * r, Vector2(.83, .23) * r, stone.lightened(.22))
-	for side: float in [-1.0, 1.0]:
-		var index: int = 0 if side < 0 else 1
-		var color: Color = Glyphs.hue(accents[index % accents.size()]) if not accents.is_empty() else glow
-		var height: float = .55 + grade * .04
-		if not accents.is_empty():
-			height += float(DataDB.ELEMENTS.find(accents[index % accents.size()])) * .065
-		var pillar: Vector2 = p + Vector2(side * .59, .11) * r
-		var edge := PackedVector2Array([pillar + Vector2(-.22, .31) * r, pillar + Vector2(-.24, -.20) * r,
-			pillar + Vector2(-.04, -height) * r, pillar + Vector2(.22, -.33) * r, pillar + Vector2(.19, .33) * r])
-		canvas.draw_colored_polygon(edge, stone.darkened(.23))
-		canvas.draw_colored_polygon(PackedVector2Array([edge[1], edge[2], edge[3], pillar + Vector2(0, -.12) * r]), color.darkened(.29))
-		canvas.draw_line(edge[1], edge[2], color.lightened(.26), r * .065, true)
-		if not accents.is_empty():
-			Glyphs.draw(canvas, accents[index % accents.size()], pillar - Vector2(0, .21) * r, r * .17, color.lightened(.41))
-	var core: Vector2 = p + heading * (r * .12) - Vector2(0, r * .25)
-	var corners := PackedVector2Array([core + Vector2(-.42,.35) * r, core + Vector2(-.50,-.25) * r,
-		core + Vector2(-.14,-.64) * r, core + Vector2(.34,-.53) * r, core + Vector2(.46,-.04) * r,
-		core + Vector2(.27,.40) * r])
-	canvas.draw_colored_polygon(corners, stone)
-	canvas.draw_colored_polygon(PackedVector2Array([corners[1], corners[2], corners[3], core]), glow)
-	canvas.draw_colored_polygon(PackedVector2Array([core, corners[3], corners[4], corners[5]]), glow.darkened(.31))
-	Glyphs.draw(canvas, "earth", core + Vector2(.02,.03) * r, r * .30, Color("#fff0bf"))
-	if grade >= 4:
-		canvas.draw_arc(core, r * .68, sin(clock * 1.4), sin(clock * 1.4) + PI * 1.26, 22, glow, r * .047, true)
 
 static func _draw_rotated(canvas: CanvasItem, cell: Vector2, p: Vector2, span: float, up: Vector2, color: Color) -> void:
 	var width := Vector2(-up.y, up.x) * span * .5

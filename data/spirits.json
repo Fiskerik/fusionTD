@@ -6,7 +6,7 @@
       "recommended": 0
     },
     {
-      "hp": 4400,
+      "hp": 8800,
       "growth": 1.012,
       "from": 20,
       "until": 30,
@@ -14,7 +14,7 @@
       "recommended": 30
     },
     {
-      "hp": 16500,
+      "hp": 66000,
       "growth": 1.01,
       "from": 40,
       "until": 60,

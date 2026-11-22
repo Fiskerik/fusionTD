@@ -198,6 +198,11 @@ static func _add_specials(groups: Array[Dictionary], wave: int, rng: SimRng) -> 
 		groups.insert(groups.find(source) + 1, special)
 
 static func _roll_weakness(rng: SimRng, affinity: String) -> String:
+	var fixed: String = Damage.fixed_weakness(affinity)
+	if not fixed.is_empty():
+		# Keep the seeded rolls for other affinities in the wave in the same order.
+		rng.take(1)
+		return fixed
 	var pool: Array[String] = []
 	for element: String in DataDB.ELEMENTS:
 		if element != affinity and Damage.matchup(element, affinity) >= 1.0:

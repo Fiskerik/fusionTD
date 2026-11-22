@@ -234,12 +234,19 @@ func test_scene_smoke_and_touch_layout() -> void:
 	check(shown_weakness, "The forecast shows the boss's rolled weakness and damage bonus")
 	game.sim.state.tiers.fire = 1
 	game.sim.state.tiers.water = 1
+	game.sim.state.tiers.earth = 1
 	game._show_preview(40)
 	var form_cards: int = 0
+	var earth_weakness: bool = false
 	for button: Button in game.overlay.find_children("*", "Button", true, false):
 		if button.tooltip_text.begins_with("Fire form.") or button.tooltip_text.begins_with("Water form."):
 			form_cards += 1
-	equal(form_cards, 2, "The Prismheart forecast exposes both unlocked forms")
+		if button.tooltip_text.begins_with("Earth form."):
+			form_cards += 1
+			earth_weakness = button.tooltip_text.contains("Nature")
+	equal(form_cards, 3, "The Prismheart forecast exposes all unlocked forms")
+	check(earth_weakness)
+	game.sim.state.tiers.earth = 0
 	game._show_preview(60)
 	var shows_neutral: bool = false
 	for label: Label in game.overlay.find_children("*", "Label", true, false):

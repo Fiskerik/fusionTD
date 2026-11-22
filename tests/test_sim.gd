@@ -11,10 +11,10 @@ func test_data_and_map() -> void:
 
 func test_matchups_and_armor() -> void:
 	var matrix: Array = [
-		[1, .75, 1.5, 1, 1, 1, 1, 1], [1.5, 1, 1, .75, 1, 1, 1.5, 1],
-		[.75, 1, 1, 1.5, 1, 1, 1, 1], [1, 1.5, .75, 1, 1, 1, .75, 1],
+		[1, .75, 1.5, 1, 1, 1, 1, 1], [1.5, 1, 1, .75, 1, 1, 1, 1],
+		[.75, 1, 1, 1, 1, 1, 1.5, 1], [1, 1.5, 1, 1, 1, 1, .75, 1],
 		[1, 1, 1, 1, .75, 1.5, 1, 1], [1, 1, 1, 1, 1.5, .75, 1, 1],
-		[1, .75, 1, 1.5, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1],
+		[1, 1, .75, 1.5, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1],
 	]
 	var offense: Array = DataDB.ELEMENTS + ["normal"]
 	var defense: Array = DataDB.ELEMENTS + ["none"]
@@ -29,6 +29,16 @@ func test_matchups_and_armor() -> void:
 	near(Damage.blend(dual.flare.split, "light"), .9)
 	near(Damage.hit(10, 200, 0, 0, 0), 2.5)
 	near(Damage.hit(20, 12, .5, 2, .25), 21)
+
+func test_earth_and_electric_weaknesses_override_older_rolls() -> void:
+	var electric: Dictionary = {"element": "electric", "weakness": "nature"}
+	var earth: Dictionary = {"element": "earth", "weakness": "water"}
+	equal(Damage.weakness(electric), "earth")
+	equal(Damage.weakness(earth), "nature")
+	near(Damage.against({"nature": 1.0}, electric, false), 1.0)
+	near(Damage.against({"earth": 1.0}, electric, false), 1.5)
+	near(Damage.against({"water": 1.0}, earth, false), 1.0)
+	near(Damage.against({"nature": 1.0}, earth, false), 1.5)
 
 func test_wave_generation_and_preview() -> void:
 	var orders: Array = ["warlock", "ram", "necromancer", "prismheart", "tempest", "ironwood"]
@@ -76,7 +86,8 @@ func test_wave_weaknesses_vary_by_seed_and_stay_fixed_in_combat() -> void:
 			equal(group.weakness, by_affinity.get(group.element, group.weakness))
 			by_affinity[group.element] = group.weakness
 		neutral_rolls[by_affinity.none] = true
-		boss_rolls[Waves.generate(seed_value, 20).boss.weakness] = true
+		boss_rolls[Waves.generate(seed_value, 10).boss.weakness] = true
+		equal(Waves.generate(seed_value, 20).boss.weakness, "earth")
 	check(neutral_rolls.size() > 1 and boss_rolls.size() > 1, "Regular and boss weaknesses vary across campaign seeds")
 	var sim := Sim.new(42)
 	sim.state.wave = 18
@@ -429,14 +440,20 @@ func test_the_first_tier_two_trial_is_optional_and_risky() -> void:
 			_finish(sim)
 	equal(sim.state.tiers.fire, 2)
 
-func test_spirits_have_fixed_tier_one_health_and_achievable_later_trials() -> void:
+func test_spirits_have_fixed_tier_one_health_and_capped_higher_tier_growth() -> void:
 	for element: String in DataDB.ELEMENTS:
 		for wave: int in [5, 30, 70, 150]:
 			near(Waves.spirit_group(element, 1, wave).hp, 440.0)
-	for scenario: Array in [[20, 2, 7, 4], [25, 2, 6, 4], [30, 2, 5, 5], [60, 3, 8, 6]]:
+		for wave: int in [5, 20, 25, 30, 40, 50, 60, 150]:
+			near(Waves.spirit_group(element, 2, wave).hp, 8800.0 * pow(1.012, clampi(wave - 20, 0, 10)))
+			near(Waves.spirit_group(element, 3, wave).hp, 66000.0 * pow(1.01, clampi(wave - 40, 0, 20)))
+
+func test_concentrated_counter_damage_can_defeat_higher_tier_spirits() -> void:
+	for scenario: Array in [[25, 2, 10, 4], [30, 2, 8, 5], [60, 3, 28, 6]]:
 		var sim := Sim.campaign(7)
 		sim.state.wave = scenario[0]
 		sim.state.trial = {"element": "fire", "tier": scenario[1]}
+		sim.state.tiers.water = 3
 		var coverage: Dictionary = {}
 		for slot: String in sim.track.slots:
 			coverage[slot] = sim.track.reachable_road(slot, 3.7).size()
@@ -445,6 +462,7 @@ func test_spirits_have_fixed_tier_one_health_and_achievable_later_trials() -> vo
 		for slot: String in slots.slice(0, scenario[2]):
 			var tower: Dictionary = TowerRules.create(sim.next_id(), slot, "arrow", "normal", "", 50)
 			tower.level = scenario[3]
+			tower.infusion = "water"
 			sim.state.towers[slot] = tower
 		check(sim.apply({"type": "start_wave"}).ok)
 		_finish(sim)
@@ -487,7 +505,7 @@ func test_earth_unlocks_builds_and_fuses_through_the_normal_actions() -> void:
 	check(sim.apply({"type": "select_element", "element": "earth", "tier": 1}).ok)
 	check(sim.apply({"type": "start_wave"}).ok)
 	var spirit: Dictionary = sim.state.spawn_queue[0].group
-	equal(Damage.weakness(spirit), "water")
+	equal(Damage.weakness(spirit), "nature")
 	sim.state.spawn_queue.clear()
 	Combat.spawn(sim, spirit, 0.0)
 	Damage.deal(sim.state.mobs[0], 440.0, {})
@@ -1333,11 +1351,30 @@ func test_tower_atlas_covers_every_build_and_fusion() -> void:
 		towers.append(TowerRules.fusion_result(id))
 	for tower: Dictionary in towers:
 		var sprite: String = TowerArt.sprite_id(tower)
-		check(TowerArt.SPRITES.has(sprite) or TowerRules.ingredients(tower).has("earth"))
+		check(TowerArt.SPRITES.has(sprite) or TowerArt.earth_sprite_index(tower) >= 0)
 		sprites[sprite] = true
 		names[TowerRules.display_name(tower)] = true
 	equal(sprites.size(), 72)
 	equal(names.size(), 72)
+
+func test_earth_ranks_and_fusions_use_distinct_painted_cells() -> void:
+	var cells: Dictionary = {}
+	var tower: Dictionary = TowerRules.create(0, "", "pure", "earth", "", 0)
+	for level: int in range(1, 7):
+		tower.level = level
+		cells[TowerArt.earth_sprite_index(tower)] = true
+	TowerRules.empower_pure(tower)
+	cells[TowerArt.earth_sprite_index(tower)] = true
+	for key: String in DataDB.read("duals").keys() + DataDB.read("triples").keys():
+		var fused: Dictionary = TowerRules.fusion_result(key)
+		if TowerRules.ingredients(fused).has("earth"):
+			cells[TowerArt.earth_sprite_index(fused)] = true
+	equal(cells.size(), 28)
+	var atlas: Image = TowerArt.EARTH_PAINTED.get_image()
+	for index: int in range(28):
+		check(cells.has(index))
+		var tile := Rect2i(index % 8 * TowerArt.CELL, index / 8 * TowerArt.CELL, TowerArt.CELL, TowerArt.CELL)
+		check(atlas.get_region(tile).get_used_rect().has_area())
 
 func test_later_mobs_gain_health_armor_and_resistance_without_extra_spawns() -> void:
 	var adjustments: Dictionary = DataDB.read("waves").adjustments
