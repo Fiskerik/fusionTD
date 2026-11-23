@@ -61,9 +61,7 @@ class ForecastPortrait extends Control:
 			return
 		var center: Vector2 = size * .5
 		if enemy.kind == "spirit":
-			var tint: Color = Glyphs.hue(enemy.element)
-			draw_circle(center, side * .32, tint.lightened(.29), true, -1, true)
-			Glyphs.draw(self, enemy.element, center, side * .21, tint.darkened(.43))
+			MobArt.draw_spirit(self, enemy.element, int(enemy.get("tier", 1)), center, side)
 		else:
 			if enemy.kind == "bonus":
 				draw_circle(center, side * .44, Color("#fff0ae"), true, -1, true)

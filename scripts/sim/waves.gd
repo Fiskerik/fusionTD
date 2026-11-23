@@ -124,18 +124,18 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	if wave != boss_every - 1 and (wave % boss_every == boss_every - 1 or encounter_rng.take(100) < int(rules.petrifier.chance_percent)):
 		_replace_with_encounter(groups, "petrifier")
 	if wave >= int(rules.wizard.first_wave) and encounter_rng.take(100) < int(rules.wizard.chance_percent):
-		_replace_with_encounter(groups, "wizard")
+		_replace_with_encounter(groups, "wizard", {"visible_seconds": EnemyRules.wizard_visible_seconds(wave)})
 	if include_bonus:
 		var courier: Dictionary = _group(wave, 1, [], hp, gold, false)
 		courier.kind = "bonus"
 		courier.family = "hare"
-		courier.hp *= 2.0
-		courier.armor *= float(bonus.armor_multiplier)
+		courier.hp = EnemyRules.courier_hits(0)
+		courier.armor = 0.0
 		var wave_gold: int = 0
 		for group: Dictionary in groups:
 			wave_gold += int(group.gold) * int(group.count)
 		courier.gold = roundi(wave_gold * float(bonus.gold_share))
-		courier.speed = (campaign_track.total if campaign_track != null else Track.new().total) / float(bonus.travel_seconds)
+		courier.speed = float(bonus.speed)
 		courier.slow_cap = 0.0
 		courier.control_resistance = 0.0
 		courier.interval = int(rules.interval)
@@ -152,7 +152,7 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 			group.interval = maxi(1, roundi(float(group.interval) * float(rules.short_wave.interval_scale)))
 	return {"wave": wave, "groups": groups, "boss": {}, "bosses": [], "spirit": {}}
 
-static func _replace_with_encounter(groups: Array[Dictionary], kind: String) -> void:
+static func _replace_with_encounter(groups: Array[Dictionary], kind: String, details: Dictionary = {}) -> void:
 	var index: int = -1
 	for i: int in range(groups.size()):
 		if groups[i].kind == "grunt" and (index < 0 or int(groups[i].count) > int(groups[index].count)):
@@ -162,6 +162,7 @@ static func _replace_with_encounter(groups: Array[Dictionary], kind: String) -> 
 	var source: Dictionary = groups[index]
 	var enemy: Dictionary = source.duplicate()
 	enemy.merge({"kind": kind, "count": 1, "props": [kind]}, true)
+	enemy.merge(details, true)
 	if int(source.count) == 1:
 		groups[index] = enemy
 	else:

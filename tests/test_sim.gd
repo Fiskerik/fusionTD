@@ -24,7 +24,28 @@ func test_campaign_beats_and_merchant_are_numbered_events() -> void:
 	equal(sim.state.tiers.earth, 1)
 	equal(sim.event_kind(10), "boss")
 	equal(sim.event_kind(25), "spirit")
-	sim.state.wave = 35
+	sim.state.wave = 34
+	sim.state.phase = "wave"
+	sim.step()
+	equal(sim.state.wave, 35)
+	equal(sim.event_kind(35), "spirit")
+	check(sim.state.selection_pending and not sim.merchant_pending())
+	check(not sim.apply({"type": "start_wave"}).ok)
+	var old_checkpoint: Dictionary = SaveStore.encode(sim).duplicate(true)
+	old_checkpoint.version = 2
+	old_checkpoint.state.selection_pending = false
+	sim = SaveStore.decode(old_checkpoint)
+	check(sim.state.selection_pending)
+	check(sim.apply({"type": "select_element", "element": "water", "tier": 1}).ok)
+	check(sim.apply({"type": "start_wave"}).ok)
+	equal(sim.state.spawn_queue.size(), 1)
+	var wave_35_spirit: Dictionary = sim.state.spawn_queue.pop_front().group
+	equal(wave_35_spirit.kind, "spirit")
+	Combat.spawn(sim, wave_35_spirit, 0.0)
+	Damage.deal(sim.state.mobs[0], float(wave_35_spirit.hp), {})
+	sim.step()
+	equal(sim.state.wave, 36)
+	sim.state.wave = 65
 	sim.state.gold = 500
 	sim.state.lives = 18
 	check(sim.merchant_pending())
@@ -33,7 +54,7 @@ func test_campaign_beats_and_merchant_are_numbered_events() -> void:
 	check(purchase.ok and int(purchase.cost) > 0)
 	equal(sim.state.lives, 20)
 	equal(sim.state.barrier, 3)
-	equal(sim.state.wave, 36)
+	equal(sim.state.wave, 66)
 	check(not sim.apply({"type": "merchant", "offer": "repair"}).ok)
 
 func test_survival_spirit_trials_precede_bosses_without_advancing_the_wave() -> void:
@@ -997,7 +1018,21 @@ func test_upgraded_towers_gain_five_percent_damage_and_effect_potency() -> void:
 	arrow.slot = "s2"
 	var boost: Vector3 = TowerRules.support_bonuses(arrow, [spring], Track.new())
 	var aura: float = TowerRules.stats(spring).effect.aura_speed
-	near(boost.y, aura * 1.35 * 1.05)
+	near(boost.y, aura * 1.72 * 1.05)
+
+func test_rank_two_dual_fusions_outdamage_related_starter_triples() -> void:
+	var triples: Dictionary = DataDB.read("triples")
+	for id: String in DataDB.read("duals"):
+		var dual: Dictionary = TowerRules.fusion_result(id)
+		dual.level = 2
+		var pair: Array = TowerRules.stats(dual).pair
+		var profile: Dictionary = TowerRules.attack_profile(dual)
+		for recipe: String in triples:
+			if not triples[recipe].elements.has(pair[0]) or not triples[recipe].elements.has(pair[1]):
+				continue
+			var starter: Dictionary = TowerRules.attack_profile(TowerRules.fusion_result(recipe))
+			check(float(profile.damage) * float(profile.rate) > float(starter.damage) * float(starter.rate), id + " vs " + recipe)
+			check(float(profile.potency) > float(starter.potency))
 
 func test_element_damage_boost_and_reduced_curse_follow_tower_loadout() -> void:
 	var towers: Dictionary = DataDB.read("towers")

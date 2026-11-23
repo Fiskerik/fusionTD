@@ -118,6 +118,9 @@ func preview(wave: int, include_trial: bool = true) -> Dictionary:
 	var wave_data: Dictionary = Waves.generate(state.seed, wave, trial,
 		not current_active or state.wave_has_rolled_weaknesses,
 		not current_active or state.wave_uses_expanded_boss_roster, track if track.layout_id != Track.LEGACY else null, pacing)
+	for group: Dictionary in wave_data.groups:
+		if group.kind == "bonus":
+			group.hp = EnemyRules.courier_hits(state.towers.size())
 	var finale: Dictionary = DataDB.read("waves").finales.get(state.run_mode, {}) if wave == run_limit() else {}
 	var lead_in_scale: float = finale.get("lead_in_health_scale", 1.0)
 	for boss: Dictionary in wave_data.bosses:
@@ -154,7 +157,7 @@ func wave_matchups(summary: Dictionary) -> Dictionary:
 	var good: Array[Dictionary] = []
 	var weak: Array[Dictionary] = []
 	for original: Dictionary in ordered_towers():
-		if TowerRules.disabled(original) or float(TowerRules.stats(original).rate) <= 0.0:
+		if TowerRules.disabled(original) or TowerRules.base_rate(original, TowerRules.stats(original)) <= 0.0:
 			continue
 		var tower: Dictionary = effective_tower(original) if int(summary.wave) == int(state.wave) else original
 		var boon: Dictionary = tower_boon(tower)
@@ -166,6 +169,8 @@ func wave_matchups(summary: Dictionary) -> Dictionary:
 		var actual: float = 0.0
 		var neutral: float = 0.0
 		for group: Dictionary in groups:
+			if group.kind == "bonus":
+				continue
 			var count: int = int(group.count)
 			var armor: float = group.armor
 			var factor: float = Damage.against(split, group, effects.has("adaptive"))

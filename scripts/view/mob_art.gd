@@ -9,12 +9,21 @@ const BOSS_CELLS: Dictionary = {"ram": 1, "tempest": 3, "ironwood": 4}
 const BOSS_CELL: int = 192
 const PRISMHEART: Texture2D = preload("res://assets/woodland/prismheart.webp")
 const PRISMHEART_EARTH: Texture2D = preload("res://assets/woodland/prismheart-earth.webp")
+const SPIRITS: Texture2D = preload("res://assets/woodland/spirits-painted.webp")
+const SPIRIT_CELL: int = 192
 const PRISMHEART_FORMS: Array[String] = ["none", "fire", "water", "nature", "electric", "light", "dark"]
 const PRISMHEART_CELL: int = 192
 const CELLS: Dictionary = {"acorn": 0, "beetle": 1, "hare": 2, "guard": 3, "cap": 4, "moth": 5, "boar": 6, "drake": 7}
 const GAITS: Dictionary = {"acorn": "hop", "hare": "hop", "cap": "hop", "moth": "fly", "guard": "lumber", "boar": "lumber"}
 const ARMOR: Array[Color] = [Color("#c28b53"), Color("#b4cbd4"), Color("#e2b969"), Color("#bba1ef")]
 const CAMPAIGN_TINTS: Array[Color] = [Color("#ddc397"), Color("#9fb9d9"), Color("#a2a7af"), Color("#ad91d1")]
+
+static func draw_spirit(canvas: CanvasItem, element: String, tier: int, center: Vector2, span: float, facing: float = 1.0, tint: Color = Color.WHITE) -> void:
+	var column: int = clampi(tier - 1, 0, 2)
+	var row: int = maxi(0, DataDB.ELEMENTS.find(element))
+	var cell := Rect2(column * SPIRIT_CELL, row * SPIRIT_CELL, SPIRIT_CELL, SPIRIT_CELL)
+	var rect := Rect2(center - Vector2.ONE * span * .5, Vector2(span * facing, span))
+	canvas.draw_texture_rect_region(SPIRITS, rect, cell, tint)
 
 static func draw(canvas: CanvasItem, enemy: Dictionary, p: Vector2, direction: Vector2, r: float, tint: Color, distance: float, clock: float, impact: float = 0.0) -> void:
 	if enemy.kind == "boss":

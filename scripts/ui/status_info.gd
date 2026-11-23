@@ -30,7 +30,7 @@ const TRAITS: Dictionary = {
 	"burrower": ["Burrower", "Burrows beneath two sections of the road and cannot be targeted underground.", "normal"],
 	"thief": ["Thief", "Steals gold if it reaches the gate.", "gold"],
 	"saboteur": ["Saboteur", "Jams the closest upgradeable tower mid-route. Upgrade or fuse the tower to repair it.", "electric"],
-	"bonus": ["Unstoppable", "Immune to slowing, roots, and freezes. Reaches the gate in 12 seconds. Its gold reward is %s of all other enemies' combined bounty.", "gold"],
+	"bonus": ["Unstoppable", "Needs %d landed hits per tower on the board when it spawns (minimum %d). Moves at %s tiles/s and is immune to status effects. Pays %s of the wave's other bounties.", "gold"],
 	"petrifier": ["Petrification", "Marks two random towers on arrival. They turn to stone through the next wave, including its Spirit trial.", "armor"],
 	"wizard": ["Void step", "Stays at each stop for %s seconds, then disappears for %s seconds before appearing at the next corner. Cannot be hit in the void.", "dark"],
 }
@@ -137,10 +137,12 @@ static func trait_description(id: String, enemy: Dictionary = {}) -> String:
 		return "Takes %s of elemental damage. Uninfused Arrow and Cannon towers deal %s damage." % [
 			TowerInspector.percent(plating.elemental_damage), TowerInspector.percent(plating.neutral_damage)]
 	if id == "bonus":
-		return String(TRAITS[id][1]) % TowerInspector.percent(float(DataDB.read("waves").bonus_mob.gold_share))
+		var courier: Dictionary = DataDB.read("waves").bonus_mob
+		return String(TRAITS[id][1]) % [int(courier.hits_per_tower), EnemyRules.courier_hits(0),
+			TowerInspector.number(courier.speed), TowerInspector.percent(courier.gold_share)]
 	if id == "wizard":
 		var wizard: Dictionary = DataDB.read("waves").wizard
-		return String(TRAITS[id][1]) % [int(wizard.visible_seconds), int(wizard.void_seconds)]
+		return String(TRAITS[id][1]) % [int(enemy.get("visible_seconds", wizard.visible_seconds)), int(wizard.void_seconds)]
 	return description(id) if id == "phasing" else TRAITS[id][1]
 
 static func state_value(enemy: Dictionary, id: String, tick: int, hz: float) -> String:

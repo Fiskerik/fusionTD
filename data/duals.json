@@ -52,11 +52,12 @@
       "fire",
       "electric"
     ],
-    "split": {},
+    "split": {"fire": 0.5, "electric": 0.5},
     "damage": 0,
     "rate": 0,
+    "rank_two_rate": 0.85,
     "range": 2.2,
-    "role": "Increases nearby tower damage.",
+    "role": "Increases nearby tower damage. Attacks with fiery sparks at Rank II.",
     "effect": {
       "aura_damage": 0.25
     },
@@ -115,11 +116,12 @@
       "water",
       "nature"
     ],
-    "split": {},
+    "split": {"water": 0.5, "nature": 0.5},
     "damage": 0,
     "rate": 0,
+    "rank_two_rate": 0.63,
     "range": 2.2,
-    "role": "Increases nearby attack speed.",
+    "role": "Increases nearby attack speed. Attacks with water and nature at Rank II.",
     "effect": {
       "aura_speed": 0.25
     },

@@ -51,6 +51,8 @@ static func _tick_dot(mob: Dictionary, type: String, dot: Dictionary, hz: float,
 			break
 
 static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, infusion: bool, hit_number: int, raw: float, hz: float, source: int = -1) -> void:
+	if mob.kind == "bonus":
+		return
 	if trait_profile.has("searing_burn"):
 		var burn: Array = trait_profile.searing_burn
 		ignite(mob, float(burn[0]) * potency, raw, ticks(duration(burn[1], potency), hz), burn[2], source)
@@ -116,6 +118,8 @@ static func _apply_hard_control(mob: Dictionary, effect: String, seconds: float,
 		mob.control_recovery = ticks(seconds * resistance, hz) + 1
 
 static func infect(mob: Dictionary, strain: Dictionary) -> void:
+	if mob.kind == "bonus":
+		return
 	var active: Dictionary = mob.get("disease", {})
 	if active.is_empty() or float(strain.fraction) >= float(active.fraction):
 		var next: Dictionary = strain.duplicate()
@@ -171,6 +175,8 @@ static func ignite(mob: Dictionary, fraction: float, hit: float, time: int, spre
 			"hit": hit, "spread": spread, "time": maxi(time, int(active.get("time", 0)))}
 
 static func add_dot(mob: Dictionary, type: String, dps: float, cap: int, count: int, duration: int, spread: float, sources: Array = []) -> void:
+	if mob.kind == "bonus":
+		return
 	var dot: Dictionary = mob.dots.get(type, {"stacks": 0, "cap": 0, "time": 0, "dps": 0.0, "spread": 0.0})
 	var owners: Array = dot.get("owners", [])
 	var previous: int = int(dot.stacks)

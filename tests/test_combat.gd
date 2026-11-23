@@ -378,7 +378,7 @@ func test_root_upgrades_increase_hold_time_and_frequency() -> void:
 	tower.level = 3
 	var upgraded: Dictionary = EnemyRules.create(2, _enemy(), 0.0, 0)
 	Effects.apply(upgraded, {"root": root}, TowerRules.attack_profile(tower).potency, false, 2, 0.0, sim.hz)
-	equal(upgraded.root_time, 60)
+	equal(upgraded.root_time, 75)
 
 func test_ascended_water_uses_the_bonus_range_attack_rate_and_slow_in_combat() -> void:
 	var sim := Sim.new()
@@ -544,6 +544,8 @@ func test_all_fusion_recipes_and_tier_gate() -> void:
 		check(sim.apply(fusion).ok)
 		var upgrade: Dictionary = {"type": "upgrade", "slot": "s1"}
 		equal(sim.state.towers.s1.level, 1)
+		if entry.has("rank_two_rate"):
+			near(TowerRules.attack_profile(sim.state.towers.s1).rate, 0.0)
 		check(not sim.apply(upgrade).ok)
 		sim.state.tiers[a] = 2
 		check(not sim.apply(upgrade).ok)
@@ -559,10 +561,7 @@ func test_all_fusion_recipes_and_tier_gate() -> void:
 		group.element = "dark"
 		Combat.spawn(sim, group, 10.0)
 		sim.step()
-		if float(entry.rate) > 0.0:
-			check(float(sim.state.mobs[0].hp) < 1000.0, recipe + " fires")
-		else:
-			near(sim.state.mobs[0].hp, 1000.0, recipe + " is a support")
+		check(float(sim.state.mobs[0].hp) < 1000.0, recipe + " fires")
 		if recipe == "eclipse":
 			near(sim.state.mobs[0].hp, 1000.0 - float(TowerRules.attack_profile(sim.state.towers.s1).damage) * 1.5)
 
@@ -622,7 +621,7 @@ func test_late_necromancer_heals_without_adding_units() -> void:
 	near(sim.state.mobs[1].hp, 700.0)
 	near(sim.state.mobs[2].hp, 600.0)
 
-func test_gilded_courier_payout_and_travel_time() -> void:
+func test_gilded_courier_payout_fixed_speed_and_hit_budget() -> void:
 	var courier: Dictionary = {}
 	var ordinary: Dictionary = {}
 	var wave_bounty: int = 0
@@ -641,8 +640,9 @@ func test_gilded_courier_payout_and_travel_time() -> void:
 	if courier.is_empty():
 		return
 	equal(courier.count, 1)
-	near(courier.hp, float(ordinary.hp) * 2.0)
-	near(courier.armor, float(ordinary.armor) * 4.0)
+	equal(courier.hp, 3)
+	near(courier.armor, 0.0)
+	near(courier.speed, 1.85)
 	equal(courier.gold, roundi(wave_bounty * .4))
 	var sim := Sim.new()
 	sim.state.phase = "wave"
@@ -652,17 +652,49 @@ func test_gilded_courier_payout_and_travel_time() -> void:
 	Effects.apply(mob, {"slow": [.7, 20], "root": [1, 20], "freeze": [1, 20]}, 1.0, false, 1, 0.0, sim.hz)
 	check(mob.slow_time == 0 and mob.freeze_time == 0 and mob.root_time == 0)
 	near(Effects.ice_speed(mob, {"slide": 1, "stumble": 10}), 1.0)
-	for tick: int in range(359):
+	var travel_ticks: int = ceili(sim.track.total * sim.hz / float(courier.speed))
+	for tick: int in range(travel_ticks - 1):
 		sim.step()
 	equal(sim.state.mobs.size(), 1)
 	sim.step()
 	equal(sim.state.mobs.size(), 0)
 	equal(sim.state.lives, 19)
 	var before: int = sim.state.gold
-	Combat.spawn(sim, courier, 0.0)
-	sim.state.mobs[0].hp = 0
+	var arrow: Dictionary = TowerRules.create(200, "s1", "arrow", "normal", "", 50)
+	var cannon: Dictionary = TowerRules.create(201, "s2", "cannon", "normal", "", 80)
+	sim.state.towers = {"s1": arrow, "s2": cannon}
+	sim.state.wave = 61
+	Combat.spawn(sim, courier, 9.0)
+	mob = sim.state.mobs[0]
+	near(mob.hp, 6.0)
+	near(mob.speed, 1.85)
+	Damage.deal(mob, 5000.0, arrow, sim.state.tick)
+	near(mob.hp, 6.0)
+	for hit: int in range(5):
+		Damage.deal(mob, 1000.0, arrow, sim.state.tick, true)
+	near(mob.hp, 1.0)
 	sim.step()
+	check(sim.state.mobs.is_empty(), "An actual tower attack spends the final hit")
 	equal(int(sim.state.gold) - before, courier.gold)
+
+func test_void_wizard_doubles_visible_time_at_wave_thirty() -> void:
+	var sim := Sim.campaign(7)
+	sim.state.wave = 30
+	sim.state.phase = "wave"
+	var group: Dictionary = _enemy()
+	group.merge({"kind": "wizard", "props": ["wizard"]}, true)
+	Combat.spawn(sim, group, 0.0)
+	var wizard: Dictionary = sim.state.mobs[0]
+	var stand: int = Effects.ticks(6.0, sim.hz)
+	check(not EnemyRules.in_void(wizard, stand - 1, sim.hz))
+	check(EnemyRules.in_void(wizard, stand, sim.hz))
+	var cycle: int = stand + Effects.ticks(2.0, sim.hz)
+	for tick: int in range(cycle - 1):
+		sim.step()
+	near(wizard.s, 0.0)
+	sim.step()
+	near(wizard.s, sim.track.lengths[sim.track.corner_crossed(0.0, sim.track.total)])
+	check(not EnemyRules.in_void(wizard, sim.state.tick, sim.hz))
 
 func test_void_wizard_waits_and_only_moves_to_corners() -> void:
 	var sim := Sim.campaign(7)
@@ -714,6 +746,12 @@ func test_springwell_fuses_into_a_stronger_attack_speed_aura() -> void:
 	var spring_boost: float = sim.support_bonuses(arrow, TowerRules.support_sources([spring])).y
 	var monsoon_boost: float = sim.support_bonuses(arrow, TowerRules.support_sources([monsoon])).y
 	check(monsoon_boost > spring_boost)
+	spring.level = 2
+	check(sim.support_bonuses(arrow, TowerRules.support_sources([spring])).y > monsoon_boost)
+	var spring_attack: Dictionary = TowerRules.attack_profile(spring)
+	var monsoon_attack: Dictionary = TowerRules.attack_profile(monsoon)
+	check(float(spring_attack.damage) > float(monsoon_attack.damage))
+	check(float(spring_attack.damage) * float(spring_attack.rate) > float(monsoon_attack.damage) * float(monsoon_attack.rate))
 	monsoon.petrified = true
 	near(sim.support_bonuses(arrow, TowerRules.support_sources([monsoon])).y, 0.0)
 

@@ -2,6 +2,8 @@ class_name TowerRules
 extends RefCounted
 
 const PURE_DISPLAY_LEVEL: int = 7
+const DUAL_DPS_EDGE: float = 1.12
+static var _triple_dps_by_pair: Dictionary = {}
 
 static func create(id: int, slot: String, kind: String, element: String, dual: String, invested: int) -> Dictionary:
 	return {
@@ -25,6 +27,22 @@ static func progression(tower: Dictionary) -> Dictionary:
 	var key: String = tower.kind + "_levels" if tower.kind in ["pure", "dual", "triple", "ascended"] else "normal_levels"
 	return DataDB.read("towers")[key]
 
+static func base_rate(tower: Dictionary, rule: Dictionary) -> float:
+	return float(rule.get("rank_two_rate", rule.rate)) if int(tower.level) >= 2 else float(rule.rate)
+
+static func _starter_triple_dps(id: String) -> float:
+	if not _triple_dps_by_pair.has(id):
+		var pair: Array = DataDB.read("duals")[id].pair
+		var best: float = 0.0
+		for recipe_id: String in DataDB.read("triples"):
+			var recipe_rule: Dictionary = DataDB.read("triples")[recipe_id]
+			if recipe_rule.elements.has(pair[0]) and recipe_rule.elements.has(pair[1]):
+				var starter: Dictionary = create(0, "", "triple", "", recipe_id, 0)
+				var profile: Dictionary = attack_profile(starter)
+				best = maxf(best, float(profile.damage) * float(profile.rate))
+		_triple_dps_by_pair[id] = best
+	return _triple_dps_by_pair[id]
+
 static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: Dictionary = {}) -> Dictionary:
 	var rule: Dictionary = stats(tower)
 	var levels: Dictionary = progression(tower)
@@ -34,7 +52,8 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: 
 	var recipe_scale: float = float(config.fusion_starting_damage_scale) if is_fusion(tower) and level == 0 else 1.0
 	var elemental_scale: float = element_damage_scale(tower)
 	var base_hit: float = float(rule.damage) * recipe_scale * elemental_scale
-	if tower.kind == "dual" and float(rule.rate) > 0:
+	var rate: float = base_rate(tower, rule) * float(levels.rate[level])
+	if tower.kind == "dual" and rate > 0.0:
 		var towers: Dictionary = DataDB.read("towers")
 		var stronger: float = 0.0
 		for element: String in rule.pair:
@@ -48,13 +67,17 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: 
 	var boost: float = spirit_multiplier(tower, victories)
 	var stored_floor: float = float(tower.get("fusion_damage_floor", 0.0)) * elemental_scale
 	var damage: float = maxf(base_hit * float(levels.damage[level]), stored_floor)
+	if tower.kind == "dual" and level >= 1 and rate > 0.0:
+		# Compare against starter triples sharing this pair without changing the tower's firing rhythm.
+		var dps_floor: float = _starter_triple_dps(tower.dual) * DUAL_DPS_EDGE * (1.0 if level == 1 else 1.4)
+		damage = maxf(damage, dps_floor / rate)
 	damage *= upgrade * boost * (1.0 + crystal_damage_bonus(tower)) * (1.0 + float(boon.get("damage", 0.0)))
 	var splash_level: int = 5 if tower.kind == "ascended" else level
 	var splash: float = float(rule.get("splash", 0.0)) + float(rule.get("splash_per_level", 0.0)) * splash_level
 	if tower.infusion == "earth":
 		splash += .72 + .08 * level
 	splash *= upgrade * (1.0 + float(boon.get("splash", 0.0)))
-	return {"damage": damage, "rate": float(rule.rate) * float(levels.rate[level]) * (1.0 + float(boon.get("rate", 0.0))),
+	return {"damage": damage, "rate": rate * (1.0 + float(boon.get("rate", 0.0))),
 		"range": attack_range(tower, float(boon.get("range", 0.0))),
 		"potency": effect_potency(tower, boon), "splash": splash, "splash_core": splash * float(config.splash_core_ratio),
 		"splash_fringe": float(config.splash_fringe_damage)}
@@ -316,7 +339,7 @@ static func combine(id: String, first: Dictionary, second: Dictionary, tiers: Di
 	for status: String in ["stone_pending", "petrified"]:
 		if first.get(status, false) or second.get(status, false):
 			result[status] = true
-	if float(stats(result).rate) > 0.0:
+	if base_rate(result, stats(result)) > 0.0:
 		var strongest_hit: float = maxf(attack_profile(first, victories).damage, attack_profile(second, victories).damage)
 		var scale: float = element_damage_scale(result) * spirit_multiplier(result, victories) * upgrade_strength(result)
 		result.fusion_damage_floor = strongest_hit / (scale * (1.0 + crystal_damage_bonus(result)))
@@ -332,6 +355,8 @@ static func inherit_record(result: Dictionary, first: Dictionary, second: Dictio
 
 static func damage_split(tower: Dictionary) -> Dictionary:
 	if is_fusion(tower):
+		if base_rate(tower, stats(tower)) <= 0.0:
+			return {}
 		return stats(tower).split
 	var element: String = primary_element(tower)
 	if not element.is_empty():

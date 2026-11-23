@@ -88,19 +88,27 @@ static func move(enemy: Dictionary, track: Track, hz: float, skid: float) -> voi
 			return
 	enemy.s = to
 
-static func wizard_cycle(hz: float) -> int:
+static func courier_hits(tower_count: int) -> int:
+	return maxi(1, tower_count) * int(DataDB.read("waves").bonus_mob.hits_per_tower)
+
+static func wizard_visible_seconds(wave: int) -> float:
 	var wizard: Dictionary = DataDB.read("waves").wizard
-	return Effects.ticks(wizard.visible_seconds, hz) + Effects.ticks(wizard.void_seconds, hz)
+	return float(wizard.extended_visible_seconds if wave >= int(wizard.extended_from_wave) else wizard.visible_seconds)
+
+static func wizard_visible_ticks(enemy: Dictionary, hz: float) -> int:
+	return Effects.ticks(enemy.get("visible_seconds", wizard_visible_seconds(1)), hz)
+
+static func wizard_cycle(enemy: Dictionary, hz: float) -> int:
+	return wizard_visible_ticks(enemy, hz) + Effects.ticks(DataDB.read("waves").wizard.void_seconds, hz)
 
 static func in_void(enemy: Dictionary, tick: int, hz: float) -> bool:
 	if enemy.kind != "wizard":
 		return false
-	var visible_ticks: int = Effects.ticks(DataDB.read("waves").wizard.visible_seconds, hz)
-	return (tick - int(enemy.born)) % wizard_cycle(hz) >= visible_ticks
+	return (tick - int(enemy.born)) % wizard_cycle(enemy, hz) >= wizard_visible_ticks(enemy, hz)
 
 static func warp(enemy: Dictionary, track: Track, tick: int, hz: float) -> void:
 	var age: int = tick - int(enemy.born)
-	if age <= 0 or age % wizard_cycle(hz) != 0:
+	if age <= 0 or age % wizard_cycle(enemy, hz) != 0:
 		return
 	var corner: int = track.corner_crossed(float(enemy.s), track.total)
 	enemy.s = track.lengths[corner] if corner >= 0 else track.total

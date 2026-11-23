@@ -924,7 +924,7 @@ func _render_wave_heading() -> void:
 				seen[id] = true
 				var property_info: Array = StatusInfo.TRAITS[id]
 				_effect_chip(wave_effects, property_info[0], Glyphs.hue(property_info[2]).darkened(.57), property_info[2],
-					StatusInfo.trait_description(id))
+					StatusInfo.trait_description(id, group))
 	if event == "merchant":
 		_effect_chip(wave_effects, "Gate repairs", UIKit.UPGRADE, "gold")
 	if wave_effects.get_child_count() == 0 and not summary.groups.is_empty():
@@ -1389,6 +1389,8 @@ func _update_enemy_inspector() -> void:
 	var stopped: bool = int(enemy.root_time) > 0 or int(enemy.freeze_time) > 0 or enemy.has("corner")
 	var metrics: String = "%d / %d HP   ·   %s armor" % [
 		ceili(enemy.hp), ceili(enemy.max_hp), TowerInspector.number(maxf(0.0, float(enemy.armor) - float(enemy.shred)))]
+	if enemy.kind == "bonus":
+		metrics = "%d / %d hits left" % [ceili(enemy.hp), ceili(enemy.max_hp)]
 	if enemy.kind == "wizard":
 		metrics += "   ·   In the void" if EnemyRules.in_void(enemy, sim.state.tick, sim.hz) else "   ·   Teleporting"
 	else:
@@ -1903,7 +1905,7 @@ func _show_selection() -> void:
 			threat = DataDB.text("threat_extreme") if int(sim.state.wave) < recommended - int(DataDB.read("spirits").extreme_margin) else DataDB.text("threat_risky")
 		var chosen: Dictionary = {"type": "select_element", "element": choice.element, "tier": choice.tier}
 		var title: String = "%s %s\n%s · Weak to %s" % [element.name, TowerRules.roman(choice.tier), threat, String(element.weak).capitalize()]
-		var button: Button = _choice_button(title, choice.element, _apply.bind(chosen))
+		var button: Button = _choice_button(title, choice.element, _apply.bind(chosen), int(choice.tier))
 		button.name = "Choose" + String(choice.element).capitalize()
 		button.tooltip_text = DataDB.text("trial_recommended") % recommended if recommended > 0 else ""
 		var tower: Dictionary = TowerRules.create(0, "", "pure", choice.element, "", 0)
@@ -1932,10 +1934,23 @@ func _choice_effect_hint(body: VBoxContainer) -> Label:
 	body.add_child(hint)
 	return hint
 
-func _choice_button(text: String, element: String, callback: Callable) -> Button:
-	var button: Button = UIKit.button(text, callback, false, 66)
+func _choice_button(text: String, element: String, callback: Callable, spirit_tier: int = 0) -> Button:
+	var button: Button = UIKit.button(text, callback, false, 86 if spirit_tier > 0 else 66)
 	button.add_theme_font_size_override("font_size", 15)
-	UIKit.element_button(button, element, true, true)
+	UIKit.element_button(button, element, spirit_tier == 0, true)
+	if spirit_tier > 0:
+		for state: String in ["normal", "hover", "pressed", "focus"]:
+			button.get_theme_stylebox(state).content_margin_top = 47
+		var portrait := UIKit.ForecastPortrait.new()
+		portrait.enemy = {"kind": "spirit", "element": element, "tier": spirit_tier}
+		portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		button.add_child(portrait)
+		portrait.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		portrait.offset_left = -24
+		portrait.offset_right = 24
+		portrait.offset_top = 1
+		portrait.offset_bottom = 49
 	return button
 
 func _add_element_choice(grid: GridContainer, choice: Button, effects: Array[Dictionary], hint: Label) -> void:
@@ -2072,10 +2087,13 @@ func _forecast_card(list: VBoxContainer, group: Dictionary, hint: Label) -> void
 	heading.add_child(UIKit.label("×%d" % int(group.count), 17, UIKit.MUTED))
 	var stat_row := HFlowContainer.new()
 	details.add_child(stat_row)
-	stat_row.add_child(UIKit.stat_value("health", TowerInspector.number(group.hp), "Health per enemy", 16, UIKit.INK))
-	stat_row.add_child(UIKit.stat_value("armor", TowerInspector.number(group.armor), "Armor", 16, UIKit.INK))
+	if group.kind == "bonus":
+		stat_row.add_child(UIKit.stat_value("health", "%d hits" % int(group.hp), "Hits needed with your current towers", 16, UIKit.INK))
+	else:
+		stat_row.add_child(UIKit.stat_value("health", TowerInspector.number(group.hp), "Health per enemy", 16, UIKit.INK))
+		stat_row.add_child(UIKit.stat_value("armor", TowerInspector.number(group.armor), "Armor", 16, UIKit.INK))
 	if group.kind == "wizard":
-		stat_row.add_child(UIKit.stat_value("speed", "Teleport", StatusInfo.trait_description("wizard"), 16, UIKit.INK))
+		stat_row.add_child(UIKit.stat_value("speed", "Teleport", StatusInfo.trait_description("wizard", group), 16, UIKit.INK))
 	else:
 		stat_row.add_child(UIKit.stat_value("speed", "%s/s" % TowerInspector.number(group.speed), "Movement speed in tiles per second", 16, UIKit.INK))
 	if group.kind in ["boss", "bonus", "spirit", "petrifier", "wizard"]:
@@ -2391,7 +2409,7 @@ func _show_fusion(partner: String) -> void:
 		var heading: String = group.element.capitalize() if group.element != "none" else DataDB.text("neutral")
 		if group.kind == "boss":
 			heading = StatusInfo.enemy_name(group)
-		if seen.has(heading) or float(rule.rate) <= 0:
+		if seen.has(heading) or TowerRules.base_rate(result, rule) <= 0.0:
 			continue
 		seen.append(heading)
 		var forms: PackedStringArray = group.get("forms", PackedStringArray())

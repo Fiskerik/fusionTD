@@ -4,7 +4,7 @@ extends RefCounted
 const CHECKPOINT: String = "user://survival_save.dat"
 const PROFILE: String = "user://profile.json"
 const REPLAY: String = "user://last_replay.json"
-const VERSION: int = 2
+const VERSION: int = 3
 const RECENT_LIMIT: int = 3
 
 static func encode(sim: Sim) -> Dictionary:
@@ -48,12 +48,14 @@ static func decode(payload: Variant) -> Sim:
 	sim.state = state
 	sim.refresh_boon()
 	_ascend_legacy_towers(state.towers)
-	var restore_trial: bool = version == 1 and state.phase == "build" and state.trial.is_empty() \
-		and sim.has_pre_boss_trial(int(state.wave)) and not sim.choices().is_empty()
+	var needs_pre_boss_trial: bool = version == 1 and sim.has_pre_boss_trial(int(state.wave))
+	var replaces_old_merchant: bool = version < 3 and int(state.wave) == 35 and sim.event_kind(35) == "spirit"
+	var restore_trial: bool = (needs_pre_boss_trial or replaces_old_merchant) and state.phase == "build" \
+		and state.trial.is_empty() and not sim.choices().is_empty()
 	if version == 1:
 		_upgrade_encounters(state, int(sim.cfg.boss_every))
-		if restore_trial:
-			state.selection_pending = true
+	if restore_trial:
+		state.selection_pending = true
 	var bosses_by_type: Dictionary = {}
 	if state.phase == "wave":
 		var late_game: bool = int(state.wave) > int(DataDB.read("waves").late_game.after)
@@ -63,6 +65,8 @@ static func decode(payload: Variant) -> Sim:
 	for enemy: Dictionary in state.mobs:
 		EnemyRules.apply_wave_traits(enemy, int(state.wave))
 		_retune_enemy(enemy, int(state.wave), bosses_by_type)
+		if version < 3:
+			_upgrade_active_special(enemy, state, sim.hz)
 	for entry: Dictionary in state.spawn_queue:
 		EnemyRules.apply_wave_traits(entry.group, int(state.wave))
 		_retune_enemy(entry.group, int(state.wave), bosses_by_type)
@@ -89,11 +93,29 @@ static func decode(payload: Variant) -> Sim:
 		_ascend_legacy_towers(restored.get("towers", {}))
 		if version == 1:
 			_upgrade_encounters(restored, int(sim.cfg.boss_every))
-			if restore_trial and restored.wave == state.wave and restored.phase == "build" and restored.trial.is_empty():
-				restored.selection_pending = true
+		if restore_trial and restored.wave == state.wave and restored.phase == "build" and restored.trial.is_empty():
+			restored.selection_pending = true
 		sim.undo_stack.append(restored)
 	sim.history.assign(payload.get("history", []))
 	return sim
+
+static func _upgrade_active_special(enemy: Dictionary, state: Dictionary, hz: float) -> void:
+	if enemy.kind == "bonus":
+		var remaining: float = float(enemy.hp) / maxf(1.0, float(enemy.max_hp))
+		enemy.max_hp = float(EnemyRules.courier_hits(state.towers.size()))
+		enemy.hp = clampf(ceilf(remaining * float(enemy.max_hp)), 1.0, float(enemy.max_hp))
+		enemy.armor = 0.0
+		enemy.speed = float(DataDB.read("waves").bonus_mob.speed)
+		enemy.dots = {}
+		enemy.erase("disease")
+	elif enemy.kind == "wizard":
+		var elapsed: int = int(state.tick) - int(enemy.born)
+		var previous_stand: int = EnemyRules.wizard_visible_ticks(enemy, hz)
+		var phase: int = elapsed % EnemyRules.wizard_cycle(enemy, hz)
+		enemy.visible_seconds = EnemyRules.wizard_visible_seconds(int(state.wave))
+		if phase >= previous_stand:
+			phase += EnemyRules.wizard_visible_ticks(enemy, hz) - previous_stand
+		enemy.born = int(state.tick) - phase
 
 static func _upgrade_encounters(state: Dictionary, first_boss: int) -> void:
 	var wave: int = state.wave

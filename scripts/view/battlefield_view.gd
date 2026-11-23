@@ -864,8 +864,8 @@ func _draw_enemy(enemy: Dictionary) -> void:
 			draw_circle(sparkle + direction.orthogonal() * offset, .051 - index * .009, Color("#fff1a1"), true, -1, true)
 	if enemy.kind == "wizard":
 		var age: int = int(sim.state.tick) - int(enemy.born)
-		var stand: int = Effects.ticks(DataDB.read("waves").wizard.visible_seconds, sim.hz)
-		var charge: float = float(age % EnemyRules.wizard_cycle(sim.hz)) / stand
+		var stand: int = EnemyRules.wizard_visible_ticks(enemy, sim.hz)
+		var charge: float = float(age % EnemyRules.wizard_cycle(enemy, sim.hz)) / stand
 		draw_arc(p + Vector2(0, .17), .36 + charge * .12, -.5 * PI, -.5 * PI + TAU * maxf(.02, charge),
 			28, Color("#da9df2"), .045, true)
 	var airborne: bool = EnemyRules.airborne(enemy)
@@ -908,7 +908,7 @@ func _draw_enemy(enemy: Dictionary) -> void:
 		p.y -= _flight_height()
 	if spirit:
 		p.y -= .08 + sin(elapsed * 5.5) * .065
-		_draw_spirit(p, direction, radius, tint, enemy.element, enemy.tier)
+		_draw_spirit(p, direction, radius, tint, enemy.element, enemy.tier, impact)
 	elif EnemyRules.burrowed(enemy, sim.track.total):
 		_draw_burrow(p, direction)
 	elif prismheart:
@@ -990,68 +990,27 @@ func _draw_status_icons(enemy: Dictionary, p: Vector2, radius: float) -> void:
 static func spirit_radius(tier: int) -> float:
 	return [.29, .42, .54][clampi(tier - 1, 0, 2)]
 
-func _draw_spirit(p: Vector2, direction: Vector2, r: float, tint: Color, element: String, tier: int) -> void:
-	var ink: Color = tint.darkened(.55)
-	var side: Vector2 = direction.orthogonal()
-	var pulse: float = (sin(elapsed * 6.0) + 1) * .5
-	var wing_reach: float = r * (1.08 + absf(sin(elapsed * 19)) * .66)
-	draw_circle(p, r * (1.31 + pulse * .13), Color(tint, .35))
-	for wing: float in [-1., 1.]:
-		var base: Vector2 = p + side * wing * r * .20
-		var tip: Vector2 = p + side * wing * wing_reach + direction * r * .61
-		var crescent: Vector2 = p + side * wing * wing_reach * .75 - direction * r * .47
-		draw_colored_polygon(PackedVector2Array([base, base + direction * r * .45, tip, crescent]), Color(tint.lightened(.55), .88))
-		draw_polyline(PackedVector2Array([base, tip, crescent]), Color(tint.darkened(.16), .62), .048)
-		if tier >= 2:
-			draw_colored_polygon(PackedVector2Array([base, crescent - direction * r * .55,
-				p - direction * r * .92 + side * wing * r * .55]), Color(tint, .78))
+func _draw_spirit(p: Vector2, direction: Vector2, r: float, tint: Color, element: String, tier: int, impact: float) -> void:
+	var aura: Color = Glyphs.hue(element)
+	var pulse: float = .5 + .5 * sin(elapsed * 5.3)
+	draw_circle(p, r * (1.00 + pulse * .14), Color(aura, .13 + .04 * tier), true, -1, true)
 	if tier >= 2:
-		for i: int in range(tier + 1):
-			var axis := Vector2.from_angle(elapsed * (1.9 if tier == 2 else -2.05) + TAU * i / float(tier + 1))
-			var mote: Vector2 = p + axis * r * 1.43
-			draw_circle(mote, .086, Color(tint, .38))
-			draw_circle(mote, .045, Color("#fffde0"))
-	if tier == 3:
-		_draw_spirit_crown(p, direction, r, tint, element)
-	draw_circle(p, r * .82, ink)
-	draw_circle(p - Vector2(0,.035), r * .72, tint)
-	draw_circle(p - Vector2(.03,.055), r * .50, tint.lightened(.57))
-	Glyphs.draw(self, element, p - Vector2(0,.034), r * .43, ink)
-	var tag: Vector2 = p + Vector2(r * .77, r * .64)
-	draw_circle(tag, r * .30 + .034, ink)
-	_caption(TowerRules.roman(tier), tag + Vector2(0, .055), .17 if tier < 3 else .21, Color("#fff3c9"))
-
-func _draw_spirit_crown(p: Vector2, direction: Vector2, r: float, tint: Color, element: String) -> void:
-	var angle: float = direction.angle()
-	draw_arc(p, r * 1.10, angle + .51, angle + TAU - .51, 34, tint.darkened(.36), .081)
-	var dark: Color = tint.darkened(.39)
-	match element:
-		"fire":
-			for i: int in range(4):
-				var flare: Vector2 = p + Vector2.from_angle(angle + .65 + i * 1.23) * r * 1.29
-				Glyphs.draw(self, "fire", flare, .24 + .04 * sin(elapsed * 8 + i), tint.darkened(.20))
-		"water", "dark":
-			var rotation: float = elapsed * (2.3 if element == "water" else -1.8)
-			for offset: float in [0., PI]:
-				draw_arc(p, r * 1.54, rotation + offset, rotation + offset + 1.37, 16, Color(tint, .77), .096)
-				var tail: Vector2 = p + Vector2.from_angle(rotation + offset + 1.37) * r * 1.54
-				Glyphs.draw(self, element, tail, .15, dark)
-		"nature", "light":
-			for i: int in range(6):
-				var branch := Vector2.from_angle(angle + TAU * i / 6.0)
-				draw_line(p + branch * r * .88, p + branch * r * 1.49, Color(tint, .83), .066)
-				Glyphs.draw(self, element, p + branch * r * 1.44, .14, dark)
-		"electric":
-			for sign_x: float in [-1., 1.]:
-				var axis: Vector2 = direction.orthogonal() * sign_x
-				draw_polyline(PackedVector2Array([p + axis * r * .70, p + axis * r * 1.30 - direction * r * .31,
-					p + axis * r * 1.30 + direction * r * .19, p + axis * r * 1.83 + direction * r * .38]), Color("#fff3a6"), .083)
-	for i: int in range(5):
-		var axis := Vector2.from_angle(angle + TAU * i / 5.0)
-		var point: Vector2 = p + axis * r * (1.10 + .10 * sin(elapsed * 6.0 + i))
-		Glyphs.draw(self, element, point, .155 if i == 0 else .108, dark)
-		draw_circle(point - axis * .09, .040, Color("#fff7c2"))
-	draw_arc(p, r * 1.29, elapsed * 1.7, elapsed * 1.7 + PI * .82, 17, Color("#fff6b9"), .065)
+		var spin: float = elapsed * 1.1
+		for offset: float in [0.0, PI]:
+			draw_arc(p, r * 1.30, spin + offset, spin + offset + 1.60, 20, Color(aura.lightened(.32), .72), .035, true)
+			if tier == 3:
+				draw_arc(p, r * 1.46, -spin + offset, -spin + offset + .97, 16, Color("#fff0b2", .76), .032, true)
+	var facing: float = -1.0 if direction.x + direction.y * .45 < 0.0 else 1.0
+	MobArt.draw_spirit(self, element, tier, p, r * 2.80, facing, Color.WHITE.lerp(tint.lightened(.40), impact * .45))
+	for index: int in range(tier + 2):
+		var age: float = fposmod(elapsed * 1.8 + float(index) / (tier + 2), 1.0)
+		var drift: float = sin(elapsed * 6.0 + index * 2.1) * r * .59
+		var spark: Vector2 = p - direction * r * (1.0 + age * 1.27) + direction.orthogonal() * drift
+		var glow: Color = Color(aura.lightened(.56), (1.0 - age) * .86)
+		_draw_polygon_base(spark, r * (.12 - age * .055), 4, elapsed + index, glow)
+	var tag: Vector2 = p + Vector2(r * .86, r * .81)
+	draw_circle(tag, .137, aura.darkened(.59), true, -1, true)
+	_caption(TowerRules.roman(tier), tag + Vector2(0, .052), .142 if tier == 3 else .154, Color("#fff3c9"))
 
 func _draw_status_ground(enemy: Dictionary, p: Vector2, direction: Vector2, r: float) -> void:
 	var ground: Vector2 = p + Vector2(0,.12)

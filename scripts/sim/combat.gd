@@ -3,6 +3,13 @@ extends RefCounted
 
 static func spawn(sim: RefCounted, group: Dictionary, distance: float) -> void:
 	var enemy: Dictionary = EnemyRules.create(sim.next_id(), group, distance, sim.state.tick)
+	if enemy.kind == "bonus":
+		enemy.max_hp = float(EnemyRules.courier_hits(sim.state.towers.size()))
+		enemy.hp = enemy.max_hp
+		enemy.armor = 0.0
+		enemy.speed = float(DataDB.read("waves").bonus_mob.speed)
+	elif enemy.kind == "wizard":
+		enemy.visible_seconds = EnemyRules.wizard_visible_seconds(int(sim.state.wave))
 	sim.state.mobs.append(enemy)
 	if enemy.kind == "petrifier":
 		_mark_towers(sim, enemy)
@@ -32,7 +39,7 @@ static func advance(sim: RefCounted) -> void:
 		var phased: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
 		var hidden: bool = EnemyRules.hidden(enemy, sim.track, sim.state.tick, sim.hz)
 		enemy.erase("bannered")
-		if not banners.is_empty() and not enemy.props.has("banner") and not EnemyRules.dispelled(enemy):
+		if not banners.is_empty() and enemy.kind != "bonus" and not enemy.props.has("banner") and not EnemyRules.dispelled(enemy):
 			var origin: Vector2 = sim.track.at(enemy.s)
 			for banner: Vector2 in banners:
 				if banner.distance_squared_to(origin) <= 2.25:
@@ -111,7 +118,7 @@ static func _mark_towers(sim: RefCounted, enemy: Dictionary) -> void:
 
 static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[Dictionary], ready: Array, exposed: Array, points: Dictionary) -> void:
 	var stats: Dictionary = TowerRules.stats(tower)
-	if float(stats.rate) == 0.0:
+	if TowerRules.base_rate(tower, stats) == 0.0:
 		return
 	var effective: Dictionary = sim.effective_tower(tower)
 	var boon: Dictionary = sim.tower_boon(effective)
@@ -177,7 +184,7 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			_reflect(sim, tower, victim)
 		if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
 			victim.silence_time = Effects.ticks(trait_profile.silence, sim.hz)
-		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick)
+		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick, true)
 		if adjusted > 0.0:
 			var effect_base: float = raw * scale if Damage.has_special_resistances(victim) else adjusted
 			Effects.apply(victim, trait_profile, potency, infused, tower.hits, effect_base, sim.hz, tower.id)
@@ -265,7 +272,7 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 		return
 	if EnemyRules.property(enemy, "mender") and int(enemy.heal_block_time) == 0:
 		for other: Dictionary in enemies:
-			if float(other.hp) > 0 and int(other.heal_block_time) == 0 and position.distance_to(sim.track.at(other.s)) <= float(rules.mender.radius):
+			if float(other.hp) > 0 and other.kind != "bonus" and int(other.heal_block_time) == 0 and position.distance_to(sim.track.at(other.s)) <= float(rules.mender.radius):
 				other.hp = minf(float(other.max_hp), float(other.hp) + float(other.max_hp) * float(rules.mender.heal))
 	if EnemyRules.property(enemy, "splitter"):
 		var child: Dictionary = EnemyRules.from_enemy(enemy)
@@ -309,7 +316,7 @@ static func _spread_elemental_dots(sim: RefCounted, enemy: Dictionary, enemies: 
 		return
 	var reach: float = burst.get("radius", 0.0)
 	for other: Dictionary in enemies:
-		if float(other.hp) <= 0.0 or EnemyRules.phased(other, sim.state.tick, sim.hz) or EnemyRules.hidden(other, sim.track, sim.state.tick, sim.hz):
+		if float(other.hp) <= 0.0 or other.kind == "bonus" or EnemyRules.phased(other, sim.state.tick, sim.hz) or EnemyRules.hidden(other, sim.track, sim.state.tick, sim.hz):
 			continue
 		var squared_distance: float = at.distance_squared_to(sim.track.at(other.s))
 		if burn_radius > 0.0 and squared_distance <= burn_radius * burn_radius and Damage.against_element("fire", other) > 0.0:
@@ -357,7 +364,7 @@ static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array
 			if enemy.get("heal_aura", false):
 				var late: Dictionary = DataDB.read("waves").late_game
 				for ally: Dictionary in sim.state.mobs:
-					if float(ally.hp) > 0.0 and int(ally.heal_block_time) == 0 and at.distance_to(sim.track.at(ally.s)) <= float(late.necromancer_radius):
+					if float(ally.hp) > 0.0 and ally.kind != "bonus" and int(ally.heal_block_time) == 0 and at.distance_to(sim.track.at(ally.s)) <= float(late.necromancer_radius):
 						ally.hp = minf(float(ally.max_hp), float(ally.hp) + float(ally.max_hp) * float(late.necromancer_heal))
 				sim.emit_event("boss_healed", {"s": enemy.s, "radius": late.necromancer_radius})
 				return
