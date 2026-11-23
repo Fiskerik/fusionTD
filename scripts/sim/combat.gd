@@ -19,7 +19,7 @@ static func advance(sim: RefCounted) -> void:
 	var enemies: Array = sim.state.mobs
 	var banners: Array[Vector2] = []
 	for enemy: Dictionary in enemies:
-		if float(enemy.hp) > 0.0 and EnemyRules.property(enemy, "banner"):
+		if float(enemy.hp) > 0.0 and not EnemyRules.dispelled(enemy) and EnemyRules.property(enemy, "banner"):
 			banners.append(sim.track.at(enemy.s))
 	var ice: Dictionary = sim.ice_tiles()
 	var cutoff: int = int(sim.state.tick) - Effects.ticks(sim.cfg.disease_lookback, sim.hz)
@@ -32,7 +32,7 @@ static func advance(sim: RefCounted) -> void:
 		var phased: bool = EnemyRules.phased(enemy, sim.state.tick, sim.hz)
 		var hidden: bool = EnemyRules.hidden(enemy, sim.track, sim.state.tick, sim.hz)
 		enemy.erase("bannered")
-		if not banners.is_empty() and not enemy.props.has("banner"):
+		if not banners.is_empty() and not enemy.props.has("banner") and not EnemyRules.dispelled(enemy):
 			var origin: Vector2 = sim.track.at(enemy.s)
 			for banner: Vector2 in banners:
 				if banner.distance_squared_to(origin) <= 2.25:
@@ -79,12 +79,17 @@ static func advance(sim: RefCounted) -> void:
 				sim.emit_event("tower_reflect_ended", {"slot": tower.slot})
 		tower.cooldown = maxi(0, int(tower.cooldown) - 1)
 		if int(tower.stun) == 0 and int(tower.cooldown) == 0 and not TowerRules.disabled(tower):
-			_attack(sim, tower, support_sources, exposed if tower.dual == "null" else ready, points)
+			_attack(sim, tower, support_sources, ready, exposed, points)
+	var fallen: Array = enemies.filter(func(enemy: Dictionary) -> bool: return float(enemy.hp) <= 0.0)
+	var index: int = 0
+	while index < fallen.size():
+		_kill(sim, fallen[index], enemies, by_id, fallen)
+		index += 1
 	var survivors: Array[Dictionary] = []
 	for enemy: Dictionary in enemies:
 		if float(enemy.hp) <= 0.0:
-			_kill(sim, enemy, enemies, by_id)
-		elif float(enemy.s) + 0.000001 >= sim.track.total:
+			continue
+		if float(enemy.s) + 0.000001 >= sim.track.total:
 			sim.lose_lives(enemy)
 		else:
 			survivors.append(enemy)
@@ -104,13 +109,14 @@ static func _mark_towers(sim: RefCounted, enemy: Dictionary) -> void:
 		tower.stone_pending = true
 		sim.emit_event("tower_stone_marked", {"slot": tower.slot, "s": enemy.s})
 
-static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[Dictionary], candidates: Array, points: Dictionary) -> void:
+static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[Dictionary], ready: Array, exposed: Array, points: Dictionary) -> void:
 	var stats: Dictionary = TowerRules.stats(tower)
 	if float(stats.rate) == 0.0:
 		return
 	var effective: Dictionary = sim.effective_tower(tower)
 	var boon: Dictionary = sim.tower_boon(effective)
 	var trait_profile: Dictionary = TowerRules.trait_profile(effective, sim.state.tiers, boon)
+	var candidates: Array = exposed if tower.dual == "null" or trait_profile.has("dispel") else ready
 	var profile: Dictionary = TowerRules.attack_profile(effective, sim.spirit_victories(), boon)
 	var at: Vector2 = sim.track.slots[tower.slot].position
 	var aura: Vector3 = sim.support_bonuses(tower, support_sources)
@@ -163,6 +169,8 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 			scale = pow(falloff, index - area_count + 1)
 		elif index > 0 and not pulse and anchor.distance_squared_to(points[victim.id]) > float(profile.splash_core) ** 2:
 			scale = float(profile.splash_fringe)
+		if trait_profile.has("dispel"):
+			Effects.dispel(victim, float(trait_profile.dispel) * potency, sim.hz)
 		var multiplier: float = Damage.against(split, victim, adaptive)
 		var adjusted: float = raw * multiplier * scale
 		if adjusted > 0.0 and victim.kind == "boss" and int(tower.get("reflect", 0)) == 0:
@@ -246,7 +254,7 @@ static func _best(candidates: Array, points: Dictionary, at: Vector2, radius: fl
 			score = value
 	return best
 
-static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dictionary) -> void:
+static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dictionary, fallen: Array) -> void:
 	var rules: Dictionary = DataDB.read("mobs").properties
 	var position: Vector2 = sim.track.at(enemy.s)
 	if EnemyRules.property(enemy, "revenant") and not enemy.revived and int(enemy.heal_block_time) == 0:
@@ -267,7 +275,7 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 	if enemy.dots.has("burn"):
 		var burn: Dictionary = enemy.dots.burn
 		var count: int = floori(float(burn.stacks) * 0.5)
-		if float(burn.spread) > 0 and count > 0:
+		if float(burn.spread) > 0 and count > 0 and int(burn.time) > 0:
 			for other: Dictionary in enemies:
 				if float(other.hp) > 0 and not EnemyRules.in_void(other, sim.state.tick, sim.hz) and position.distance_to(sim.track.at(other.s)) <= float(burn.spread):
 					Effects.add_dot(other, "burn", burn.dps, burn.cap, count, burn.time, burn.spread, burn.get("owners", []))
@@ -277,6 +285,7 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 		for other: Dictionary in enemies:
 			if float(other.hp) > 0 and not EnemyRules.phased(other, sim.state.tick, sim.hz) and not EnemyRules.in_void(other, sim.state.tick, sim.hz) and position.distance_squared_to(sim.track.at(other.s)) <= radius * radius:
 				Effects.infect(other, strain)
+	_spread_elemental_dots(sim, enemy, enemies, by_id, fallen, position)
 	var killer: Dictionary = by_id.get(int(enemy.get("kill_credit", -1)), {})
 	if not killer.is_empty():
 		killer.kills = int(killer.get("kills", 0)) + 1
@@ -290,6 +299,33 @@ static func _kill(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dic
 	sim.emit_event("mob_killed", {
 		"kind": enemy.kind, "boss": enemy.boss_type, "s": enemy.s, "element": enemy.element, "gold": enemy.gold,
 	})
+
+static func _spread_elemental_dots(sim: RefCounted, enemy: Dictionary, enemies: Array, by_id: Dictionary, fallen: Array, at: Vector2) -> void:
+	var burn: Dictionary = enemy.dots.get("searing_burn", {})
+	var burn_radius: float = burn.get("spread", 0.0) if int(burn.get("time", 0)) > 0 else 0.0
+	var burst: Dictionary = enemy.dots.get("poison", {}).get("burst", {})
+	var targets: int = burst.get("targets", 0)
+	if burn_radius == 0.0 and targets == 0:
+		return
+	var reach: float = burst.get("radius", 0.0)
+	for other: Dictionary in enemies:
+		if float(other.hp) <= 0.0 or EnemyRules.phased(other, sim.state.tick, sim.hz) or EnemyRules.hidden(other, sim.track, sim.state.tick, sim.hz):
+			continue
+		var squared_distance: float = at.distance_squared_to(sim.track.at(other.s))
+		if burn_radius > 0.0 and squared_distance <= burn_radius * burn_radius and Damage.against_element("fire", other) > 0.0:
+			Effects.ignite(other, burn.fraction, burn.hit, burn.time, burn_radius, int(burn.owners[0]))
+		if targets > 0 and squared_distance <= reach * reach:
+			var multiplier: float = Damage.against_element("nature", other)
+			if multiplier <= 0.0:
+				continue
+			targets -= 1
+			Damage.deal(other, float(burst.damage) * multiplier, by_id.get(int(burst.source), {}), sim.state.tick)
+			if float(other.hp) <= 0.0:
+				fallen.append(other)
+			else:
+				Effects.add_dot(other, "poison", float(burst.dps) * multiplier, 1, 1, burst.duration, 0.0, [burst.source])
+	if targets < int(burst.get("targets", 0)):
+		sim.emit_event("poison_burst", {"s": enemy.s, "radius": reach})
 
 static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array) -> void:
 	var data: Dictionary = DataDB.read("bosses")[enemy.boss_type]

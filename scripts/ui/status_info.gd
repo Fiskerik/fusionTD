@@ -2,10 +2,10 @@ class_name StatusInfo
 extends RefCounted
 
 const ICONS: Dictionary = {
-	"burn": "fire", "poison": "nature", "slow": "water", "freeze": "water",
+	"burn": "fire", "searing_burn": "fire", "poison": "nature", "slow": "water", "freeze": "water",
 	"root": "nature", "curse": "dark", "shred": "normal", "silence": "dark",
 	"heal_block": "light", "phasing": "phasing",
-	"disease": "dark", "slip": "water",
+	"disease": "dark", "slip": "water", "tenacity_shred": "earth", "paralysis": "electric", "dispel": "light",
 }
 const TRAITS: Dictionary = {
 	"swift": ["Swift", "Moves faster and has less health.", "electric"],
@@ -35,20 +35,20 @@ const TRAITS: Dictionary = {
 	"wizard": ["Void step", "Stays at each stop for %s seconds, then disappears for %s seconds before appearing at the next corner. Cannot be hit in the void.", "dark"],
 }
 const ACCENTS: Dictionary = {
-	"Burn": "#963c24", "Spreading": "#963c24", "Poison": "#436b26", "Root": "#436b26",
+	"Burn": "#963c24", "Searing": "#963c24", "Spreading": "#963c24", "Poison": "#436b26", "Root": "#436b26",
 	"Slow": "#1d6288", "Freeze": "#345597", "Curse": "#72478a", "Silence": "#72478a",
 	"Shred": "#845a2d", "Armor": "#845a2d", "Pierce": "#845a2d", "Chain": "#795d1b",
 	"Splash": "#32627b", "Stun": "#806019", "Heal": "#806019",
 	"Disease": "#6b437e", "Ice": "#205e8c", "Slip": "#205e8c", "Gate": "#39766b",
-	"Pure": "#1d6288",
+	"Pure": "#1d6288", "Tenacity": "#845a2d", "Paralysis": "#795d1b", "Dispel": "#806019",
 }
 
 static func active(enemy: Dictionary, tick: int, hz: float) -> PackedStringArray:
 	var result := PackedStringArray()
-	for dot: String in ["burn", "poison"]:
+	for dot: String in ["burn", "searing_burn", "poison"]:
 		if enemy.dots.has(dot):
 			result.append(dot)
-	for status: String in ["slow", "freeze", "root", "curse", "shred", "silence", "heal_block"]:
+	for status: String in ["slow", "freeze", "root", "curse", "shred", "silence", "heal_block", "paralysis", "dispel", "tenacity_shred"]:
 		if int(enemy.get(status + "_time", 0)) > 0:
 			result.append(status)
 	if int(enemy.get("slip_time", 0)) > 0:
@@ -115,7 +115,7 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 
 static func trait_title(id: String, enemy: Dictionary) -> String:
 	if id == "resistance":
-		return "%s tenacity" % TowerInspector.percent(float(enemy.control_resistance))
+		return "%s tenacity" % TowerInspector.percent(EnemyRules.effective_tenacity(enemy))
 	if id == "boss_guard":
 		return "%s damage reduction" % TowerInspector.percent(float(DataDB.read("bosses").damage_reduction))
 	return TRAITS[id][0]
@@ -145,8 +145,13 @@ static func trait_description(id: String, enemy: Dictionary = {}) -> String:
 
 static func state_value(enemy: Dictionary, id: String, tick: int, hz: float) -> String:
 	match id:
-		"slow", "curse":
+		"slow", "curse", "paralysis":
 			return TowerInspector.percent(enemy[id])
+		"tenacity_shred":
+			return "%s tenacity left" % TowerInspector.percent(EnemyRules.effective_tenacity(enemy))
+		"searing_burn":
+			var burn: Dictionary = enemy.dots.searing_burn
+			return "%s HP/s · %.1f s left" % [TowerInspector.number(burn.dps), float(burn.time) / hz]
 		"burn", "poison":
 			var dot: Dictionary = enemy.dots[id]
 			return "%d× · %s HP/s" % [dot.stacks, TowerInspector.number(float(dot.dps) * int(dot.stacks))]
@@ -184,7 +189,7 @@ static func describe_enemy(enemy: Dictionary, tick: int, hz: float) -> String:
 	if enemy.get("bannered", false):
 		lines.append("Banner rally · +20% movement speed")
 	for property_info: String in enemy_traits(enemy):
-		lines.append("%s · %s" % [trait_title(property_info, enemy), trait_description(property_info)])
+		lines.append("%s · %s" % [trait_title(property_info, enemy), trait_description(property_info, enemy)])
 	for id: String in active(enemy, tick, hz):
 		lines.append("%s · %s" % [title(id), description(id)])
 	return "\n".join(lines)

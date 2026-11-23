@@ -64,6 +64,8 @@
   "splash_core_ratio": 0.52,
   "splash_fringe_damage": 0.55,
   "disease_lookback": 4,
+  "max_hp_burn_special_dps_cap": 0.75,
+  "boss_minimum_tenacity": 0.25,
   "mob_hp_growth": 1.11,
   "mob_count_base": 6,
   "mob_count_per_wave": 1.2,

@@ -192,7 +192,9 @@ static func trait_profile(tower: Dictionary, unlocked: Dictionary, boon: Diction
 			if traits.has(effect):
 				traits[effect] = float(traits[effect]) * upgrade
 	if traits.has("burn"):
-		traits.burn[0] = maxi(1, int(traits.burn[0]) + roundi(float(boon.get("burn_stacks", 0))))
+		traits.burn[1] *= 1.0 + float(boon.get("burn_rate", 0.0))
+	if traits.has("searing_burn"):
+		traits.searing_burn[0] *= 1.0 + float(boon.get("burn_rate", 0.0))
 	if traits.has("slow"):
 		traits.slow[0] *= 1.0 + float(boon.get("slow", 0))
 	if traits.has("chain"):

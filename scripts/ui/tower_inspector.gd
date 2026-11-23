@@ -57,6 +57,14 @@ static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {})
 	if float(attack.splash) > 0:
 		lines.append("Splash · Full damage within %s tiles of impact and %s damage out to %s tiles." % [
 			number(attack.splash_core), percent(attack.splash_fringe), number(attack.splash)])
+	if traits.has("searing_burn"):
+		var burn: Array = traits.searing_burn
+		var cap: float = DataDB.read("balance").max_hp_burn_special_dps_cap
+		var text: String = "Searing burn · Deals %s of max HP per second for %s s. The strongest burn applies. Boss and Spirit damage is capped at %s of the hit per second." % [
+			percent(float(burn[0]) * potency), number(Effects.duration(burn[1], potency)), percent(cap)]
+		if float(burn[2]) > 0.0:
+			text += " Spreads within %s tiles on defeat." % number(burn[2])
+		lines.append(text)
 	for dot: String in ["burn", "poison"]:
 		if traits.has(dot):
 			var effect: Array = traits[dot]
@@ -65,6 +73,16 @@ static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {})
 				dot.capitalize(), percent(float(effect[1]) * potency), stacks, number(Effects.duration(effect[2], potency))])
 	if traits.has("spread") and not infused:
 		lines.append("Spreading burn · Burning enemies spread stacks on defeat within %s tiles." % number(traits.spread))
+	if traits.has("poison_burst"):
+		var burst: Dictionary = traits.poison_burst
+		lines.append("Poison burst · On defeat, deals %s of the hit to up to %d nearby enemies within %s tiles. Surviving enemies take half-strength poison for %s s." % [
+			percent(float(burst.damage) * potency), int(burst.max_targets), number(burst.radius), number(burst.duration)])
+	if traits.has("tenacity_shred"):
+		var shred: Array = traits.tenacity_shred
+		lines.append("Tenacity shred · Reduces status resistance by %s percentage points for %s s. Bosses retain at least %s." % [
+			number(float(shred[0]) * potency * 100.0), number(Effects.duration(shred[1], potency)), percent(DataDB.read("balance").boss_minimum_tenacity)])
+	if traits.has("dispel"):
+		lines.append("Dispel · Strips Phasing, Banner haste, and Chameleon immunity for %s s. Boss and Spirit traits stay active." % number(float(traits.dispel) * potency))
 	if traits.has("slow"):
 		lines.append("Slow · Reduces movement by up to %s for %s s. Spirits and bosses resist slows." % [
 			percent(_display_slow(traits.slow[0], potency)), number(Effects.slow_duration(traits.slow[1], potency))])
@@ -76,6 +94,10 @@ static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {})
 		var jumps: int = ceili(float(traits.chain[0]) * potency) if infused else roundi(float(traits.chain[0]) * potency)
 		lines.append("Chain · Jumps to %d additional enemies within %s tiles per jump. Each jump keeps %s damage." % [
 			jumps, number(Effects.chain_range(traits.chain[1], potency)), percent(Effects.chain_falloff(traits.chain[2], potency))])
+	if traits.has("paralysis"):
+		var paralysis: Array = traits.paralysis
+		lines.append("Paralysis · Every %d attacks, slows targets to %s speed for %s s before resistance. The strongest slow applies." % [
+			Effects.control_interval(paralysis[0], potency, infused, "paralysis"), percent(1.0 - float(paralysis[1])), number(Effects.duration(paralysis[2], potency))])
 	if traits.has("pierce"):
 		lines.append("Armor pierce · Ignores %s of armor." % percent(minf(.90, float(traits.pierce) * potency)))
 	if traits.has("curse"):
@@ -92,8 +114,8 @@ static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {})
 	if traits.has("cleanse") and not infused:
 		lines.append("Stun protection · Reduces stun duration by %s for towers within %s tiles." % [
 			percent(minf(1.0, float(traits.cleanse[0]) * potency)), number(traits.cleanse[1])])
-	if traits.has("heal_block") and not infused:
-		lines.append("Heal block · Prevents healing for %s s." % number(traits.heal_block))
+	if traits.has("heal_block"):
+		lines.append("Heal block · Prevents healing for %s s." % number(float(traits.heal_block) * (potency if infused else 1.0)))
 	if traits.has("shred"):
 		lines.append("Armor shred · Removes %s armor per stack for %s s, up to %d stacks." % [
 			number(float(traits.shred[0]) * potency), number(traits.shred[2]), roundi(float(traits.shred[1]) * potency)])
@@ -128,6 +150,14 @@ static func effect_entries(tower: Dictionary, tiers: Dictionary, boon: Dictionar
 			number(Effects.slow_duration(traits.slow[1], potency))]
 	if traits.has("curse"):
 		labels["Curse"] = "Curse %s" % percent(float(traits.curse[0]) * potency)
+	if traits.has("searing_burn"):
+		labels["Searing burn"] = "Burn %s max HP/s" % percent(float(traits.searing_burn[0]) * potency)
+	if traits.has("tenacity_shred"):
+		labels["Tenacity shred"] = "Tenacity −%s pp" % number(float(traits.tenacity_shred[0]) * potency * 100.0)
+	if traits.has("dispel"):
+		labels["Dispel"] = "Dispel %ss" % number(float(traits.dispel) * potency)
+	if traits.has("paralysis"):
+		labels["Paralysis"] = "Paralysis %ss" % number(Effects.duration(traits.paralysis[2], potency))
 	for key: String in ["burn", "poison"]:
 		if traits.has(key):
 			var effect: Array = traits[key]

@@ -2,9 +2,9 @@ class_name StatusVfx
 extends RefCounted
 
 const TRAIL_STYLES: Dictionary = {
-	"burn": Color("#f57a41"), "poison": Color("#6eae43"),
+	"burn": Color("#f57a41"), "searing_burn": Color("#f57a41"), "poison": Color("#6eae43"),
 	"slow": Color("#57a9cd"), "freeze": Color("#83cfea"), "curse": Color("#a266b5"),
-	"disease": Color("#9859bb"), "slip": Color("#b9f5ff"),
+	"disease": Color("#9859bb"), "slip": Color("#b9f5ff"), "paralysis": Color("#ecd567"),
 }
 const MAX_TRAILS: int = 112
 const MAX_BURSTS: int = 64
@@ -83,7 +83,7 @@ func draw_floor(canvas: CanvasItem) -> void:
 			"slow", "freeze", "slip":
 				canvas.draw_arc(p, .09 + t * .14, .19, 2.93, 12, Color(tint, (1.0 - t) * .77), .041)
 				_diamond(canvas, p + Vector2(.057,-.038), .062 * (1.0 - t), Color("#eefaff", (1.0 - t) * .83))
-			"burn":
+			"burn", "searing_burn":
 				canvas.draw_circle(p, .08 + t * .08, Color("#8c634c", (1.0 - t) * .33))
 				canvas.draw_circle(p - Vector2(.03,t * .16), .044 * (1.0 - t) + .015, Color("#ffa754", (1.0 - t) * .85))
 				canvas.draw_circle(p + Vector2(t * .085,-t * .29), .055 + t * .047, Color("#876d61", sin(t * PI) * .28))
@@ -104,7 +104,7 @@ func draw_bursts(canvas: CanvasItem) -> void:
 			var direction := Vector2.from_angle(TAU * i / 5.0 + .45)
 			var dot: Vector2 = p + direction * reach - Vector2(0,t * .18)
 			match status:
-				"slow", "freeze", "phasing", "slip":
+				"slow", "freeze", "phasing", "slip", "paralysis", "dispel":
 					_diamond(canvas, dot, .076 * (1.0 - t) + .026, Color(tint.lightened(.26), alpha))
 				"root":
 					Glyphs.draw(canvas, "nature", dot, .079, Color(tint.darkened(.30), alpha))

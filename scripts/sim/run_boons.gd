@@ -2,9 +2,9 @@ class_name RunBoons
 extends RefCounted
 
 const LIMITS: Dictionary = {"damage": .45, "rate": .35, "range": .35, "effect": .30, "splash": .35,
-	"slow": .25, "pierce": .25, "burn_stacks": 6, "chain": 3, "fusion_discount": .25, "clear_gold": .20}
+	"slow": .25, "pierce": .25, "burn_rate": .30, "chain": 3, "fusion_discount": .25, "clear_gold": .20}
 const LABELS: Dictionary = {"damage": "damage", "rate": "attack speed", "range": "range", "effect": "effect potency",
-	"splash": "splash radius", "slow": "slow strength", "pierce": "armor pierce", "burn_stacks": "burn stacks",
+	"splash": "splash radius", "slow": "slow strength", "pierce": "armor pierce", "burn_rate": "burn damage",
 	"chain": "chain jumps", "fusion_discount": "fusion discount", "clear_gold": "wave-clear gold"}
 
 static func offers(seed_value: int, reward: Dictionary, active_boon: Dictionary, tiers: Dictionary) -> PackedStringArray:
@@ -62,7 +62,7 @@ static func reward_potency(boss_kills: int) -> float:
 
 static func amount(mod: Dictionary, potency: float) -> float:
 	var value: float = float(mod.amount) * potency
-	if mod.stat in ["burn_stacks", "chain"]:
+	if mod.stat == "chain":
 		value = roundf(value)
 	return limited(mod.stat, value)
 
@@ -99,7 +99,7 @@ static func describe(boon: Dictionary, potency: float) -> String:
 		var value: float = amount(mod, potency)
 		var percentage: float = snappedf(absf(value) * 100.0, .01)
 		var percent_text: String = str(roundi(percentage)) if is_equal_approx(percentage, roundf(percentage)) else String.num(percentage, 2)
-		var unit: String = str(roundi(absf(value))) if mod.stat in ["burn_stacks", "chain"] else percent_text + "%"
+		var unit: String = str(roundi(absf(value))) if mod.stat == "chain" else percent_text + "%"
 		var label: String = tag_name(mod.scope)
 		var prefix: String = label + " " if not label.is_empty() else ""
 		lines.append("%s%s%s %s" % [prefix, "+" if value >= 0.0 else "−", unit, LABELS[mod.stat]])

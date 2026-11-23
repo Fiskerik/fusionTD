@@ -77,7 +77,8 @@ static func move(enemy: Dictionary, track: Track, hz: float, skid: float) -> voi
 		return
 	var from: float = enemy.s
 	var pace: float = 1.20 if enemy.get("bannered", false) else 1.0
-	var to: float = from + float(enemy.speed) * (1.0 - float(enemy.slow)) * skid * pace / hz
+	var slow: float = maxf(float(enemy.slow), float(enemy.get("paralysis", 0.0)))
+	var to: float = from + float(enemy.speed) * (1.0 - slow) * skid * pace / hz
 	if enemy.has("turn_seconds"):
 		var corner: int = track.corner_crossed(from, to)
 		if corner >= 0:
@@ -115,6 +116,14 @@ static func control_resistance(wave: int) -> float:
 	var rules: Dictionary = DataDB.read("waves").control_resistance
 	return clampf((wave - int(rules.from) + 1) * float(rules.per_wave), 0.0, float(rules.cap))
 
+static func effective_tenacity(enemy: Dictionary) -> float:
+	var base: float = enemy.get("control_resistance", 0.0)
+	var floor_value: float = minf(base, float(DataDB.read("balance").boss_minimum_tenacity)) if enemy.kind == "boss" else 0.0
+	return maxf(floor_value, base - float(enemy.get("tenacity_shred", 0.0)))
+
+static func dispelled(enemy: Dictionary) -> bool:
+	return int(enemy.get("dispel_time", 0)) > 0
+
 static func apply_wave_traits(enemy: Dictionary, wave: int) -> void:
 	if enemy.kind == "spirit":
 		return
@@ -146,7 +155,7 @@ static func from_enemy(enemy: Dictionary) -> Dictionary:
 	return group
 
 static func phased(enemy: Dictionary, tick: int, hz: float) -> bool:
-	if not enemy.props.has("phasing") or int(enemy.silence_time) > 0:
+	if not enemy.props.has("phasing") or int(enemy.silence_time) > 0 or dispelled(enemy):
 		return false
 	var data: Dictionary = DataDB.read("mobs").properties.phasing
 	var age: int = tick - int(enemy.born)

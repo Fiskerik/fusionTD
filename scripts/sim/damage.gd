@@ -49,7 +49,7 @@ static func against_element(element: String, enemy: Dictionary) -> float:
 	return matchup(element, enemy.element, enemy.get("weakness", ""))
 
 static func adapt(enemy: Dictionary, split: Dictionary, adaptive: bool) -> void:
-	if not EnemyRules.property(enemy, "chameleon"):
+	if EnemyRules.dispelled(enemy) or not EnemyRules.property(enemy, "chameleon"):
 		return
 	var options: Dictionary = {"light": 1.0, "dark": 1.0} if adaptive else split
 	var strongest: float = 0.0

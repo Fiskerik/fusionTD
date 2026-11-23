@@ -103,6 +103,103 @@ func test_prismheart_and_stormwing_keep_their_speed_and_health_nerf_on_resume() 
 		near(rebalanced.speed, boss.speed)
 		equal(rebalanced.reflect_wave, wave)
 
+func test_max_hp_burn_is_nonstacking_caps_bosses_and_spreads_based_on_recipient_hp() -> void:
+	var sim := Sim.new()
+	var set_fire: Dictionary = DataDB.read("elements").fire.effects[0]
+	var enemy: Dictionary = EnemyRules.create(1, _enemy(), 0.0, 0)
+	Effects.apply(enemy, set_fire, 1.0, false, 1, 20.0, sim.hz, 1)
+	Effects.apply(enemy, set_fire, 1.0, false, 1, 35.0, sim.hz, 2)
+	equal(enemy.dots.searing_burn.stacks, 1)
+	equal(enemy.dots.searing_burn.time, 150)
+	for tick: int in range(150):
+		Effects.tick(enemy, sim.hz)
+	near(enemy.hp, 750.0)
+	check(not enemy.dots.has("searing_burn"))
+	for kind: String in ["boss", "spirit"]:
+		var special: Dictionary = _enemy()
+		special.kind = kind
+		special.hp = 50000.0
+		var boss: Dictionary = EnemyRules.create(1, special, 0.0, 0)
+		Effects.apply(boss, set_fire, 1.0, false, 1, 20.0, sim.hz, 1)
+		near(boss.dots.searing_burn.dps, 15.0)
+	sim.state.phase = "wave"
+	Combat.spawn(sim, _enemy(), 10.0)
+	var tougher: Dictionary = _enemy()
+	tougher.hp = 2000.0
+	Combat.spawn(sim, tougher, 10.3)
+	var target: Dictionary = sim.state.mobs[0]
+	Effects.apply(target, DataDB.read("elements").fire.effects[1], 1.0, false, 1, 20.0, sim.hz, 1)
+	target.hp = 0.0
+	sim.step()
+	near(sim.state.mobs[0].dots.searing_burn.dps, 120.0)
+
+func test_nature_burst_spreads_poison_and_credits_collateral_deaths() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	var nature: Dictionary = TowerRules.create(sim.next_id(), "s1", "pure", "nature", "", 110)
+	nature.cooldown = 300
+	sim.state.towers.s1 = nature
+	for distance: float in [10.2, 10.0, 9.8, 10.4, 10.6, 15.0]:
+		Combat.spawn(sim, _enemy(), distance)
+	var dying: Dictionary = sim.state.mobs[1]
+	var neighbor: Dictionary = sim.state.mobs[2]
+	var beyond_limit: Dictionary = sim.state.mobs[4]
+	sim.state.mobs[0].hp = 5.0
+	Effects.apply(dying, DataDB.read("elements").nature.effects[2], 1.0, false, 1, 100.0, sim.hz, int(nature.id))
+	dying.hp = 0.0
+	sim.step()
+	equal(sim.state.mobs.size(), 4)
+	equal(nature.kills, 1)
+	near(nature.damage_dealt, 105.0)
+	near(neighbor.hp, 950.0)
+	near(neighbor.dots.poison.dps, 18.0)
+	check(not neighbor.dots.poison.has("burst"))
+	check(not beyond_limit.dots.has("poison"))
+	check(sim.events.any(func(event: Dictionary) -> bool: return event.type == "poison_burst"))
+
+func test_earth_tenacity_shred_amplifies_control_and_paralysis_respects_slows() -> void:
+	var sim := Sim.new()
+	var enemy: Dictionary = EnemyRules.create(1, _enemy(), 0.0, 0)
+	enemy.control_resistance = .5
+	Effects.apply(enemy, DataDB.read("elements").earth.effects[1], 1.0, false, 1, 0.0, sim.hz)
+	near(EnemyRules.effective_tenacity(enemy), .38)
+	Effects.apply(enemy, {"slow": [.5, 2.0]}, 1.0, false, 1, 0.0, sim.hz)
+	near(enemy.slow, .31)
+	var boss: Dictionary = EnemyRules.create(2, Waves.generate(1, 40).boss, 0.0, 0)
+	Effects.apply(boss, DataDB.read("elements").earth.effects[2], 1.3, false, 1, 0.0, sim.hz)
+	near(EnemyRules.effective_tenacity(boss), .25)
+	var runner_enemy: Dictionary = EnemyRules.create(3, _enemy(), 0.0, 0)
+	runner_enemy.speed = 1.0
+	var lightning: Dictionary = DataDB.read("elements").electric.effects[1]
+	Effects.apply(runner_enemy, lightning, 1.0, false, 3, 0.0, sim.hz)
+	check(not runner_enemy.has("paralysis"))
+	Effects.apply(runner_enemy, lightning, 1.0, false, 4, 0.0, sim.hz)
+	equal(runner_enemy.paralysis_time, 30)
+	EnemyRules.move(runner_enemy, sim.track, 1.0, 1.0)
+	near(runner_enemy.s, .9)
+	runner_enemy.slow = .2
+	EnemyRules.move(runner_enemy, sim.track, 1.0, 1.0)
+	near(runner_enemy.s, 1.7)
+
+func test_tier_two_light_breaks_an_active_ward_and_adaptation() -> void:
+	var sim := Sim.new()
+	sim.state.phase = "wave"
+	sim.state.tiers.light = 2
+	var light: Dictionary = TowerRules.create(sim.next_id(), "s1", "pure", "light", "", 130)
+	light.level = 3
+	sim.state.towers.s1 = light
+	Combat.spawn(sim, _enemy(["phasing", "chameleon", "thief"]), 10.0)
+	var enemy: Dictionary = sim.state.mobs[0]
+	enemy.immune_element = "light"
+	sim.state.tick = 149
+	check(EnemyRules.phased(enemy, 150, sim.hz))
+	sim.step()
+	check(EnemyRules.dispelled(enemy))
+	check(not EnemyRules.phased(enemy, 150, sim.hz))
+	check(not enemy.has("immune_element"))
+	check(float(enemy.hp) < 1000.0)
+	check(EnemyRules.property(enemy, "thief"))
+
 func test_road_stone_pushes_occupants_and_stops_followers_until_it_expires() -> void:
 	var sim := Sim.new()
 	sim.state.phase = "wave"

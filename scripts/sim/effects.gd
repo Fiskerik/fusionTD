@@ -5,8 +5,10 @@ const SLIDE_SPEED: float = 1.45
 const STUMBLE_SPEED: float = .15
 
 static func tick(mob: Dictionary, hz: float, invulnerable: bool = false, towers: Dictionary = {}, at_tick: int = -1) -> void:
-	for status: String in ["slow", "curse", "shred", "freeze", "root", "silence", "heal_block"]:
+	for status: String in ["slow", "curse", "shred", "freeze", "root", "silence", "heal_block", "dispel", "tenacity_shred", "paralysis"]:
 		var key: String = status + "_time"
+		if not mob.has(key):
+			continue
 		mob[key] = maxi(0, int(mob[key]) - 1)
 		if int(mob[key]) == 0 and mob.has(status):
 			mob[status] = 0
@@ -21,7 +23,7 @@ static func tick(mob: Dictionary, hz: float, invulnerable: bool = false, towers:
 		if not invulnerable and float(mob.hp) > 0.0:
 			_tick_dot(mob, type, dot, hz, towers, at_tick)
 		dot.time -= 1
-		if int(dot.time) <= 0:
+		if int(dot.time) <= 0 and float(mob.hp) > 0.0:
 			mob.dots.erase(type)
 	if mob.has("disease"):
 		var disease: Dictionary = mob.disease
@@ -35,7 +37,7 @@ static func _tick_dot(mob: Dictionary, type: String, dot: Dictionary, hz: float,
 	var owners: Array = dot.get("owners", [])
 	var stacks: int = int(dot.stacks)
 	var first: int = -1 if owners.is_empty() else int(owners[0])
-	var element: String = "fire" if type == "burn" else "nature"
+	var element: String = "nature" if type == "poison" else "fire"
 	if mob.get("immune_element", "") == element and EnemyRules.property(mob, "chameleon"):
 		return
 	var per_stack: float = float(dot.dps) / hz * Damage.special_matchup(element, mob)
@@ -49,16 +51,35 @@ static func _tick_dot(mob: Dictionary, type: String, dot: Dictionary, hz: float,
 			break
 
 static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, infusion: bool, hit_number: int, raw: float, hz: float, source: int = -1) -> void:
+	if trait_profile.has("searing_burn"):
+		var burn: Array = trait_profile.searing_burn
+		ignite(mob, float(burn[0]) * potency, raw, ticks(duration(burn[1], potency), hz), burn[2], source)
 	for type: String in ["burn", "poison"]:
 		if trait_profile.has(type):
 			var effect: Array = trait_profile[type]
 			var stacks: int = ceili(float(effect[0]) * potency) if infusion else roundi(float(effect[0]) * potency)
 			var spread: float = float(trait_profile.get("spread", 0.0)) if not infusion and type == "burn" else 0.0
-			add_dot(mob, type, raw * float(effect[1]) * potency, stacks, 1, ticks(duration(effect[2], potency), hz), spread, [source])
+			var dps: float = raw * float(effect[1]) * potency
+			add_dot(mob, type, dps, stacks, 1, ticks(duration(effect[2], potency), hz), spread, [source])
+			if type == "poison" and trait_profile.has("poison_burst"):
+				var rule: Dictionary = trait_profile.poison_burst
+				var hit: float = raw * float(rule.damage) * potency
+				var poison: Dictionary = mob.dots.poison
+				if hit >= float(poison.get("burst", {}).get("damage", 0.0)):
+					poison.burst = {"damage": hit, "dps": dps * .5, "source": source, "radius": rule.radius,
+						"targets": rule.max_targets, "duration": ticks(rule.duration, hz)}
+	if trait_profile.has("tenacity_shred"):
+		var shred: Array = trait_profile.tenacity_shred
+		timed(mob, "tenacity_shred", float(shred[0]) * potency, ticks(duration(shred[1], potency), hz))
 	if trait_profile.has("slow") and mob.kind not in ["bonus", "wizard"]:
 		var strength: float = minf(float(mob.slow_cap), slow_strength(trait_profile.slow[0], potency))
-		strength *= 1.0 - float(mob.get("control_resistance", 0.0))
+		strength *= 1.0 - EnemyRules.effective_tenacity(mob)
 		timed(mob, "slow", strength, ticks(slow_duration(trait_profile.slow[1], potency), hz))
+	if trait_profile.has("paralysis") and mob.kind not in ["bonus", "wizard"]:
+		var paralysis: Array = trait_profile.paralysis
+		if hit_number % control_interval(paralysis[0], potency, infusion, "paralysis") == 0:
+			var strength: float = minf(float(mob.slow_cap), float(paralysis[1])) * (1.0 - EnemyRules.effective_tenacity(mob))
+			timed(mob, "paralysis", strength, ticks(duration(paralysis[2], potency), hz))
 	if trait_profile.has("curse"):
 		timed(mob, "curse", float(trait_profile.curse[0]) * potency, ticks(duration(trait_profile.curse[1], potency), hz))
 	if trait_profile.has("shred"):
@@ -66,8 +87,9 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 		mob.shred_stacks = stacks
 		mob.shred = float(trait_profile.shred[0]) * stacks * potency
 		mob.shred_time = ticks(trait_profile.shred[2], hz)
-	if trait_profile.has("heal_block") and not infusion:
-		mob.heal_block_time = maxi(mob.heal_block_time, ticks(trait_profile.heal_block, hz))
+	if trait_profile.has("heal_block"):
+		var seconds: float = float(trait_profile.heal_block) * (potency if infusion else 1.0)
+		mob.heal_block_time = maxi(mob.heal_block_time, ticks(seconds, hz))
 	if trait_profile.has("disease"):
 		var rules: Dictionary = trait_profile.disease
 		var lifetime: int = ticks(duration(rules.duration, potency), hz)
@@ -86,7 +108,7 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 static func _apply_hard_control(mob: Dictionary, effect: String, seconds: float, hz: float) -> void:
 	if mob.kind == "wizard" or mob.has("control_recovery") or (effect == "root" and EnemyRules.airborne(mob)):
 		return
-	var resistance: float = float(mob.get("control_resistance", 0.0))
+	var resistance: float = EnemyRules.effective_tenacity(mob)
 	var key: String = effect + "_time"
 	mob[key] = maxi(int(mob[key]), ticks(seconds * (1.0 - resistance), hz))
 	if resistance > 0.0:
@@ -121,13 +143,32 @@ static func slip_speed(mob: Dictionary) -> float:
 	var left: int = int(mob.get("slip_time", 0))
 	if left <= 0:
 		return 1.0
-	return SLIDE_SPEED if left > int(mob.slip_stumble) else lerpf(STUMBLE_SPEED, 1.0, float(mob.get("control_resistance", 0.0)))
+	return SLIDE_SPEED if left > int(mob.slip_stumble) else lerpf(STUMBLE_SPEED, 1.0, EnemyRules.effective_tenacity(mob))
 
 static func timed(mob: Dictionary, status: String, strength: float, duration: int) -> void:
 	var key: String = status + "_time"
-	if strength >= float(mob[status]):
-		mob[key] = maxi(int(mob[key]) if strength == float(mob[status]) else 0, duration)
+	var previous: float = mob.get(status, 0.0)
+	if strength > 0.0 and strength >= previous:
+		mob[key] = maxi(int(mob.get(key, 0)) if strength == previous else 0, duration)
 		mob[status] = strength
+
+static func dispel(mob: Dictionary, seconds: float, hz: float) -> void:
+	if mob.kind in ["boss", "spirit"]:
+		return
+	if not mob.get("bannered", false) and not mob.props.has("banner") and not mob.props.has("phasing") and not mob.props.has("chameleon"):
+		return
+	mob.erase("bannered")
+	mob.erase("immune_element")
+	mob.dispel_time = maxi(int(mob.get("dispel_time", 0)), ticks(seconds, hz))
+
+static func ignite(mob: Dictionary, fraction: float, hit: float, time: int, spread: float, source: int) -> void:
+	var dps: float = float(mob.max_hp) * fraction
+	if mob.kind in ["boss", "spirit"]:
+		dps = minf(dps, hit * float(DataDB.read("balance").max_hp_burn_special_dps_cap))
+	var active: Dictionary = mob.dots.get("searing_burn", {})
+	if dps >= float(active.get("dps", 0.0)) and time > 0:
+		mob.dots.searing_burn = {"dps": dps, "stacks": 1, "owners": [source], "fraction": fraction,
+			"hit": hit, "spread": spread, "time": maxi(time, int(active.get("time", 0)))}
 
 static func add_dot(mob: Dictionary, type: String, dps: float, cap: int, count: int, duration: int, spread: float, sources: Array = []) -> void:
 	var dot: Dictionary = mob.dots.get(type, {"stacks": 0, "cap": 0, "time": 0, "dps": 0.0, "spread": 0.0})
@@ -152,6 +193,9 @@ static func inherit_sources(mobs: Array, first: int, second: int, replacement: i
 			for index: int in range(owners.size()):
 				if int(owners[index]) in [first, second]:
 					owners[index] = replacement
+			var burst: Dictionary = dot.get("burst", {})
+			if int(burst.get("source", -1)) in [first, second]:
+				burst.source = replacement
 
 static func ticks(seconds: float, hz: float) -> int:
 	return ceili(seconds * hz)

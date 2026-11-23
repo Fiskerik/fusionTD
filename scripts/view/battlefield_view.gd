@@ -187,6 +187,8 @@ func animate(event: Dictionary) -> void:
 			var tile: Vector2i = data.tile
 			bursts.append({"at": sim.track.road_tiles[tile], "color": Color("#d2c1a1"),
 				"time": .55, "max": .55, "radius": .72})
+		"poison_burst":
+			bursts.append({"at": sim.track.at(data.s), "color": Color("#a4d753"), "time": .53, "max": .53, "radius": data.radius})
 		"wizard_portal":
 			bursts.append({"at": sim.track.at(data.s), "color": Color("#e3a9ff") if data.arrived else Color("#734ca1"),
 				"time": .64, "max": .64, "radius": .80})
@@ -1090,7 +1092,7 @@ func _draw_status_ground(enemy: Dictionary, p: Vector2, direction: Vector2, r: f
 			draw_circle(mote - Vector2(0,.022), .030, Color("#f2c4fc"))
 
 func _draw_status_glints(enemy: Dictionary, p: Vector2, r: float) -> void:
-	if enemy.dots.has("burn"):
+	if enemy.dots.has("burn") or enemy.dots.has("searing_burn"):
 		for i: int in range(3):
 			var fade: float = fposmod(elapsed * 2.2 + i * .34, 1.0)
 			var spark: Vector2 = p + Vector2((i - 1) * r * .77, r * .20 - fade * (r + .20))

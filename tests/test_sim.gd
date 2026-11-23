@@ -791,11 +791,11 @@ func test_upgrade_bands_and_infusion() -> void:
 	equal(sim.apply(infusion).cost, 100)
 	check(not sim.apply(infusion).ok)
 	var tower: Dictionary = sim.state.towers.s2
-	check("7.88%" in TowerInspector.effects(tower, sim.state.tiers)[0], "The inspector shows the real infused burn potency")
+	check(TowerInspector.percent(.02625) in TowerInspector.effects(tower, sim.state.tiers)[0], "The inspector shows the real infused burn potency")
 	var view := BattlefieldView.new()
 	equal(view._tower_color(tower), Glyphs.hue("fire"), "Infused tower uses its element color")
 	view.free()
-	equal(TowerRules.trait_profile(tower, sim.state.tiers).burn[0], 5.0)
+	near(TowerRules.trait_profile(tower, sim.state.tiers).searing_burn[0], .05)
 	for level: int in range(2, 7):
 		if level == 3 or level == 5:
 			check(not sim.apply(pure).ok)
@@ -806,7 +806,7 @@ func test_upgrade_bands_and_infusion() -> void:
 	for level: int in range(2, 7):
 		var tier: int = [0, 1, 1, 2, 2, 3][level - 1]
 		equal(TowerRules.infusion_tier(tower.level, 3), tier)
-		equal(TowerRules.trait_profile(tower, sim.state.tiers).burn[0], [0.0, 5.0, 8.0, 12.0][tier])
+		near(TowerRules.trait_profile(tower, sim.state.tiers).searing_burn[0], [0.0, .05, .06, .075][tier])
 		if level < 6:
 			check(sim.apply(arrow).ok)
 	check(not sim.apply(arrow).ok)
