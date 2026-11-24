@@ -4,7 +4,7 @@ extends RefCounted
 const CHECKPOINT: String = "user://survival_save.dat"
 const PROFILE: String = "user://profile.json"
 const REPLAY: String = "user://last_replay.json"
-const VERSION: int = 3
+const VERSION: int = 4
 const RECENT_LIMIT: int = 3
 
 static func encode(sim: Sim) -> Dictionary:
@@ -28,6 +28,8 @@ static func decode(payload: Variant) -> Sim:
 			state = state.duplicate()
 			state[key] = false
 	state = state.duplicate()
+	state.erase("swap_tokens")
+	state.erase("wave_swaps")
 	state.map_id = String(state.get("map_id", Track.LEGACY))
 	state.active_boon = state.get("active_boon", _legacy_boon(state.get("boons", [])))
 	state.erase("boons")
@@ -44,7 +46,7 @@ static func decode(payload: Variant) -> Sim:
 			return null
 	state.tiers = state.tiers.duplicate()
 	state.tiers.merge(sim.state.tiers)
-	state.boon_queue = _boss_rewards(state.boon_queue, int(state.stats.get("bosses_defeated", 0)))
+	state.boon_queue = _boss_rewards(state.boon_queue)
 	sim.state = state
 	sim.refresh_boon()
 	_ascend_legacy_towers(state.towers)
@@ -60,20 +62,23 @@ static func decode(payload: Variant) -> Sim:
 	if state.phase == "wave":
 		var late_game: bool = int(state.wave) > int(DataDB.read("waves").late_game.after)
 		for boss: Dictionary in sim.preview(state.wave).bosses:
-			if late_game or boss.boss_type in ["prismheart", "tempest"]:
+			if late_game or DataDB.read("bosses").opening_health.has(str(state.wave)) or boss.boss_type in ["prismheart", "tempest"]:
 				bosses_by_type[boss.boss_type] = boss
+	var legacy_speed_scale: float = Waves.speed_scale(int(state.wave)) if version < 4 else 1.0
 	for enemy: Dictionary in state.mobs:
-		EnemyRules.apply_wave_traits(enemy, int(state.wave))
+		EnemyRules.apply_wave_traits(enemy, int(state.wave), legacy_speed_scale)
 		_retune_enemy(enemy, int(state.wave), bosses_by_type)
 		if version < 3:
 			_upgrade_active_special(enemy, state, sim.hz)
 	for entry: Dictionary in state.spawn_queue:
-		EnemyRules.apply_wave_traits(entry.group, int(state.wave))
+		EnemyRules.apply_wave_traits(entry.group, int(state.wave), legacy_speed_scale)
 		_retune_enemy(entry.group, int(state.wave), bosses_by_type)
 	var countdown: float = sim.breather()
 	sim.intermission_left = clampf(float(payload.get("intermission_left", countdown)), 0, countdown)
 	for snapshot: Dictionary in payload.get("undo", []):
 		var restored: Dictionary = snapshot.duplicate()
+		restored.erase("swap_tokens")
+		restored.erase("wave_swaps")
 		restored.map_id = state.map_id
 		restored.merge(sim.tactical_defaults())
 		restored.run_mode = state.run_mode
@@ -86,7 +91,7 @@ static func decode(payload: Variant) -> Sim:
 				restored.tiers[element] = 0
 		restored.active_boon = restored.get("active_boon", _legacy_boon(restored.get("boons", [])))
 		restored.erase("boons")
-		restored.boon_queue = _boss_rewards(restored.get("boon_queue", []), int(restored.get("stats", {}).get("bosses_defeated", 0)))
+		restored.boon_queue = _boss_rewards(restored.get("boon_queue", []))
 		restored.barrier = int(restored.get("barrier", 0))
 		restored.wave_has_rolled_weaknesses = bool(restored.get("wave_has_rolled_weaknesses", false))
 		restored.wave_uses_expanded_boss_roster = bool(restored.get("wave_uses_expanded_boss_roster", false))
@@ -159,14 +164,13 @@ static func _legacy_boon(picks: Variant) -> Dictionary:
 	var wave: int = int(pick.wave)
 	return {"id": pick.id, "wave": wave, "potency": 1.0 + .20 * clampi((wave - 1) / 20, 0, 4)}
 
-static func _boss_rewards(queue: Array, boss_kills: int) -> Array:
-	var rewards: Array = queue.filter(func(reward: Variant) -> bool: return reward is Dictionary and reward.get("source") == "boss")
-	var first_kill: int = boss_kills - rewards.size() + 1
-	for index: int in range(rewards.size()):
-		if not rewards[index].has("potency"):
-			var reward: Dictionary = rewards[index].duplicate()
-			reward.potency = RunBoons.reward_potency(first_kill + index)
-			rewards[index] = reward
+static func _boss_rewards(queue: Array) -> Array:
+	var rewards: Array = []
+	for saved: Variant in queue:
+		if saved is Dictionary and saved.get("source") == "boss":
+			var reward: Dictionary = saved.duplicate()
+			reward.potency = RunBoons.reward_potency(int(reward.wave))
+			rewards.append(reward)
 	return rewards
 
 static func _ascend_legacy_towers(towers: Dictionary) -> void:

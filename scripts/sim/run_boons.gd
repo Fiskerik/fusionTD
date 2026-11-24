@@ -57,8 +57,9 @@ static func modifiers(active_boon: Dictionary) -> Dictionary:
 		scopes[mod.scope] = stats
 	return scopes
 
-static func reward_potency(boss_kills: int) -> float:
-	return 1.0 + .10 * clampi(boss_kills - 1, 0, 8)
+static func reward_potency(wave: int) -> float:
+	var steps: float = maxf(0.0, (wave - 10) / 10.0)
+	return 1.0 + .10 * minf(steps, 9.0) + .04 * maxf(0.0, steps - 9.0)
 
 static func amount(mod: Dictionary, potency: float) -> float:
 	var value: float = float(mod.amount) * potency
@@ -96,14 +97,25 @@ static func tags(boon: Dictionary) -> PackedStringArray:
 static func describe(boon: Dictionary, potency: float) -> String:
 	var lines := PackedStringArray()
 	for mod: Dictionary in boon.mods:
-		var value: float = amount(mod, potency)
-		var percentage: float = snappedf(absf(value) * 100.0, .01)
-		var percent_text: String = str(roundi(percentage)) if is_equal_approx(percentage, roundf(percentage)) else String.num(percentage, 2)
-		var unit: String = str(roundi(absf(value))) if mod.stat == "chain" else percent_text + "%"
 		var label: String = tag_name(mod.scope)
 		var prefix: String = label + " " if not label.is_empty() else ""
-		lines.append("%s%s%s %s" % [prefix, "+" if value >= 0.0 else "−", unit, LABELS[mod.stat]])
+		lines.append("%s%s %s" % [prefix, signed_value(mod.stat, amount(mod, potency)), LABELS[mod.stat]])
 	return "\n".join(lines)
+
+static func signed_value(stat: String, value: float) -> String:
+	var percentage: float = snappedf(absf(value) * 100.0, .01)
+	var unit: String = str(roundi(percentage)) if is_equal_approx(percentage, roundf(percentage)) else String.num(percentage, 2)
+	unit = str(roundi(absf(value))) if stat == "chain" else unit + "%"
+	return ("+" if value >= 0.0 else "−") + unit
+
+static func stat_icon(stat: String) -> String:
+	match stat:
+		"rate", "slow": return "speed"
+		"damage", "burn_rate": return "damage"
+		"pierce": return "armor"
+		"clear_gold", "fusion_discount": return "gold"
+		"range", "splash": return stat
+	return "boon"
 
 static func tag_name(scope: String) -> String:
 	match scope:

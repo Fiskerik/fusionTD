@@ -69,7 +69,7 @@ static func draw(canvas: CanvasItem, enemy: Dictionary, p: Vector2, direction: V
 	var center: Vector2 = p + Vector2(sway * r, -r * (.13 + lift)) - direction * impact * .07
 	var rect := Rect2(center - span * .5, span)
 	rect.size.x *= facing
-	var wash: Color = Color.WHITE.lerp(tint, .30 if enemy.element != "none" else .09)
+	var wash: Color = Color.WHITE.lerp(tint, .46 if enemy.element != "none" else .09)
 	var rank: int = int(enemy.get("armor_rank", 0))
 	if rank > 0:
 		wash = wash.lerp(CAMPAIGN_TINTS[rank - 1], .34)

@@ -74,6 +74,8 @@ static func attack_profile(tower: Dictionary, victories: Dictionary = {}, boon: 
 	damage *= upgrade * boost * (1.0 + crystal_damage_bonus(tower)) * (1.0 + float(boon.get("damage", 0.0)))
 	var splash_level: int = 5 if tower.kind == "ascended" else level
 	var splash: float = float(rule.get("splash", 0.0)) + float(rule.get("splash_per_level", 0.0)) * splash_level
+	if tower.kind == "pure" and tower.element == "nature" and int(tower.level) <= int(config.pure_caps[1]):
+		splash = 0.0
 	if tower.infusion == "earth":
 		splash += .72 + .08 * level
 	splash *= upgrade * (1.0 + float(boon.get("splash", 0.0)))
@@ -202,6 +204,18 @@ static func infusion_tier(level: int, unlocked: int) -> int:
 
 static func infusion_cost(tier: int) -> int:
 	return Economy.scaled(DataDB.read("balance").infusion.cost, tier)
+
+static func projectile_count(tower: Dictionary, traits: Dictionary) -> int:
+	var by_level: Array = stats(tower).get("projectiles", [])
+	var own_count: int = 1 if by_level.is_empty() else int(by_level[int(tower.level) - 1])
+	return maxi(own_count, int(traits.get("projectiles", 1)))
+
+static func ricochet(tower: Dictionary) -> Dictionary:
+	var rule: Dictionary = stats(tower).get("ricochet", {})
+	if rule.is_empty():
+		return {}
+	var jumps: int = int(rule.jumps[int(tower.level) - 1])
+	return {"jumps": jumps, "range": rule.range, "retention": rule.retention} if jumps > 0 else {}
 
 static func trait_profile(tower: Dictionary, unlocked: Dictionary, boon: Dictionary = {}) -> Dictionary:
 	var traits: Dictionary = _base_traits(tower, unlocked)

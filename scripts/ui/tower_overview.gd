@@ -232,6 +232,18 @@ func _render_detail() -> void:
 	var role: String = TowerRules.stats(tower).get("role", DataDB.read("elements").get(tower.element, {}).get("role", ""))
 	if not role.is_empty():
 		details.add_child(UIKit.label(role, 15, UIKit.MUTED, true))
+	if tower.kind == "pure":
+		var tiers: HBoxContainer = UIKit.row(4)
+		details.add_child(tiers)
+		for tier: int in range(1, 4):
+			var first: int = int(sim.cfg.pure_caps[tier - 1]) + 1
+			var unlocked: bool = int(sim.state.tiers[tower.element]) >= tier
+			var active: bool = rank >= first and rank <= int(sim.cfg.pure_caps[tier])
+			var button: Button = UIKit.button("Tier " + TowerRules.roman(tier), _set_rank.bind(first), active, 38)
+			button.name = "ElementTier%d" % tier
+			button.add_theme_font_size_override("font_size", 16)
+			button.tooltip_text = "Unlocked" if unlocked else "Preview locked tier"
+			tiers.add_child(button)
 	var levels: int = TowerRules.progression(tower).damage.size()
 	if levels > 1:
 		var ranks: HBoxContainer = UIKit.row(4)
@@ -251,6 +263,7 @@ func _render_detail() -> void:
 	var all_tiers: Dictionary = sim.state.tiers.duplicate()
 	for id: String in DataDB.ELEMENTS:
 		all_tiers[id] = 3
+	TowerInspector.add_effect_boons(stat_row, sim.tower_boon(tower), TowerRules.trait_profile(tower, all_tiers))
 	if float(profile.rate) > 0.0:
 		var traits: Dictionary = TowerRules.trait_profile(tower, all_tiers)
 		details.add_child(UIKit.label(TowerInspector.damage_type(tower, traits), 15, UIKit.MINT, true))

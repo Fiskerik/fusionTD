@@ -72,6 +72,7 @@ class ForecastPortrait extends Control:
 
 class UtilityIcon extends Control:
 	var kind: String
+	const STONE_ART: Texture2D = preload("res://assets/woodland/road-boulder.webp")
 
 	func _draw() -> void:
 		var p: Vector2 = size * .5
@@ -109,6 +110,24 @@ class UtilityIcon extends Control:
 			draw_circle(p, 7.2, UIKit.UPGRADE, true, -1, true)
 			draw_circle(p, 5.6, UIKit.GOLD, true, -1, true)
 			draw_line(p + Vector2(0, -3.4), p + Vector2(0, 3.4), UIKit.UPGRADE, 1.5, true)
+		elif kind == "stone":
+			draw_texture_rect(STONE_ART, Rect2(p - Vector2(12, 12), Vector2(24, 24)), false)
+		elif kind == "crystal":
+			var tip: Vector2 = p + Vector2(0, -9)
+			var left: Vector2 = p + Vector2(-6, -2)
+			var right: Vector2 = p + Vector2(6, -2)
+			var base: Vector2 = p + Vector2(0, 8)
+			draw_colored_polygon(PackedVector2Array([tip, right, base, left]), Color("#83dbef"))
+			draw_colored_polygon(PackedVector2Array([tip, p + Vector2(2, -2), base, left]), Color("#c1f9fa"))
+			draw_line(tip, p + Vector2(2, -2), Color.WHITE, 1.3, true)
+			draw_polyline(PackedVector2Array([tip, right, base, left, tip]), Color("#2b7c86"), 1.3, true)
+		elif kind == "boon":
+			var rays := PackedVector2Array()
+			for index: int in range(8):
+				rays.append(p + Vector2.from_angle(index * TAU / 8.0) * (9.0 if index % 2 == 0 else 3.0))
+			draw_colored_polygon(rays, UIKit.GOLD)
+			rays.append(rays[0])
+			draw_polyline(rays, UIKit.UPGRADE, 1.2, true)
 		elif kind == "info":
 			draw_arc(p, 10, 0, TAU, 26, ink, 1.9, true)
 			draw_circle(p + Vector2(0,-4), 1.30, ink, true, -1, true)
@@ -126,7 +145,7 @@ class UtilityIcon extends Control:
 				draw_line(p + Vector2(side * 3,-3), p + Vector2(side * 7,-5), ink, 1.5, true)
 
 static func stat_value(kind: String, value: String, hint: String, font_size: int, tint: Color,
-		support: String = "") -> HBoxContainer:
+		support: String = "", boon: String = "") -> HBoxContainer:
 	var item: HBoxContainer = row(3)
 	item.name = kind.capitalize()
 	item.tooltip_text = hint
@@ -138,16 +157,20 @@ static func stat_value(kind: String, value: String, hint: String, font_size: int
 	var amount: Label = label(value, font_size, tint)
 	amount.name = "Value"
 	item.add_child(amount)
-	if not support.is_empty():
-		var bonus: Label = label(support, font_size, Color("#28754f"))
-		bonus.name = "SupportBonus"
+	for entry: Array in [[support, "Support", Color("#28754f"), Color("#ecf5df"), Color("#ccdfbd")],
+			[boon, "Boon", UPGRADE, Color("#fff0c1"), Color("#e4c682")]]:
+		if String(entry[0]).is_empty():
+			continue
+		var bonus: Label = label(entry[0], font_size, entry[2])
+		bonus.name = entry[1] + "Bonus"
 		bonus.add_theme_font_override("font", heading())
-		var background: StyleBoxFlat = style(Color("#ecf5df"), Color("#ccdfbd"), 7, 1)
+		var background: StyleBoxFlat = style(entry[3], entry[4], 7, 1)
 		background.content_margin_left = 4
 		background.content_margin_right = 4
 		bonus.add_theme_stylebox_override("normal", background)
 		item.add_child(bonus)
-		item.tooltip_text += " · Support " + support
+		item.tooltip_text += " · %s %s" % [entry[1], entry[0]]
+	item.mouse_filter = Control.MOUSE_FILTER_PASS
 	return item
 
 static func icon_button(kind: String, hint: String, callback: Callable, height: int = 45) -> Button:

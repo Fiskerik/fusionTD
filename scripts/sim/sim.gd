@@ -73,15 +73,7 @@ func breather() -> float:
 
 func tactical_defaults() -> Dictionary:
 	return {"stone_blocks": int(cfg.stone_blocks), "stone": {}, "stone_last_wave": 0,
-		"stone_ready_tick": 0, "swap_tokens": int(cfg.swap_tokens), "wave_swaps": {}, "last_interest": 0}
-
-func effective_tower(tower: Dictionary) -> Dictionary:
-	var element: String = state.wave_swaps.get(tower.kind, "")
-	if element.is_empty() or element == tower.infusion:
-		return tower
-	var current: Dictionary = tower.duplicate()
-	current.infusion = element
-	return current
+		"stone_ready_tick": 0, "last_interest": 0}
 
 func stone_cooldown() -> int:
 	return ceili(maxf(0.0, float(int(state.stone_ready_tick) - int(state.tick))) / hz)
@@ -147,8 +139,7 @@ func tower_boon(tower: Dictionary) -> Dictionary:
 	return RunBoons.for_tower(tower, _boon_modifiers)
 
 func tower_profile(tower: Dictionary) -> Dictionary:
-	var effective: Dictionary = effective_tower(tower)
-	return TowerRules.attack_profile(effective, spirit_victories(), tower_boon(effective))
+	return TowerRules.attack_profile(tower, spirit_victories(), tower_boon(tower))
 
 func wave_matchups(summary: Dictionary) -> Dictionary:
 	var groups: Array = summary.groups + summary.bosses
@@ -156,10 +147,9 @@ func wave_matchups(summary: Dictionary) -> Dictionary:
 		groups.append(summary.spirit)
 	var good: Array[Dictionary] = []
 	var weak: Array[Dictionary] = []
-	for original: Dictionary in ordered_towers():
-		if TowerRules.disabled(original) or TowerRules.base_rate(original, TowerRules.stats(original)) <= 0.0:
+	for tower: Dictionary in ordered_towers():
+		if TowerRules.disabled(tower) or TowerRules.base_rate(tower, TowerRules.stats(tower)) <= 0.0:
 			continue
-		var tower: Dictionary = effective_tower(original) if int(summary.wave) == int(state.wave) else original
 		var boon: Dictionary = tower_boon(tower)
 		var profile: Dictionary = TowerRules.attack_profile(tower, spirit_victories(), boon)
 		var effects: Dictionary = TowerRules.trait_profile(tower, state.tiers, boon)
@@ -212,7 +202,7 @@ func record_boss_kill(finale: bool = false) -> void:
 		state.finale_defeated = true
 		return
 	state.boon_queue.append({"source": "boss", "wave": int(state.wave), "index": state.boon_queue.size(),
-		"potency": RunBoons.reward_potency(boss_kills)})
+		"potency": RunBoons.reward_potency(int(state.wave))})
 
 func choices() -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
@@ -261,7 +251,7 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 	var reason: String = ""
 	if state.phase == "game_over":
 		return {"ok": false, "reason": DataDB.text("ended"), "cost": 0}
-	if state.phase == "wave" and type not in ["build", "build_pure", "upgrade", "empower_pure", "sell", "move", "infuse", "remove_infusion", "fuse", "set_target", "rally", "place_stone", "swap_element"]:
+	if state.phase == "wave" and type not in ["build", "build_pure", "upgrade", "empower_pure", "sell", "move", "infuse", "remove_infusion", "fuse", "set_target", "rally", "place_stone"]:
 		return {"ok": false, "reason": DataDB.text("between_waves"), "cost": 0}
 	match type:
 		"place_stone":
@@ -275,15 +265,6 @@ func describe(action: Dictionary, ignore_affordability: bool = false) -> Diction
 				reason = "One stone block per wave."
 			elif stone_cooldown() > 0:
 				reason = "Stone block ready in %ds." % stone_cooldown()
-		"swap_element":
-			var kind: String = action.get("kind", "")
-			var element: String = action.get("element", "")
-			if kind not in ["arrow", "cannon"] or int(state.tiers.get(element, 0)) <= 0:
-				reason = "Choose an unlocked element."
-			elif int(state.swap_tokens) == 0:
-				reason = "No swap tokens left."
-			elif state.wave_swaps.get(kind, "") == element:
-				reason = "That element is already active."
 		"build", "build_pure":
 			var kind: String = action.get("kind", "")
 			var pure_tower: bool = type == "build_pure"
@@ -418,7 +399,7 @@ func apply(action: Dictionary) -> Dictionary:
 	var slot: String = action.get("slot", action.get("slot_a", ""))
 	var tower: Dictionary = state.towers.get(slot, {})
 	history.append({"tick": int(state.tick), "action": action.duplicate(true)})
-	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon", "swap_element", "continue_act", "bank_run", "merchant"]:
+	if state.phase == "build" and type not in ["undo", "start_wave", "set_target", "choose_boon", "keep_boon", "continue_act", "bank_run", "merchant"]:
 		undo_stack.append(state.duplicate(true))
 		if undo_stack.size() > int(cfg.undo_limit):
 			undo_stack.pop_front()
@@ -426,11 +407,6 @@ func apply(action: Dictionary) -> Dictionary:
 	match type:
 		"place_stone":
 			_place_stone(action.tile)
-		"swap_element":
-			undo_stack.clear()
-			state.swap_tokens -= 1
-			state.wave_swaps[action.kind] = action.element
-			emit_event("element_swapped", {"kind": action.kind, "element": action.element})
 		"build":
 			var kind: String = action.kind
 			var pure: bool = DataDB.ELEMENTS.has(kind)
@@ -610,7 +586,6 @@ func _start_wave() -> void:
 
 func _finish_wave() -> void:
 	state.stone = {}
-	state.wave_swaps = {}
 	for tower: Dictionary in state.towers.values():
 		tower.erase("reflect")
 	if event_kind(state.wave) == "finale":

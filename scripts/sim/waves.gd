@@ -4,6 +4,9 @@ extends RefCounted
 static func unit_cap() -> int:
 	return int(DataDB.read("waves").unit_cap)
 
+static func speed_scale(wave: int) -> float:
+	return float(DataDB.read("waves").adjustments.get(str(wave), {}).get("speed_scale", 1.0))
+
 static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_weaknesses: bool = true,
 		expanded_roster: bool = true, campaign_track: Track = null, pacing: String = "") -> Dictionary:
 	if not trial.is_empty():
@@ -44,6 +47,7 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 		var boss_hp: float = hp * float(bosses.health_multiplier)
 		if wave >= int(health_adjustment.from):
 			boss_hp *= float(health_adjustment.multiplier)
+		boss_hp *= float(bosses.opening_health.get(str(wave), 1.0))
 		var boss_count: int = 1 if late_waves == 0 or not finale.is_empty() else (3 if wave >= int(late.third_boss_from) else 2)
 		boss_hp *= float(late.boss_health_scale_by_count[boss_count - 1])
 		boss_hp *= float(finale.get("health_scale", 1.0))
@@ -81,14 +85,13 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 	hp *= 1.0 + maxi(0, wave - int(veterans.from) + 1) * float(veterans.hp_per_wave)
 	var element: String = "none"
 	var secondary: String = "none"
-	var mixed: bool = wave >= int(rules.mixed_elements_from)
-	if mixed or (wave >= int(rules.elemental_from) and rng.take(100) < roundi(float(rules.elemental_chance) * 100)):
+	var affinity_rng := SimRng.new(rng.state ^ 0x47af21)
+	if wave >= int(rules.elemental_from) and affinity_rng.take(100) < roundi(float(rules.elemental_chance) * 100):
 		var pool_size: int = DataDB.ELEMENTS.size() if wave >= int(rules.all_elements_from) else 4
-		var index: int = rng.take(pool_size)
+		var index: int = affinity_rng.take(pool_size)
 		element = DataDB.ELEMENTS[index]
-		if mixed:
-			secondary = DataDB.ELEMENTS[(index + 1 + rng.take(pool_size - 1)) % pool_size]
-	var elemental_share: float = rules.mixed_elemental_fraction if mixed else rules.elemental_fraction
+		if wave >= int(rules.mixed_elements_from) and affinity_rng.take(100) < roundi(float(rules.mixed_elements_chance) * 100):
+			secondary = DataDB.ELEMENTS[(index + 1 + affinity_rng.take(pool_size - 1)) % pool_size]
 	var groups: Array[Dictionary] = []
 	var remaining: int = count
 	for index: int in range(pattern.groups.size()):
@@ -110,11 +113,11 @@ static func generate(seed_value: int, wave: int, trial: Dictionary = {}, roll_we
 		var menders: int = floori(float(size) / float(pattern.mender_per)) if pattern.has("mender_per") else 0
 		var normal: Dictionary = _group(wave, size - menders, props, hp, gold, elite)
 		normal.interval = int(pattern.get("interval", rules.interval))
-		_add_group(groups, normal, element, secondary, elemental_share, index)
+		_add_group(groups, normal, element, secondary, rules.secondary_element_share)
 		if menders > 0:
 			var support: Dictionary = _group(wave, menders, ["mender"], hp, gold, false)
 			support.interval = int(rules.interval)
-			_add_group(groups, support, element, secondary, elemental_share, index + 1)
+			_add_group(groups, support, element, secondary, rules.secondary_element_share)
 	var scheduled_cap: int = floori(float(unit_cap()) * float(tuning.get("count_scale", 1.0)))
 	_limit_groups(groups, scheduled_cap - (1 if include_bonus else 0))
 	if campaign_track != null:
@@ -293,22 +296,21 @@ static func _group(wave: int, count: int, props: Array, hp: float, gold: int, el
 		speed *= 1.0 + minf(float(pressure.speed_cap), harder_waves * float(pressure.speed_per_wave))
 	return {
 		"kind": "grunt", "element": "none", "props": props, "count": count, "hp": hp * float(base.health_multiplier),
-		"armor": armor * float(base.armor_multiplier), "speed": speed, "gold": ceili(reward), "leak": int(DataDB.read("balance").leak.mob),
+		"armor": armor * float(base.armor_multiplier), "speed": speed * speed_scale(wave), "gold": ceili(reward), "leak": int(DataDB.read("balance").leak.mob),
 		"slow_cap": float(base.slow_cap), "family": families[family_index % families.size()],
 		"season": floori(float(wave - 1) / families.size()) % 3,
 		"armor_rank": EnemyRules.armor_rank(wave), "control_resistance": EnemyRules.control_resistance(wave),
 	}
 
-static func _add_group(groups: Array[Dictionary], group: Dictionary, element: String, secondary: String, fraction: float, index: int) -> void:
-	var elemental: int = floori(int(group.count) * fraction) if element != "none" else 0
-	group.count = int(group.count) - elemental
-	if int(group.count) > 0:
-		groups.append(group)
-	var second_count: int = 0 if secondary == "none" else floori((elemental + (index % 2)) / 2.0)
-	for part: Array in [[element, elemental - second_count], [secondary, second_count]]:
-		if int(part[1]) <= 0:
-			continue
+static func _add_group(groups: Array[Dictionary], group: Dictionary, element: String, secondary: String, share: float) -> void:
+	if int(group.count) <= 0:
+		return
+	group.element = element
+	var second_count: int = 0 if secondary == "none" else floori(int(group.count) * share)
+	group.count -= second_count
+	groups.append(group)
+	if second_count > 0:
 		var variant: Dictionary = group.duplicate()
-		variant.element = part[0]
-		variant.count = part[1]
+		variant.element = secondary
+		variant.count = second_count
 		groups.append(variant)

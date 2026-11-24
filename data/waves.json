@@ -17,13 +17,14 @@
   },
   "elemental_from": 6,
   "all_elements_from": 16,
-  "elemental_chance": 0.5,
-  "elemental_fraction": 0.5,
+  "elemental_chance": 0.90,
   "mixed_elements_from": 11,
-  "mixed_elemental_fraction": 0.65,
+  "mixed_elements_chance": 0.14,
+  "secondary_element_share": 0.35,
   "adjustments": {
     "44": {"count_scale": 0.65},
-    "48": {"hp_scale": 0.78, "count_scale": 0.92}
+    "48": {"hp_scale": 0.78, "count_scale": 0.92},
+    "51": {"speed_scale": 0.86}
   },
   "health_boost": {"from": 10, "multiplier": 1.20},
   "bonus_mob": {"chance_percent": 5, "gold_share": 0.4, "hits_per_tower": 3, "speed": 1.85},
@@ -43,9 +44,11 @@
     "armor_per_wave": 0.65,
     "third_boss_from": 90,
     "boss_spacing_seconds": 6,
-    "boss_health_scale_by_count": [1.0, 0.55, 0.43],
+    "boss_health_scale_by_count": [1.0, 0.52, 0.43],
     "boss_armor_scale_by_count": [1.0, 0.75, 0.67],
-    "necromancer_heal": 0.10,
+    "necromancer_heal": 0.025,
+    "necromancer_self_heal": 0.01,
+    "necromancer_self_heal_cap": 0.04,
     "necromancer_radius": 3.0
   },
   "veterans": {"from": 41, "hp_per_wave": 0.016, "armor_per_wave": 0.35},

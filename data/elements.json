@@ -54,15 +54,14 @@
     "name": "Nature",
     "color": "#a6df76",
     "weak": "fire",
-    "role": "Poison and root",
+    "role": "Poison. Adds splash and roots at Tier II.",
     "effects": [
       {
         "poison": [
           1,
           0.16,
           4
-        ],
-        "root": [7, 0.45]
+        ]
       },
       {
         "poison": [
@@ -125,7 +124,7 @@
     "name": "Light",
     "color": "#fff1c7",
     "weak": "dark",
-    "role": "Armor pierce and enemy buff dispel",
+    "role": "Armor pierce. Dispel and heal block at Tier II.",
     "effects": [
       {
         "pierce": 0.3
@@ -133,6 +132,7 @@
       {
         "pierce": 0.45,
         "dispel": 1.75,
+        "heal_block": 2.25,
         "cleanse": [
           0.5,
           2.5
@@ -141,6 +141,7 @@
       {
         "pierce": 0.6,
         "dispel": 2.75,
+        "heal_block": 3.0,
         "cleanse": [
           1,
           2.5
@@ -156,13 +157,13 @@
     "effects": [
       {
         "curse": [
-          0.12,
+          0.08,
           3
         ]
       },
       {
         "curse": [
-          0.224,
+          0.20,
           3.6
         ]
       },
@@ -180,14 +181,15 @@
     "color": "#dba15c",
     "weak": "nature",
     "fixed_weakness": true,
-    "role": "Heavy splash that weakens status resistance at higher tiers",
+    "role": "Heavy splash. Weakens status resistance at Tier II and fires two projectiles at Tier III.",
     "effects": [
       {},
       {
         "tenacity_shred": [0.12, 3]
       },
       {
-        "tenacity_shred": [0.22, 4]
+        "tenacity_shred": [0.22, 4],
+        "projectiles": 2
       }
     ]
   }

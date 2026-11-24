@@ -10,7 +10,8 @@
   "spawn_tick": 60,
   "health_multiplier": 0.9,
   "health_adjustment": {"from": 20, "multiplier": 0.8},
-  "control_resistance": 0.5,
+  "opening_health": {"10": 1.10, "20": 1.12},
+  "control_resistance": 0.45,
   "damage_reduction": 0.25,
   "reflect": [
     {"from_wave": 60, "active_seconds": 5, "disable_seconds": 5, "cooldown_seconds": 5, "targets": 2},
@@ -47,6 +48,7 @@
     "armor": 10,
     "speed": 0.5,
     "period": 300,
+    "rebirth": {"wave": 30, "threshold": 0.25, "cast_seconds": 1.0},
     "count": 2,
     "cap": 4,
     "hp": 0.5

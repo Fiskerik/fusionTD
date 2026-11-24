@@ -21,6 +21,7 @@ static func create(id: int, group: Dictionary, distance: float, born: int) -> Di
 	if group.has("turn_seconds"):
 		enemy.turn_seconds = group.turn_seconds
 	if group.kind == "boss":
+		enemy.control_resistance = float(DataDB.read("bosses").control_resistance)
 		enemy.reflect_wave = int(group.get("reflect_wave", 1))
 	if group.get("finale", false):
 		enemy.finale = true
@@ -35,6 +36,9 @@ static func reflect_rule(wave: int) -> Dictionary:
 
 static func is_first_boss(enemy: Dictionary) -> bool:
 	return enemy.get("boss_type", "") == "warlock" and int(enemy.get("reflect_wave", 0)) == int(DataDB.read("balance").boss_every)
+
+static func has_rebirth(enemy: Dictionary) -> bool:
+	return enemy.get("boss_type", "") == "necromancer" and int(enemy.get("reflect_wave", 0)) == int(DataDB.read("bosses").necromancer.rebirth.wave)
 
 static func reflect_window_start(enemy: Dictionary, tick: int, hz: float, rule: Dictionary) -> int:
 	if is_first_boss(enemy) and enemy.has("reflect_ready_tick"):
@@ -132,15 +136,18 @@ static func effective_tenacity(enemy: Dictionary) -> float:
 static func dispelled(enemy: Dictionary) -> bool:
 	return int(enemy.get("dispel_time", 0)) > 0
 
-static func apply_wave_traits(enemy: Dictionary, wave: int) -> void:
+static func apply_wave_traits(enemy: Dictionary, wave: int, speed_scale: float = 1.0) -> void:
 	if enemy.kind == "spirit":
 		return
+	if enemy.kind not in ["boss", "bonus", "wizard"] and speed_scale != 1.0:
+		enemy.speed *= speed_scale
 	if not enemy.has("armor_rank"):
 		enemy.armor_rank = armor_rank(wave)
 	if not enemy.has("control_resistance") and enemy.kind != "boss":
 		enemy.control_resistance = control_resistance(wave)
 	if enemy.kind == "boss":
 		var bosses: Dictionary = DataDB.read("bosses")
+		enemy.control_resistance = float(bosses.control_resistance)
 		enemy.reflect_wave = int(enemy.get("reflect_wave", wave))
 		if enemy.boss_type == "ram" and enemy.has("turn_seconds"):
 			var previous: float = enemy.turn_seconds
@@ -153,7 +160,6 @@ static func apply_wave_traits(enemy: Dictionary, wave: int) -> void:
 		if enemy.element == "none":
 			enemy.element = bosses[enemy.boss_type].element
 			enemy.slow_cap = float(DataDB.read("mobs").slow_cap)
-			enemy.control_resistance = float(bosses.control_resistance)
 		if not enemy.has("heal_aura"):
 			enemy.heal_aura = enemy.boss_type == "necromancer" and wave > int(DataDB.read("waves").late_game.after)
 

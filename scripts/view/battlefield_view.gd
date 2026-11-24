@@ -48,7 +48,7 @@ var status_vfx := StatusVfx.new()
 
 const MEADOW: Texture2D = preload("res://assets/woodland/greenmarch-meadow.webp")
 const CASTLE_HORIZON: Texture2D = preload("res://assets/woodland/greenmarch-horizon.webp")
-const CASTLE_GATE: Texture2D = preload("res://assets/woodland/greenmarch-gate.webp")
+const CASTLE: Texture2D = preload("res://assets/woodland/greenmarch-castle.webp")
 const PETRIFIED_TOWER: Texture2D = preload("res://assets/woodland/petrified-tower.webp")
 const ROAD_BOULDER: Texture2D = preload("res://assets/woodland/road-boulder.webp")
 const HORIZON_HEIGHT: float = 2.35
@@ -200,6 +200,9 @@ func animate(event: Dictionary) -> void:
 		"boss_healed":
 			bursts.append({"at": sim.track.at(data.s), "color": Color("#8ad8a6"),
 				"time": .75, "max": .75, "radius": data.radius})
+		"boss_rebirth_started":
+			var at: Vector2 = sim.track.at(data.s)
+			bursts.append({"at": at, "color": Color("#e1d5ff"), "time": data.seconds, "max": data.seconds, "radius": 1.4})
 		"element_unlocked":
 			if not bool(data.defeated):
 				var gate: Vector2 = sim.track.at(sim.track.total)
@@ -218,15 +221,18 @@ func _fire(data: Dictionary) -> void:
 	var center: Vector2 = sim.track.slots[data.slot].position
 	var target: Vector2 = sim.track.at(data.s)
 	var style: String = ProjectileArt.style(tower, String(data.style))
+	var bounce: int = int(data.get("bounce", 0))
+	var launch_delay: float = .26 + .195 * (bounce - 1) if bounce > 0 else 0.0
 	var area_radius: float = float(data.get("area", 0.0))
 	if data.primary and area_radius > 0.0 and style != "pulse":
 		if area_hits.size() == 60:
 			area_hits.pop_front()
-		var delay: float = .26 if style == "shell" else 0.0
-		area_hits.append({"at": target, "radius": area_radius, "core": data.get("core", 0.0), "time": .52 + delay,
+		var contact_delay: float = .26 if style == "shell" else (.195 if style == "ricochet" else (.17 if style == "boulder" else 0.0))
+		area_hits.append({"at": target, "radius": area_radius, "core": data.get("core", 0.0), "time": .52 + launch_delay + contact_delay,
 			"ingredients": TowerRules.ingredients(tower)})
 	var direction: Vector2 = (target - center).normalized()
-	if data.primary and style != "pulse":
+	var volley_index: int = int(data.get("volley_index", 0))
+	if data.primary and style != "pulse" and bounce == 0 and volley_index == 0:
 		var previous: Dictionary = aim_by_slot.get(data.slot, {})
 		var start_angle: float = float(previous.angle) if previous.get("tower_id", -1) == tower.id else direction.angle()
 		aim_by_slot[data.slot] = {
@@ -234,9 +240,15 @@ func _fire(data: Dictionary) -> void:
 			"point": target, "recoil": .18,
 		}
 	var source: Vector2 = center + direction * .36
+	var volley_count: int = int(data.get("volley_count", 1))
+	if volley_count > 1:
+		source += direction.orthogonal() * (volley_index - (volley_count - 1) * .5) * .23
 	var duration: float = .22
 	match style:
 		"shell": duration = .40
+		"ricochet":
+			source = sim.track.at(data.from_s)
+			duration = .30
 		"chain":
 			if not data.primary:
 				source = sim.track.at(data.from_s)
@@ -255,12 +267,13 @@ func _fire(data: Dictionary) -> void:
 	match style:
 		"impact", "beam", "chain", "pulse": contact = 0.0
 		"flame", "water": contact = 1.0 / 4.2
-		"shell": contact = .65
-	if contact == 0.0:
+		"shell", "ricochet": contact = .65
+	var landed: bool = contact == 0.0 and launch_delay == 0.0
+	if landed:
 		hit_times[int(data.target_id)] = .15
 	shots.append({"from": source, "to": target, "style": style, "color": tint,
-		"target_id": data.target_id, "contact": contact, "landed": contact == 0.0,
-		"element": TowerRules.primary_element(tower), "time": duration, "max": duration,
+		"target_id": data.target_id, "contact": contact, "landed": landed,
+		"element": TowerRules.primary_element(tower), "time": duration + launch_delay, "max": duration,
 		"range": float(data.get("range", TowerRules.stats(tower).range))})
 
 func _track_aim(delta: float) -> void:
@@ -499,6 +512,8 @@ func _draw_field(bounds: Vector2) -> void:
 	var road_points := PackedVector2Array(track.points)
 	var portal_offset: float = .90 if track.layout_id == Track.LEGACY else 1.12
 	road_points[0] = track.at(portal_offset)
+	var gate: Vector2 = track.points[-1]
+	road_points.append(Vector2(gate.x, bounds.y + .18 if gate_on_top else minf(bounds.y - .03, gate.y + .40)))
 	_road(road_points, .94, Color("#a4af83"))
 	_road(road_points, .84, Color("#fff0c9"))
 	_road(road_points, .73, PATH)
@@ -518,10 +533,13 @@ func _draw_field(bounds: Vector2) -> void:
 	_set_upright(entrance)
 	TowerArt.draw_landmark(self, "portal", entrance - Vector2(0, .04), Vector2(1.20, 1.20))
 	draw_arc(entrance + Vector2(0,.035), .18, elapsed, elapsed + PI * 1.5, 20, Color("#f8ffe1", .8), .027, true)
-	var gate: Vector2 = track.points[-1]
 	_set_board_transform()
 	_set_upright(gate)
-	_draw_gate(gate)
+	if not gate_on_top:
+		var center: Vector2 = gate + Vector2(-.06, .40 - 2.65 * CASTLE.get_height() / CASTLE.get_width() * .5)
+		_draw_scenery_sprite(CASTLE, center, 2.65)
+	if int(sim.state.barrier) > 0:
+		_draw_castle_barrier(gate + Vector2(0, -.58 if gate_on_top else -.02))
 	_set_board_transform()
 	draw_rect(board, Color("#8eaa83"), false, .035)
 	_draw_pollen()
@@ -534,42 +552,59 @@ func _draw_pollen() -> void:
 		var p := Vector2(x + sin(phase) * .22, y + cos(phase * .62) * .19)
 		draw_circle(p, .026 + .009 * sin(phase), Color("#fff9d1", .22 + .16 * sin(phase + .5)))
 
-func _draw_gate(p: Vector2) -> void:
-	_draw_oval(p + Vector2(.02, .38), Vector2(.65, .18), Color("#51473175"))
-	_draw_scenery_sprite(CASTLE_GATE, p + Vector2(0, -.05), 1.53 if gate_on_top else 1.36)
-	if int(sim.state.barrier) > 0:
-		var field_shield: PackedVector2Array = PackedVector2Array([p + Vector2(-.64,.14), p + Vector2(-.63,-.31),
-			p + Vector2(-.29,-.61), p + Vector2(.29,-.61), p + Vector2(.63,-.31), p + Vector2(.64,.14)])
-		draw_colored_polygon(field_shield, Color("#94efff", .25 + .10 * sin(elapsed * 3.0)))
-		draw_polyline(field_shield, Color("#9de4ff"), .075)
-		draw_line(p + Vector2(-.48,-.24), p + Vector2(.48,-.24), Color("#e6fcff", .71), .039)
+func _draw_castle_barrier(p: Vector2) -> void:
+	var opacity: float = .19 + .06 * sin(elapsed * 3.0)
+	var dome := PackedVector2Array()
+	for i: int in range(41):
+		var angle: float = PI + float(i) * PI / 40.0
+		dome.append(p + Vector2.from_angle(angle) * Vector2(.91, .87))
+	draw_colored_polygon(dome, Color("#81ddf3", opacity))
+	draw_polyline(dome, Color("#70dbf3", .84), .071, true)
+	draw_polyline(dome.slice(6, 23), Color("#ebffff", .90), .032, true)
+	_draw_oval(p, Vector2(.93, .087), Color("#8ce7fa", .28))
 
 func _draw_gate_health() -> void:
 	var gate: Vector2 = sim.track.points[-1]
 	_set_upright(gate)
-	if gate_on_top:
-		gate.y -= .15
+	gate.y -= .58 if gate_on_top else .55
 	var max_lives: int = sim.cfg.start_lives
 	var lives: int = sim.state.lives
 	var ratio: float = clampf(float(lives) / max_lives, 0.0, 1.0)
 	var barrier: int = sim.state.barrier
 	var plate := Rect2(gate + Vector2(-1.25, -1.06), Vector2(2.50, .55))
-	draw_rect(plate.grow(.024), Color("#f7efd3"))
-	draw_rect(plate, Color("#354e43"))
+	_draw_meter(plate.grow(.024), Color("#f7efd3"))
+	_draw_meter(plate, Color("#354e43"))
 	var bar := Rect2(plate.position + Vector2(.11, .35), Vector2(2.28 if barrier == 0 else 1.27, .13))
-	draw_rect(bar, Color("#773d40"))
+	_draw_meter(bar, Color("#773d40"))
 	bar.size.x *= ratio
 	if bar.size.x > 0.0:
-		draw_rect(bar, UIKit.gate_fill(ratio))
+		_draw_meter(bar, UIKit.gate_fill(ratio))
 	var text: String = DataDB.text("gate_meter") % [lives, max_lives]
 	if barrier > 0:
 		var shield := Rect2(plate.position + Vector2(1.47, .35), Vector2(.92, .13))
-		draw_rect(shield, Color("#3d6e83"))
+		_draw_meter(shield, Color("#3d6e83"))
 		shield.size.x *= float(barrier) / int(sim.cfg.gate_barrier_cap)
-		draw_rect(shield, Color("#86ddff"))
+		_draw_meter(shield, Color("#86ddff"))
 		text += "  +%d" % barrier
 	_caption(text, gate + Vector2(0,-.78), .23, Color("#fffbe5"))
 	_set_board_transform()
+
+func _draw_meter(rect: Rect2, tint: Color) -> void:
+	if rect.size.x <= 0.0:
+		return
+	var center: Vector2 = rect.get_center()
+	var radius: float = minf(rect.size.x, rect.size.y) * .5
+	var extent: Vector2 = Vector2(rect.size.x * .5 - radius, 0)
+	if extent.x <= .0001:
+		_draw_oval(center, Vector2(radius, rect.size.y * .5), tint)
+		return
+	var pill := PackedVector2Array()
+	for side: float in [1.0, -1.0]:
+		var start: float = -PI * .5 if side > 0.0 else PI * .5
+		for index: int in range(17):
+			var axis: Vector2 = Vector2.from_angle(start + PI * index / 16.0)
+			pill.append(center + extent * side + axis * Vector2(radius, rect.size.y * .5))
+	draw_colored_polygon(pill, tint)
 
 func _draw_ice_puddles() -> void:
 	for tile: Vector2i in sim.ice_tiles():
@@ -687,7 +722,6 @@ func _tile_outline(p: Vector2, color: Color, radius: float, width: float) -> voi
 				corner - Vector2(0, sign_y * .19)]), color, width)
 
 func _draw_tower(tower: Dictionary) -> void:
-	tower = sim.effective_tower(tower)
 	var p: Vector2 = sim.track.slots[tower.slot].position
 	_set_upright(p)
 	var tint: Color = _tower_color(tower)
@@ -1116,6 +1150,8 @@ func _draw_area_hits() -> void:
 
 func _draw_shot(shot: Dictionary) -> void:
 	var fraction_left: float = float(shot.time) / float(shot.max)
+	if fraction_left > 1.0:
+		return
 	var progress: float = 1.0 - fraction_left
 	var tint := Color(shot.color, clampf(fraction_left * 1.6, 0.0, 1.0))
 	var source: Vector2 = shot.from
@@ -1123,7 +1159,7 @@ func _draw_shot(shot: Dictionary) -> void:
 	match String(shot.style):
 		"flame", "water":
 			ProjectileArt.draw_stream(self, shot, progress, fraction_left)
-		"ember", "thorn", "shadow", "arrow":
+		"ember", "thorn", "shadow", "arrow", "boulder":
 			ProjectileArt.draw_missile(self, shot, progress, fraction_left)
 		"pulse":
 			draw_arc(source, lerpf(.16, shot.range, progress), 0, TAU, 44, tint, .10)
@@ -1150,7 +1186,7 @@ func _draw_shot(shot: Dictionary) -> void:
 		"impact":
 			draw_arc(target, .07 + progress * .32, 0, TAU, 21, tint, .078)
 		_:
-			var shell: bool = shot.style == "shell"
+			var shell: bool = shot.style in ["shell", "ricochet"]
 			var flight: float = minf(1., progress / (.65 if shell else .76))
 			if flight >= 1.0:
 				var after: float = (progress - (.65 if shell else .76)) / (.35 if shell else .24)
@@ -1166,8 +1202,9 @@ func _draw_shot(shot: Dictionary) -> void:
 			var missile: Vector2 = source.lerp(target, flight)
 			if shell:
 				draw_circle(missile + Vector2(.045, .05), .096, Color("#927f55"))
-				missile.y -= sin(flight * PI) * .54
-				trail.y -= sin(maxf(0.0, flight - .25) * PI) * .54
+				var lift: float = .27 if shot.style == "ricochet" else .54
+				missile.y -= sin(flight * PI) * lift
+				trail.y -= sin(maxf(0.0, flight - .25) * PI) * lift
 				for i: int in range(3):
 					var puff: Vector2 = missile.lerp(trail, (.28 + i * .24))
 					draw_circle(puff, .035 + i * .027, Color("#8e7155", .40 - i * .10))

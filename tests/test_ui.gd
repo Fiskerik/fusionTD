@@ -17,6 +17,8 @@ func test_survival_menu_and_hud_library_keep_combat_live() -> void:
 	check(game.event_status.text.begins_with("Next event in 4 waves"))
 	game._apply({"type": "start_wave"})
 	var library: Button = game.find_child("HudLibrary", true, false)
+	equal(library.text, "")
+	equal(library.get_index(), game.speed_button.get_index() + 1)
 	library.pressed.emit()
 	equal(game.overlay_type, "legend")
 	check(not game.paused)
@@ -96,15 +98,15 @@ func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() ->
 	equal(game.overlay_type, "boon_choice")
 	var first: Array[Node] = game.overlay.find_children("*", "Button", true, false)
 	equal(first.size(), 3)
-	check(first[0].text.begins_with("General"))
-	check(first[1].text.begins_with("Unlocked element"))
-	check(first[2].text.begins_with("Empowered"))
+	for index: int in range(first.size()):
+		equal(first[index].name, "BoonOffer%d" % (index + 1))
 	var choose: Button = first[0]
 	choose.pressed.emit()
 	var active: Dictionary = game.sim.state.active_boon.duplicate()
 	var boon: Dictionary = DataDB.read("run_boons")[active.id]
 	var description: String = RunBoons.describe(boon, float(active.potency))
-	check(game.hud_boon.visible and game.hud_boon.text.contains(description.get_slice("\n", 0)))
+	check(game.hud_boon.visible and game.hud_boon.tooltip_text.contains(description.get_slice("\n", 0)))
+	check(game.hud_boon_value.text.begins_with("+"))
 	await runner.process_frame
 	equal(game.field.get_global_rect(), board)
 	game.hud_boon.pressed.emit()
@@ -116,7 +118,8 @@ func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() ->
 	var next: Array[Node] = game.overlay.find_children("*", "Button", true, false)
 	equal(next.size(), 4)
 	var keep: Button = next[0]
-	check(keep.text.begins_with("Keep " + boon.name))
+	equal(keep.name, "KeepBoon")
+	check(keep.tooltip_text.begins_with(boon.name))
 	keep.pressed.emit()
 	equal(game.sim.state.active_boon, active)
 	equal(game.overlay_type, "")
@@ -153,15 +156,18 @@ func test_tower_details_show_active_support_bonuses() -> void:
 	var forge: Dictionary = TowerRules.fusion_result("forge", "s2", game.sim.next_id())
 	var spring: Dictionary = TowerRules.fusion_result("spring", "tile_6_2", game.sim.next_id())
 	game.sim.state.towers = {arrow.slot: arrow, forge.slot: forge, spring.slot: spring}
+	game.sim.state.active_boon = {"id": "general_damage", "wave": 10, "potency": 1.0}
+	game.sim.refresh_boon()
 	var spring_effect: Dictionary = TowerRules.stats(spring).effect
 	spring_effect.aura_range = .13
 	game._site_pressed("s1")
 	game._show_tower_details()
 	var row: HFlowContainer = game.tower_detail_stats
-	var expected := {"Damage": "+3.25", "Speed": "+25%", "Range": "+13%"}
+	var expected := {"Damage": "+25%", "Speed": "+25%", "Range": "+13%"}
 	for stat: String in expected:
 		var badge: Label = row.get_node_or_null(stat + "/SupportBonus")
 		check(badge != null and badge.text == expected[stat], "Shows the " + stat.to_lower() + " support bonus")
+	equal(row.get_node("Damage/BoonBonus").text, "+7%")
 	forge.stun = 10
 	game._update_hud()
 	check(not row.has_node("Damage/SupportBonus") and row.has_node("Speed/SupportBonus"))
@@ -314,21 +320,21 @@ func test_scene_smoke_and_touch_layout() -> void:
 	game._site_pressed("s1")
 	await runner.process_frame
 	_check_tower_toolbar(game)
-	game._show_preview(10)
-	equal(game.overlay_type, "preview")
+	game._show_preview(10, false, true)
+	equal(game.overlay_type, "")
 	var boss: Dictionary = game.sim.preview(10).boss
 	var weakness_label: String = "Weak to %s · +50%%" % String(boss.weakness).capitalize()
 	var shown_weakness: bool = false
-	for label: Label in game.overlay.find_children("*", "Label", true, false):
+	for label: Label in game.forecast_panel.find_children("*", "Label", true, false):
 		shown_weakness = shown_weakness or label.text == weakness_label
 	check(shown_weakness, "The forecast shows the boss's rolled weakness and damage bonus")
 	game.sim.state.tiers.fire = 1
 	game.sim.state.tiers.water = 1
 	game.sim.state.tiers.earth = 1
-	game._show_preview(40)
+	game._show_preview(40, false, true)
 	var form_cards: int = 0
 	var earth_weakness: bool = false
-	for button: Button in game.overlay.find_children("*", "Button", true, false):
+	for button: Button in game.forecast_panel.find_children("*", "Button", true, false):
 		if button.tooltip_text.begins_with("Fire form.") or button.tooltip_text.begins_with("Water form."):
 			form_cards += 1
 		if button.tooltip_text.begins_with("Earth form."):
@@ -337,24 +343,31 @@ func test_scene_smoke_and_touch_layout() -> void:
 	equal(form_cards, 3, "The Prismheart forecast exposes all unlocked forms")
 	check(earth_weakness)
 	game.sim.state.tiers.earth = 0
-	game._show_preview(60)
+	game._show_preview(60, false, true)
 	var shows_neutral: bool = false
-	for label: Label in game.overlay.find_children("*", "Label", true, false):
+	for label: Label in game.forecast_panel.find_children("*", "Label", true, false):
 		shows_neutral = shows_neutral or label.text == "Weak to Neutral · +100%"
 	check(shows_neutral, "The Ironwood forecast distinguishes neutral damage from elemental weaknesses")
 	game.sim.state.tiers.fire = 0
 	game.sim.state.tiers.water = 0
+	game.sim.state.tiers.electric = 1
+	game.sim.state.wave = 10
 	game.sim.state.phase = "build"
 	game.sim.state.mobs.clear()
 	game.sim.state.spawn_queue.clear()
 	game.sim.state.selection_pending = true
 	game._show_selection()
 	equal(game.overlay_type, "select")
+	equal(game.overlay.find_child("ChooseFire", true, false).get_node("Difficulty").text, "★")
+	equal(game.overlay.find_child("ChooseElectric", true, false).get_node("Difficulty").text, "★★★")
 	var found_slow: bool = false
 	for button: Button in game.overlay.find_children("*", "Button", true, false):
 		if button.text == "Slow 15% · 2s":
 			found_slow = button.tooltip_text.contains("15% for 2 s") and button.get_theme_color("font_color") == StatusInfo.accent("Slow")
 	check(found_slow, "Element selection exposes color-coded potency and duration")
+	game.sim.state.wave = 25
+	game._show_selection()
+	equal(game.overlay.find_child("ChooseElectric", true, false).get_node("Difficulty").text, "★★")
 	game._apply({"type": "select_element", "element": "fire", "tier": 1})
 	equal(game.overlay_type, "")
 	equal(game.sim.state.trial.element, "fire")
@@ -416,7 +429,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	sim.state.phase = "wave"
 	sim.step()
 	game._take_events()
-	check(game.stats.text.contains("◈ 1") and game.message.contains("+1 Pure Crystal"))
+	check(game.crystal_status.text == "×1" and game.message.contains("+1 Pure Crystal"))
 	check(not game.field.upgrade_ready.has("s2"), "A level-7 Pure tower stays maxed when a crystal is earned")
 	game._site_pressed("s2")
 	check(game.upgrade_button.disabled and game.upgrade_button.text == DataDB.text("max_level"))
@@ -451,7 +464,7 @@ func test_upgrade_badges_and_pure_crystal_confirmation() -> void:
 	check(not game.field.upgrade_ready.has("s3"))
 	equal(sim.state.towers.s3.kind, "ascended")
 	check(not game.tower_special.visible)
-	check(game.stats.text.contains("◈ 0") and game.info.text.contains("Verdant Sanctum") and game.info.text.contains("7"))
+	check(game.crystal_status.text == "×0" and game.info.text.contains("Verdant Sanctum") and game.info.text.contains("7"))
 	game.queue_free()
 	await runner.process_frame
 
@@ -509,32 +522,18 @@ func test_tactical_gestures_and_the_ten_second_round_countdown() -> void:
 	check(game.interest_status.text.contains("+6"))
 	var pointer := InputEventMouseButton.new()
 	pointer.button_index = MOUSE_BUTTON_LEFT
-	var swap: Button = game.swap_buttons.arrow
-	pointer.position = swap.get_global_rect().get_center()
-	pointer.pressed = true
-	runner.root.push_input(pointer, true)
-	await runner.create_timer(.48).timeout
-	equal(game.overlay_type, "swap")
-	equal(game.swap_center, game.size * .5)
-	pointer.pressed = false
-	runner.root.push_input(pointer, true)
+	check(game.find_child("SwapArrow", true, false) == null)
+	equal(game.stone_status.text, "×3")
+	equal(game.crystal_status.text, "×0")
+	game._open_forecast(59)
 	equal(game.overlay_type, "")
-	equal(game.sim.state.swap_tokens, 5, "Releasing at the center cancels the swap")
-	pointer.canceled = false
-	pointer.pressed = true
-	runner.root.push_input(pointer, true)
-	await runner.create_timer(.48).timeout
-	equal(game.overlay_type, "swap")
-	if game.swap_options.has("water"):
-		pointer.position += game.swap_options.water.direction * 80.0
-	pointer.pressed = false
-	runner.root.push_input(pointer, true)
-	equal(game.sim.state.wave_swaps.get("arrow"), "water")
-	check(game.swap_status.text.contains("4"))
-	game._show_matchups(59)
-	equal(game.overlay_type, "matchups")
-	check(int(game.field.matchups.get("s2", 0)) & 2)
-	game._close_overlay()
+	check(not game.paused and not game.forecast_expanded)
+	check(game.forecast_panel.find_child("ForecastEnemies", true, false) == null)
+	var expand: Button = game.forecast_panel.find_child("ExpandForecast", true, false)
+	expand.pressed.emit()
+	check(game.forecast_expanded and is_instance_valid(game.forecast_panel.find_child("ForecastEnemies", true, false)))
+	game._toggle_forecast_matchups()
+	game._close_forecast()
 	check(game.field.matchups.is_empty())
 	game._apply({"type": "start_wave"})
 	check(game.interest_toast.visible and game.interest_toast_text.text == "Interest +6 g")

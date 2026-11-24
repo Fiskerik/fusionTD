@@ -1,6 +1,6 @@
 extends SceneTree
 
-const ORDER: Array[String] = ["water", "light", "electric", "nature", "dark", "fire"]
+const ORDER: Array[String] = ["water", "light", "electric", "nature", "dark", "fire", "earth"]
 var site_order: Array[String] = []
 var runs: int = 20
 var first_seed: int = 1
@@ -8,6 +8,7 @@ var max_wave: int = 60
 var forced_tier: int = 0
 var forced_wave: int = 0
 var fusion: bool = true
+var opening: String = ""
 
 func _initialize() -> void:
 	var arguments: PackedStringArray = OS.get_cmdline_user_args()
@@ -18,8 +19,8 @@ func _initialize() -> void:
 			fusion = false
 			i += 1
 			continue
-		if option not in ["--runs", "--seed", "--force-trial", "--max-wave"] or i + 1 == arguments.size():
-			printerr("Usage: --runs N --seed N [--max-wave N] [--force-trial TIER:WAVE] [--no-fusion]")
+		if option not in ["--runs", "--seed", "--force-trial", "--max-wave", "--opening"] or i + 1 == arguments.size():
+			printerr("Usage: --runs N --seed N [--max-wave N] [--opening ELEMENT] [--force-trial TIER:WAVE] [--no-fusion]")
 			quit(2)
 			return
 		var value: String = arguments[i + 1]
@@ -27,6 +28,12 @@ func _initialize() -> void:
 			"--runs": runs = int(value)
 			"--seed": first_seed = int(value)
 			"--max-wave": max_wave = int(value)
+			"--opening":
+				opening = value.to_lower()
+				if not DataDB.ELEMENTS.has(opening):
+					printerr("Unknown opening element: ", value)
+					quit(2)
+					return
 			"--force-trial":
 				var pair: PackedStringArray = value.split(":")
 				if pair.size() == 2:
@@ -47,12 +54,17 @@ func _main() -> void:
 	var reports: Array[Dictionary] = []
 	for seed_value: int in range(first_seed, first_seed + runs):
 		var report: Dictionary = _play(seed_value)
+		if report.has("error"):
+			printerr("Balance run failed: ", report.error)
+			quit(1)
+			return
 		reports.append(report)
 		print("RUN ", JSON.stringify(report))
 	var waves: Array = reports.map(func(report: Dictionary) -> int: return int(report.cleared))
 	waves.sort()
 	var median: float = (float(waves[floori((runs - 1) / 2.0)]) + float(waves[floori(runs / 2.0)])) * .5
-	print("SUMMARY ", JSON.stringify({"runs": runs, "median_wave": median, "fusion": fusion, "forced_wave": forced_wave, "forced_tier": forced_tier}))
+	print("SUMMARY ", JSON.stringify({"runs": runs, "median_wave": median, "fusion": fusion, "opening": opening,
+		"forced_wave": forced_wave, "forced_tier": forced_tier}))
 	quit()
 
 func _rank_sites() -> void:
@@ -78,6 +90,10 @@ func _play(seed_value: int) -> Dictionary:
 	var forced_used: bool = false
 	while sim.state.phase == "build" and int(sim.state.wave) <= max_wave:
 		var wave: int = sim.state.wave
+		for reward: int in range(sim.state.boon_queue.size()):
+			var offers: PackedStringArray = sim.boon_choices()
+			if offers.is_empty() or not sim.apply({"type": "choose_boon", "id": offers[0]}).ok:
+				return {"error": "could not choose a boon at wave %d for seed %d" % [wave, seed_value]}
 		_choose(sim)
 		if wave == forced_wave and not forced_used:
 			forced_used = true
@@ -93,7 +109,9 @@ func _play(seed_value: int) -> Dictionary:
 		var preview: Dictionary = sim.preview(wave)
 		if not preview.bosses.is_empty():
 			bosses[str(wave)] = {"killed": false, "defeated": 0, "total": preview.bosses.size()}
-		sim.apply({"type": "start_wave"})
+		var launched: Dictionary = sim.apply({"type": "start_wave"})
+		if not launched.ok:
+			return {"error": "wave %d, seed %d: %s" % [wave, seed_value, launched.reason]}
 		while sim.state.phase == "wave":
 			sim.step()
 			for event: Dictionary in sim.events:
@@ -124,8 +142,12 @@ func _choose(sim: Sim) -> void:
 	if not sim.state.selection_pending:
 		return
 	var options: Array[Dictionary] = sim.choices()
+	var priorities: Array[String] = ORDER.duplicate()
+	if not opening.is_empty():
+		priorities.erase(opening)
+		priorities.push_front(opening)
 	for tier: int in range(1, 4):
-		for element: String in ORDER:
+		for element: String in priorities:
 			if options.has({"element": element, "tier": tier}):
 				sim.apply({"type": "select_element", "element": element, "tier": tier})
 				return

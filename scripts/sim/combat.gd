@@ -60,7 +60,7 @@ static func advance(sim: RefCounted) -> void:
 				enemy.prev_s = old
 			if float(enemy.s) != old or (hidden and not EnemyRules.in_void(enemy, sim.state.tick - 1, sim.hz)):
 				sim.emit_event("wizard_portal", {"s": enemy.s, "arrived": float(enemy.s) != old})
-		else:
+		elif enemy.kind != "boss" or not _casting_rebirth(sim, enemy):
 			EnemyRules.move(enemy, sim.track, sim.hz, skid)
 			if _crossed_stone(sim.state.stone, old, float(enemy.s)):
 				enemy.s = sim.state.stone.stop
@@ -120,11 +120,10 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 	var stats: Dictionary = TowerRules.stats(tower)
 	if TowerRules.base_rate(tower, stats) == 0.0:
 		return
-	var effective: Dictionary = sim.effective_tower(tower)
-	var boon: Dictionary = sim.tower_boon(effective)
-	var trait_profile: Dictionary = TowerRules.trait_profile(effective, sim.state.tiers, boon)
+	var boon: Dictionary = sim.tower_boon(tower)
+	var trait_profile: Dictionary = TowerRules.trait_profile(tower, sim.state.tiers, boon)
 	var candidates: Array = exposed if tower.dual == "null" or trait_profile.has("dispel") else ready
-	var profile: Dictionary = TowerRules.attack_profile(effective, sim.spirit_victories(), boon)
+	var profile: Dictionary = TowerRules.attack_profile(tower, sim.spirit_victories(), boon)
 	var at: Vector2 = sim.track.slots[tower.slot].position
 	var aura: Vector3 = sim.support_bonuses(tower, support_sources)
 	var radius: float = float(profile.range) * (1.0 + aura.z)
@@ -132,86 +131,137 @@ static func _attack(sim: RefCounted, tower: Dictionary, support_sources: Array[D
 	if target.is_empty():
 		tower.beam_target = -1
 		return
-	var infused: bool = effective.infusion != ""
-	var potency: float = profile.potency
 	var raw: float = float(profile.damage) * (1.0 + aura.x)
 	if trait_profile.has("ramp"):
 		if int(tower.beam_target) != int(target.id):
 			tower.beam_target = target.id
 			tower.beam_start = sim.state.tick
 		var seconds: float = (int(sim.state.tick) - int(tower.beam_start)) / sim.hz
-		raw *= minf(float(trait_profile.ramp[1]), 1.0 + float(trait_profile.ramp[0]) * seconds * potency)
+		raw *= minf(float(trait_profile.ramp[1]), 1.0 + float(trait_profile.ramp[0]) * seconds * float(profile.potency))
 	tower.cooldown = ceili(sim.hz / (float(profile.rate) * (1.0 + aura.y)))
 	tower.hits += 1
+	var projectile_count: int = TowerRules.projectile_count(tower, trait_profile)
+	var shot: Dictionary = {
+		"tower": tower, "profile": profile, "traits": trait_profile, "at": at, "range": radius,
+		"raw": raw, "infusion": tower.infusion, "split": TowerRules.damage_split(tower),
+		"volley_count": projectile_count, "volley_index": 0, "bounce": 0, "from_s": -1.0, "scale": 1.0,
+	}
+	var aimed: Array[Dictionary] = []
+	var aim: Dictionary = target
+	for index: int in range(projectile_count):
+		if index > 0:
+			aim = _best(candidates, points, at, radius, tower.target, aimed)
+			if aim.is_empty():
+				aim = _best(candidates, points, at, radius, tower.target)
+			if aim.is_empty():
+				# The rest of a volley still leaves the tower if its first shot was lethal.
+				aim = target
+		shot.volley_index = index
+		_fire_projectile(sim, shot, aim, candidates, points)
+		aimed.append(aim)
+	var ricochet: Dictionary = TowerRules.ricochet(tower)
+	if ricochet.is_empty():
+		return
+	var struck: Array[Dictionary] = [target]
+	var last: Dictionary = target
+	for jump: int in range(int(ricochet.jumps)):
+		var next: Dictionary = _best(candidates, points, points[last.id], ricochet.range, "nearest", struck)
+		if next.is_empty():
+			break
+		shot.bounce = jump + 1
+		shot.from_s = last.s
+		shot.scale *= float(ricochet.retention)
+		_fire_projectile(sim, shot, next, candidates, points)
+		struck.append(next)
+		last = next
+
+static func _fire_projectile(sim: RefCounted, shot: Dictionary, target: Dictionary, candidates: Array, points: Dictionary) -> void:
+	var tower: Dictionary = shot.tower
+	var profile: Dictionary = shot.profile
+	var traits: Dictionary = shot.traits
+	var potency: float = profile.potency
+	var infused: bool = shot.infusion != ""
+	var bouncing: bool = int(shot.bounce) > 0
+	var pulse: bool = traits.has("pulse")
+	var anchor: Vector2 = shot.at if pulse else points[target.id]
+	var splash: float = shot.range if pulse else float(profile.splash)
 	var victims: Array[Dictionary] = [target]
-	var pulse: bool = trait_profile.has("pulse")
-	var anchor: Vector2 = at if pulse else points[target.id]
-	if pulse or float(profile.splash) > 0.0:
-		var splash: float = radius if pulse else float(profile.splash)
+	if splash > 0.0:
 		for enemy: Dictionary in candidates:
 			if enemy.id != target.id and float(enemy.hp) > 0 and anchor.distance_squared_to(points[enemy.id]) <= splash * splash:
 				victims.append(enemy)
 	var area_count: int = victims.size()
 	var jumps: int = 0
 	var falloff: float = 1.0
-	if trait_profile.has("chain"):
-		jumps = ceili(float(trait_profile.chain[0]) * potency) if infused else roundi(float(trait_profile.chain[0]) * potency)
-		falloff = Effects.chain_falloff(trait_profile.chain[2], potency)
-		var jump_range: float = Effects.chain_range(trait_profile.chain[1], potency)
+	if not bouncing and traits.has("chain"):
+		jumps = ceili(float(traits.chain[0]) * potency) if infused else roundi(float(traits.chain[0]) * potency)
+		falloff = Effects.chain_falloff(traits.chain[2], potency)
+		var jump_range: float = Effects.chain_range(traits.chain[1], potency)
 		var last: Dictionary = target
 		for jump: int in range(jumps):
 			last = _best(candidates, points, points[last.id], jump_range, "nearest", victims)
 			if last.is_empty():
 				break
 			victims.append(last)
-	var split: Dictionary = TowerRules.damage_split(effective)
-	var adaptive: bool = trait_profile.has("adaptive")
-	var pierce: float = minf(0.9, float(trait_profile.get("pierce", 0.0)) * potency)
-	var previous: Dictionary = {}
+	var adaptive: bool = traits.has("adaptive")
+	var pierce: float = minf(0.9, float(traits.get("pierce", 0.0)) * potency)
 	for index: int in range(victims.size()):
 		var victim: Dictionary = victims[index]
 		var chained: bool = index >= area_count
-		var scale: float = 1.0
+		var scale: float = shot.scale
 		if chained:
-			scale = pow(falloff, index - area_count + 1)
+			scale *= pow(falloff, index - area_count + 1)
 		elif index > 0 and not pulse and anchor.distance_squared_to(points[victim.id]) > float(profile.splash_core) ** 2:
-			scale = float(profile.splash_fringe)
-		if trait_profile.has("dispel"):
-			Effects.dispel(victim, float(trait_profile.dispel) * potency, sim.hz)
-		var multiplier: float = Damage.against(split, victim, adaptive)
-		var adjusted: float = raw * multiplier * scale
-		if adjusted > 0.0 and victim.kind == "boss" and int(tower.get("reflect", 0)) == 0:
-			_reflect(sim, tower, victim)
-		if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
-			victim.silence_time = Effects.ticks(trait_profile.silence, sim.hz)
-		Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick, true)
-		if adjusted > 0.0:
-			var effect_base: float = raw * scale if Damage.has_special_resistances(victim) else adjusted
-			Effects.apply(victim, trait_profile, potency, infused, tower.hits, effect_base, sim.hz, tower.id)
-			var previous_immunity: String = victim.get("immune_element", "")
-			Damage.adapt(victim, split, adaptive)
-			var immunity: String = victim.get("immune_element", "")
-			if immunity != previous_immunity and not immunity.is_empty():
-				sim.emit_event("chameleon_adapted", {"s": victim.s, "element": immunity})
+			scale *= float(profile.splash_fringe)
+		if float(victim.hp) > 0.0:
+			_projectile_hit(sim, shot, victim, float(shot.raw) * scale, pierce, adaptive)
 		var style: String = "bolt"
+		var from_s: float = shot.from_s
 		if pulse:
-			style = "pulse" if previous.is_empty() else "impact"
-		elif not previous.is_empty():
+			style = "pulse" if index == 0 else "impact"
+		elif index > 0:
 			style = "chain" if chained else "impact"
+			if chained:
+				from_s = float(target.s if index == area_count else victims[index - 1].s)
+		elif bouncing:
+			style = "ricochet"
 		elif tower.kind == "cannon":
 			style = "shell"
 		elif tower.element == "light" and tower.kind in ["pure", "ascended"]:
 			style = "beam"
-		elif trait_profile.has("ramp") or jumps > 0:
+		elif traits.has("ramp") or jumps > 0:
 			style = "beam"
 		sim.emit_event("tower_fired", {
-			"slot": tower.slot, "s": victim.s, "target_id": victim.id, "primary": previous.is_empty(), "style": style,
-			"infusion": effective.infusion,
-			"from_s": float(target.s if index == area_count else previous.s) if style == "chain" else -1.0,
-			"area": radius if pulse else float(profile.splash), "core": float(profile.splash_core),
-			"range": radius if is_finite(radius) else float(stats.range),
+			"slot": tower.slot, "s": victim.s, "target_id": victim.id, "primary": index == 0, "style": style,
+			"infusion": shot.infusion, "from_s": from_s, "bounce": shot.bounce,
+			"volley_index": shot.volley_index, "volley_count": shot.volley_count,
+			"area": splash, "core": float(profile.splash_core),
+			"range": shot.range if is_finite(shot.range) else float(TowerRules.stats(tower).range),
 		})
-		previous = victim
+
+static func _projectile_hit(sim: RefCounted, shot: Dictionary, victim: Dictionary, raw: float, pierce: float, adaptive: bool) -> void:
+	var tower: Dictionary = shot.tower
+	var traits: Dictionary = shot.traits
+	var potency: float = shot.profile.potency
+	var applies_effects: bool = int(shot.bounce) == 0
+	if applies_effects and traits.has("dispel"):
+		Effects.dispel(victim, float(traits.dispel) * potency, sim.hz)
+	var adjusted: float = raw * Damage.against(shot.split, victim, adaptive)
+	if adjusted > 0.0 and victim.kind == "boss" and int(tower.get("reflect", 0)) == 0:
+		_reflect(sim, tower, victim)
+	if tower.dual == "null" and EnemyRules.phased(victim, sim.state.tick, sim.hz):
+		victim.silence_time = Effects.ticks(traits.silence, sim.hz)
+	Damage.deal(victim, Damage.hit(adjusted, victim.armor, pierce, victim.shred, victim.curse), tower, sim.state.tick, true)
+	if adjusted <= 0.0:
+		return
+	if applies_effects:
+		var effect_base: float = raw if Damage.has_special_resistances(victim) else adjusted
+		Effects.apply(victim, traits, potency, shot.infusion != "", tower.hits, effect_base, sim.hz, tower.id)
+	var previous_immunity: String = victim.get("immune_element", "")
+	Damage.adapt(victim, shot.split, adaptive)
+	var immunity: String = victim.get("immune_element", "")
+	if immunity != previous_immunity and not immunity.is_empty():
+		sim.emit_event("chameleon_adapted", {"s": victim.s, "element": immunity})
 
 static func _reflect(sim: RefCounted, tower: Dictionary, boss: Dictionary) -> void:
 	var tick: int = sim.state.tick
@@ -359,14 +409,10 @@ static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array
 				if not best.is_empty():
 					enemy.telegraph = {"slot": best.slot, "tick": int(sim.state.tick) + int(data.telegraph)}
 		"necromancer":
-			if age == 0 or age % int(data.period) != 0:
+			if enemy.has("rebirth_until") or age == 0 or age % int(data.period) != 0:
 				return
 			if enemy.get("heal_aura", false):
-				var late: Dictionary = DataDB.read("waves").late_game
-				for ally: Dictionary in sim.state.mobs:
-					if float(ally.hp) > 0.0 and ally.kind != "bonus" and int(ally.heal_block_time) == 0 and at.distance_to(sim.track.at(ally.s)) <= float(late.necromancer_radius):
-						ally.hp = minf(float(ally.max_hp), float(ally.hp) + float(ally.max_hp) * float(late.necromancer_heal))
-				sim.emit_event("boss_healed", {"s": enemy.s, "radius": late.necromancer_radius})
+				_necromancer_heal(sim, enemy, at)
 				return
 			var husks: int = 0
 			for mob: Dictionary in sim.state.mobs:
@@ -380,6 +426,50 @@ static func _boss(sim: RefCounted, enemy: Dictionary, at: Vector2, towers: Array
 			}
 			for index: int in range(mini(int(data.count), int(data.cap) - husks)):
 				sim.schedule(group, int(sim.state.wave_tick) + 1, enemy.s)
+
+static func _casting_rebirth(sim: RefCounted, enemy: Dictionary) -> bool:
+	if enemy.has("rebirth_until"):
+		if int(sim.state.tick) < int(enemy.rebirth_until):
+			return true
+		enemy.erase("rebirth_until")
+		if float(enemy.hp) > 0.0:
+			enemy.hp = float(enemy.max_hp)
+			sim.emit_event("boss_healed", {"s": enemy.s, "radius": 1.55})
+		return false
+	if float(enemy.hp) <= 0.0 or enemy.get("rebirth_used", false) or not EnemyRules.has_rebirth(enemy):
+		return false
+	var rebirth: Dictionary = DataDB.read("bosses").necromancer.rebirth
+	if float(enemy.hp) > float(enemy.max_hp) * float(rebirth.threshold):
+		return false
+	enemy.rebirth_used = true
+	enemy.rebirth_until = int(sim.state.tick) + Effects.ticks(float(rebirth.cast_seconds), sim.hz)
+	sim.emit_event("boss_rebirth_started", {"s": enemy.s, "seconds": rebirth.cast_seconds})
+	return true
+
+static func _necromancer_heal(sim: RefCounted, caster: Dictionary, at: Vector2) -> void:
+	var rule: Dictionary = DataDB.read("waves").late_game
+	var radius: float = rule.necromancer_radius
+	var healed: bool = false
+	for ally: Dictionary in sim.state.mobs:
+		if float(ally.hp) <= 0.0 or int(ally.heal_block_time) > 0 or ally.kind == "bonus":
+			continue
+		var maximum: float = ally.max_hp
+		var amount: float = maximum * float(rule.necromancer_heal)
+		if ally.kind == "boss":
+			if ally.id != caster.id:
+				continue
+			var already_healed: float = caster.get("aura_self_healed", 0.0)
+			amount = minf(maximum * float(rule.necromancer_self_heal), maximum * float(rule.necromancer_self_heal_cap) - already_healed)
+		elif at.distance_squared_to(sim.track.at(ally.s)) > radius * radius:
+			continue
+		amount = clampf(amount, 0.0, maximum - float(ally.hp))
+		if amount > 0.0:
+			ally.hp += amount
+			healed = true
+			if ally.id == caster.id:
+				caster.aura_self_healed = float(caster.get("aura_self_healed", 0.0)) + amount
+	if healed:
+		sim.emit_event("boss_healed", {"s": caster.s, "radius": radius})
 
 static func _stun(sim: RefCounted, target: Dictionary, towers: Array, duration: int) -> void:
 	var resistance: float = 0.0

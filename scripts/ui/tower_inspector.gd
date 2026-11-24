@@ -3,22 +3,36 @@ extends RefCounted
 
 static func fill_metrics(row: Container, tower: Dictionary, victories: Dictionary, font_size: int = 17,
 		tint: Color = UIKit.MINT, show_splash: bool = false, support: Vector3 = Vector3.ZERO, boon: Dictionary = {}) -> void:
-	var attack: Dictionary = TowerRules.attack_profile(tower, victories, boon)
+	var attack: Dictionary = TowerRules.attack_profile(tower, victories)
 	var attacking: bool = float(attack.rate) > 0.0
 	if attacking:
-		var added_damage: float = float(attack.damage) * support.x
-		var damage_bonus: String = "+" + number(added_damage) if added_damage >= .005 else ""
-		row.add_child(UIKit.stat_value("damage", number(attack.damage), "Damage per hit", font_size, tint, damage_bonus))
+		row.add_child(UIKit.stat_value("damage", number(attack.damage), "Damage per hit", font_size, tint,
+			_bonus("damage", support.x), _bonus("damage", boon.get("damage", 0.0))))
 	var global_range: bool = is_inf(float(attack.range))
 	var reach: String = DataDB.text("whole_map") if global_range else number(attack.range)
-	var range_bonus: String = "+" + percent(support.z) if attacking and not global_range and support.z > 0.0 else ""
+	var range_bonus: String = _bonus("range", support.z) if attacking and not global_range else ""
+	var range_boon: String = _bonus("range", boon.get("range", 0.0)) if attacking and not global_range else ""
 	row.add_child(UIKit.stat_value("range", reach, "Attack range in tiles" if attacking else "Support radius in tiles",
-		font_size, tint, range_bonus))
+		font_size, tint, range_bonus, range_boon))
 	if attacking:
-		var speed_bonus: String = "+" + percent(support.y) if support.y > 0.0 else ""
-		row.add_child(UIKit.stat_value("speed", "%s/s" % number(attack.rate), "Attacks per second", font_size, tint, speed_bonus))
+		row.add_child(UIKit.stat_value("speed", "%s/s" % number(attack.rate), "Attacks per second", font_size, tint,
+			_bonus("rate", support.y), _bonus("rate", boon.get("rate", 0.0))))
 	if show_splash and float(attack.splash) > 0.0:
-		row.add_child(UIKit.stat_value("splash", number(attack.splash), "Splash radius in tiles", font_size, tint))
+		row.add_child(UIKit.stat_value("splash", number(attack.splash), "Splash radius in tiles", font_size, tint,
+			"", _bonus("splash", boon.get("splash", 0.0))))
+
+static func _bonus(stat: String, value: float) -> String:
+	return "" if is_zero_approx(value) else RunBoons.signed_value(stat, value)
+
+static func add_effect_boons(row: Container, boon: Dictionary, traits: Dictionary, font_size: int = 16) -> void:
+	var requirements: Dictionary = {"burn_rate": ["burn", "searing_burn"], "slow": ["slow"], "chain": ["chain"]}
+	for stat: String in boon:
+		if stat in ["damage", "range", "rate", "splash"] or is_zero_approx(boon[stat]):
+			continue
+		if requirements.has(stat) and not requirements[stat].any(func(effect_key: String) -> bool: return traits.has(effect_key)):
+			continue
+		row.add_child(UIKit.stat_value(RunBoons.stat_icon(stat), "", RunBoons.LABELS[stat], font_size, UIKit.INK,
+			"", _bonus(stat, boon[stat])))
 
 static func damage_type(tower: Dictionary, traits: Dictionary) -> String:
 	if traits.has("adaptive"):
@@ -57,6 +71,14 @@ static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {})
 	if float(attack.splash) > 0:
 		lines.append("Splash · Full damage within %s tiles of impact and %s damage out to %s tiles." % [
 			number(attack.splash_core), percent(attack.splash_fringe), number(attack.splash)])
+	var projectile_count: int = TowerRules.projectile_count(tower, traits)
+	if projectile_count > 1:
+		var volley: String = "Double shot" if projectile_count == 2 else "Triple shot"
+		lines.append("%s · Fires %d full-damage projectiles per attack. Aims at different enemies in range when possible." % [volley, projectile_count])
+	var ricochet: Dictionary = TowerRules.ricochet(tower)
+	if not ricochet.is_empty():
+		lines.append("Ricochet · The shell bounces up to %d %s to nearby enemies within %s tiles. Each bounce splashes and keeps %s of the previous impact's damage." % [
+			int(ricochet.jumps), "time" if int(ricochet.jumps) == 1 else "times", number(ricochet.range), percent(ricochet.retention)])
 	if traits.has("searing_burn"):
 		var burn: Array = traits.searing_burn
 		var cap: float = DataDB.read("balance").max_hp_burn_special_dps_cap
@@ -84,11 +106,11 @@ static func effects(tower: Dictionary, tiers: Dictionary, boon: Dictionary = {})
 	if traits.has("dispel"):
 		lines.append("Dispel · Strips Phasing, Banner haste, and Chameleon immunity for %s s. Boss and Spirit traits stay active." % number(float(traits.dispel) * potency))
 	if traits.has("slow"):
-		lines.append("Slow · Reduces movement by up to %s for %s s. Spirits and bosses resist slows." % [
+		lines.append("Slow · Reduces movement by up to %s for %s s. Status resistance weakens the slow." % [
 			percent(_display_slow(traits.slow[0], potency)), number(Effects.slow_duration(traits.slow[1], potency))])
 	for cc: String in ["freeze", "root"]:
 		if traits.has(cc):
-			lines.append("%s · Stops ordinary enemies for %s s every %d attacks." % [
+			lines.append("%s · Stops enemies for up to %s s every %d attacks." % [
 				cc.capitalize(), number(Effects.control_duration(traits[cc][1], potency, cc)), Effects.control_interval(traits[cc][0], potency, infused, cc)])
 	if traits.has("chain"):
 		var jumps: int = ceili(float(traits.chain[0]) * potency) if infused else roundi(float(traits.chain[0]) * potency)
@@ -143,6 +165,9 @@ static func effect_entries(tower: Dictionary, tiers: Dictionary, boon: Dictionar
 	var traits: Dictionary = TowerRules.trait_profile(tower, tiers, boon)
 	var potency: float = TowerRules.attack_profile(tower, {}, boon).potency
 	var labels: Dictionary = {}
+	var ricochet: Dictionary = TowerRules.ricochet(tower)
+	if not ricochet.is_empty():
+		labels["Ricochet"] = "Ricochet ×%d" % int(ricochet.jumps)
 	if int(tower.get("crystals", 0)) > 0:
 		labels["Pure Crystal"] = "◈ +%s damage" % percent(TowerRules.crystal_damage_bonus(tower))
 	if traits.has("slow"):

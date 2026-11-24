@@ -122,6 +122,7 @@ func test_max_hp_burn_is_nonstacking_caps_bosses_and_spreads_based_on_recipient_
 		var boss: Dictionary = EnemyRules.create(1, special, 0.0, 0)
 		Effects.apply(boss, set_fire, 1.0, false, 1, 20.0, sim.hz, 1)
 		near(boss.dots.searing_burn.dps, 15.0)
+		equal(boss.dots.searing_burn.time, 83 if kind == "boss" else 150)
 	sim.state.phase = "wave"
 	Combat.spawn(sim, _enemy(), 10.0)
 	var tougher: Dictionary = _enemy()
@@ -266,6 +267,73 @@ func test_splash_applies_full_and_partial_damage_at_distinct_distances() -> void
 	near(sim.state.mobs[2].hp, 986)
 	near(sim.state.mobs[1].hp, 992.3)
 	near(sim.state.mobs[0].hp, 1000)
+
+func test_arrow_level_four_and_six_fire_full_damage_volleys() -> void:
+	for level: int in [3, 4, 6]:
+		var sim := Sim.new()
+		sim.state.phase = "wave"
+		var tower: Dictionary = TowerRules.create(1, "s1", "arrow", "normal", "", 50)
+		tower.level = level
+		sim.state.towers.s1 = tower
+		for distance: float in [9.7, 10.0]:
+			Combat.spawn(sim, _enemy(), distance)
+		sim.step()
+		var damage: float = TowerRules.attack_profile(tower).damage
+		near(sim.state.mobs[1].hp, 1000.0 - damage * (2.0 if level == 6 else 1.0))
+		near(sim.state.mobs[0].hp, 1000.0 - (damage if level >= 4 else 0.0))
+		equal(tower.hits, 1, "A volley uses a single cooldown")
+		var arrow_events: Array[Dictionary] = sim.events.filter(func(event: Dictionary) -> bool: return event.type == "tower_fired")
+		var shots_by_level: Dictionary = {3: 1, 4: 2, 6: 3}
+		equal(arrow_events.size(), shots_by_level[level])
+
+func test_cannon_ricochets_splash_and_keep_ten_percent_per_bounce() -> void:
+	for level: int in [3, 4, 6]:
+		var sim := Sim.new()
+		sim.state.phase = "wave"
+		var tower: Dictionary = TowerRules.create(1, "s1", "cannon", "normal", "", 80)
+		tower.level = level
+		sim.state.towers.s1 = tower
+		for distance: float in [10.25, 8.6, 6.8, 6.4]:
+			Combat.spawn(sim, _enemy(), distance)
+		sim.step()
+		var damage: float = TowerRules.attack_profile(tower).damage
+		var first_bounce: float = damage * .1 if level >= 4 else 0.0
+		var second_bounce: float = damage * .01 if level == 6 else 0.0
+		near(sim.state.mobs[0].hp, 1000.0 - damage)
+		near(sim.state.mobs[1].hp, 1000.0 - first_bounce - second_bounce * .55)
+		near(sim.state.mobs[2].hp, 1000.0 - first_bounce * .55 - second_bounce)
+		near(sim.state.mobs[3].hp, 1000.0 - second_bounce)
+		var bounced: Array[Dictionary] = sim.events.filter(func(event: Dictionary) -> bool:
+			return event.type == "tower_fired" and event.data.style == "ricochet")
+		var jumps_by_level: Dictionary = {3: 0, 4: 1, 6: 2}
+		equal(bounced.size(), jumps_by_level[level])
+		if level == 6:
+			near(bounced[0].data.from_s, 10.25)
+			near(bounced[1].data.from_s, 8.6)
+
+func test_earth_tier_three_fires_two_splash_projectiles() -> void:
+	for tier: int in [2, 3]:
+		var sim := Sim.new()
+		sim.state.phase = "wave"
+		sim.state.tiers.earth = tier
+		var tower: Dictionary = TowerRules.create(1, "s1", "pure", "earth", "", 125)
+		tower.level = 3 if tier == 2 else 5
+		sim.state.towers.s1 = tower
+		Combat.spawn(sim, _enemy(), 9.7)
+		Combat.spawn(sim, _enemy(), 10.15)
+		sim.step()
+		var damage: float = TowerRules.attack_profile(tower).damage
+		for enemy: Dictionary in sim.state.mobs:
+			near(enemy.hp, 1000.0 - damage * (2.0 if tier == 3 else 1.0))
+		sim.events.clear()
+		sim.state.mobs.pop_back()
+		sim.state.mobs[0].hp = 1.0
+		tower.cooldown = 0
+		sim.step()
+		var shots: Array[Dictionary] = sim.events.filter(func(event: Dictionary) -> bool:
+			return event.type == "tower_fired" and event.data.primary)
+		equal(shots.size(), 2 if tier == 3 else 1)
+		equal(tower.kills, 1)
 
 func test_support_auras_buff_tiles_at_the_edge_of_the_circle() -> void:
 	check(TowerRules.aura_reaches_tile(Vector2.ZERO, Vector2(3, 0), 2.5), "An edge tangent counts")
@@ -602,7 +670,31 @@ func test_late_enemies_recover_between_disables() -> void:
 			free_ticks += 1
 	check(free_ticks >= 15, "Repeated roots and freezes allow a recovery window")
 
-func test_late_necromancer_heals_without_adding_units() -> void:
+func test_wave_thirty_necromancer_stops_and_once_revives_to_full_health() -> void:
+	var sim := Sim.new()
+	sim.state.wave = 30
+	sim.state.phase = "wave"
+	Combat.spawn(sim, sim.preview(30).boss, 10.0)
+	var boss: Dictionary = sim.state.mobs[0]
+	boss.hp = float(boss.max_hp) * .25
+	sim.step()
+	check(boss.rebirth_used)
+	near(boss.s, 10.0)
+	for tick: int in range(29):
+		sim.step()
+	near(boss.s, 10.0)
+	near(boss.hp, float(boss.max_hp) * .25)
+	sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
+	boss = sim.state.mobs[0]
+	sim.step()
+	near(boss.hp, boss.max_hp)
+	check(float(boss.s) > 10.0)
+	boss.hp = float(boss.max_hp) * .25
+	sim.step()
+	check(not boss.has("rebirth_until"))
+	near(boss.hp, float(boss.max_hp) * .25)
+
+func test_late_necromancer_does_not_heal_other_bosses_or_exceed_its_self_heal_cap() -> void:
 	var sim := Sim.new()
 	sim.state.wave = 90
 	sim.state.phase = "wave"
@@ -611,15 +703,27 @@ func test_late_necromancer_heals_without_adding_units() -> void:
 	Combat.spawn(sim, necromancer, 10)
 	Combat.spawn(sim, _enemy(), 10.1)
 	Combat.spawn(sim, _enemy(), 10.4)
+	Combat.spawn(sim, Waves.generate(1, 20).boss, 10.5)
+	var caster: Dictionary = sim.state.mobs[0]
+	var other_boss: Dictionary = sim.state.mobs[3]
+	caster.hp = float(caster.max_hp) * .20
+	other_boss.hp = float(other_boss.max_hp) * .25
 	sim.state.mobs[1].hp = 600
 	sim.state.mobs[2].hp = 600
 	sim.state.mobs[2].heal_block_time = 30
 	sim.state.tick = int(DataDB.read("bosses").necromancer.period) - 1
 	sim.step()
-	equal(sim.state.mobs.size(), 3)
+	equal(sim.state.mobs.size(), 4)
 	check(sim.state.spawn_queue.is_empty())
-	near(sim.state.mobs[1].hp, 700.0)
+	near(sim.state.mobs[1].hp, 625.0)
 	near(sim.state.mobs[2].hp, 600.0)
+	near(other_boss.hp / float(other_boss.max_hp), .25)
+	near(caster.hp / float(caster.max_hp), .21)
+	check(not caster.has("rebirth_until"))
+	for pulse: int in range(2, 8):
+		sim.state.tick = pulse * int(DataDB.read("bosses").necromancer.period) - 1
+		sim.step()
+	near(caster.hp / float(caster.max_hp), .24)
 
 func test_gilded_courier_payout_fixed_speed_and_hit_budget() -> void:
 	var courier: Dictionary = {}
@@ -815,12 +919,21 @@ func test_light_reaches_across_the_map_and_nature_strikes_the_pack() -> void:
 	check(sim.track.at(mob.s).distance_to(sim.track.slots.s1.position) > 5.0)
 	sim.step()
 	check(float(mob.hp) < 1000.0, "Light can target the entrance from across the board")
-	sim.state.towers.s1 = TowerRules.create(2, "s1", "pure", "nature", "", 0)
+	var nature: Dictionary = TowerRules.create(2, "s1", "pure", "nature", "", 0)
+	sim.state.towers.s1 = nature
 	sim.state.tiers.nature = 1
 	sim.state.mobs.clear()
 	Combat.spawn(sim, _enemy([]), 9.52)
 	Combat.spawn(sim, _enemy([]), 10.04)
 	sim.step()
+	near(sim.state.mobs[0].hp, 1000.0, "Nature I poison does not splash")
+	check(sim.state.mobs[1].dots.has("poison"))
+	check(not TowerRules.trait_profile(nature, sim.state.tiers).has("root"))
+	sim.state.tiers.nature = 2
+	nature.level = 3
+	nature.cooldown = 0
+	sim.step()
+	check(TowerRules.trait_profile(nature, sim.state.tiers).has("root"))
 	for victim: Dictionary in sim.state.mobs:
 		check(float(victim.hp) <= 973.0 and victim.dots.has("poison"), "Nature damages and poisons the cluster")
 
@@ -869,8 +982,8 @@ func test_warlock_rally_ram_and_necromancer() -> void:
 	check(not sim.apply({"type": "rally", "slot": "s1"}).ok)
 	var ram: Dictionary = EnemyRules.create(1, Waves.generate(1, 20).boss, 10, 0)
 	Effects.apply(ram, {"slow": [.6, 4], "root": [1, 3]}, 1, false, 1, 0, 30)
-	near(ram.slow, .3)
-	equal(ram.root_time, 45)
+	near(ram.slow, .33)
+	equal(ram.root_time, 50)
 	sim.state.towers.clear()
 	sim.state.mobs.clear()
 	var necromancer: Dictionary = Waves.generate(1, 30).boss
@@ -959,7 +1072,7 @@ func test_stormwing_ignores_ground_control_and_ironwood_resists_elements() -> vo
 	Effects.apply(bird, {"root": [1, 4], "freeze": [1, 2], "slow": [.4, 2]}, 1, false, 1, 0, 30)
 	equal(bird.root_time, 0)
 	check(bird.freeze_time > 0)
-	near(bird.slow, .2)
+	near(bird.slow, .22)
 	near(Effects.ice_speed(bird, {"slide": 15, "stumble": 15}), 1.0)
 	check(not bird.has("slip_time"))
 	near(Damage.against({"electric": 1.0}, bird, false), 1.5)

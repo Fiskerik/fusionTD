@@ -2,7 +2,7 @@ class_name ProjectileArt
 extends RefCounted
 
 static func style(tower: Dictionary, attack: String) -> String:
-	if attack in ["shell", "pulse", "impact", "chain"]:
+	if attack in ["shell", "ricochet", "pulse", "impact", "chain"]:
 		return attack
 	if tower.kind == "arrow":
 		return "arrow"

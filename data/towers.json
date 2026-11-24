@@ -12,7 +12,8 @@
       260,
       420
     ],
-    "role": "Fast single-target fire"
+    "projectiles": [1, 1, 1, 2, 2, 3],
+    "role": "Fast arrows. Fires two at level 4 and three at level 6."
   },
   "cannon": {
     "name": "Flint Cannon",
@@ -29,7 +30,8 @@
     ],
     "splash": 1,
     "splash_per_level": 0.1,
-    "role": "Shells hit nearby enemies"
+    "ricochet": {"jumps": [0, 0, 0, 1, 1, 2], "range": 2.0, "retention": 0.1},
+    "role": "Splash shells. Ricochets once at level 4 and twice at level 6."
   },
   "fire": {
     "name": "Ember Shrine",

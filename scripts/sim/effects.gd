@@ -72,32 +72,32 @@ static func apply(mob: Dictionary, trait_profile: Dictionary, potency: float, in
 						"targets": rule.max_targets, "duration": ticks(rule.duration, hz)}
 	if trait_profile.has("tenacity_shred"):
 		var shred: Array = trait_profile.tenacity_shred
-		timed(mob, "tenacity_shred", float(shred[0]) * potency, ticks(duration(shred[1], potency), hz))
-	if trait_profile.has("slow") and mob.kind not in ["bonus", "wizard"]:
+		timed(mob, "tenacity_shred", float(shred[0]) * potency, _boss_debuff_ticks(mob, ticks(duration(shred[1], potency), hz)))
+	if trait_profile.has("slow") and mob.kind != "wizard":
 		var strength: float = minf(float(mob.slow_cap), slow_strength(trait_profile.slow[0], potency))
 		strength *= 1.0 - EnemyRules.effective_tenacity(mob)
 		timed(mob, "slow", strength, ticks(slow_duration(trait_profile.slow[1], potency), hz))
-	if trait_profile.has("paralysis") and mob.kind not in ["bonus", "wizard"]:
+	if trait_profile.has("paralysis") and mob.kind != "wizard":
 		var paralysis: Array = trait_profile.paralysis
 		if hit_number % control_interval(paralysis[0], potency, infusion, "paralysis") == 0:
 			var strength: float = minf(float(mob.slow_cap), float(paralysis[1])) * (1.0 - EnemyRules.effective_tenacity(mob))
 			timed(mob, "paralysis", strength, ticks(duration(paralysis[2], potency), hz))
 	if trait_profile.has("curse"):
-		timed(mob, "curse", float(trait_profile.curse[0]) * potency, ticks(duration(trait_profile.curse[1], potency), hz))
+		timed(mob, "curse", float(trait_profile.curse[0]) * potency, _boss_debuff_ticks(mob, ticks(duration(trait_profile.curse[1], potency), hz)))
 	if trait_profile.has("shred"):
 		var stacks: int = mini(int(mob.shred_stacks) + 1, roundi(float(trait_profile.shred[1]) * potency))
 		mob.shred_stacks = stacks
 		mob.shred = float(trait_profile.shred[0]) * stacks * potency
-		mob.shred_time = ticks(trait_profile.shred[2], hz)
+		mob.shred_time = _boss_debuff_ticks(mob, ticks(trait_profile.shred[2], hz))
 	if trait_profile.has("heal_block"):
 		var seconds: float = float(trait_profile.heal_block) * (potency if infusion else 1.0)
-		mob.heal_block_time = maxi(mob.heal_block_time, ticks(seconds, hz))
+		mob.heal_block_time = maxi(mob.heal_block_time, _boss_debuff_ticks(mob, ticks(seconds, hz)))
 	if trait_profile.has("disease"):
 		var rules: Dictionary = trait_profile.disease
 		var lifetime: int = ticks(duration(rules.duration, potency), hz)
 		infect(mob, {"fraction": float(rules.fraction) * potency, "duration": lifetime, "time": lifetime,
 			"source": source, "radius": rules.radius})
-	if mob.kind in ["spirit", "bonus"]:
+	if mob.kind == "spirit":
 		return
 	for cc: String in ["freeze", "root"]:
 		if trait_profile.has(cc):
@@ -123,7 +123,7 @@ static func infect(mob: Dictionary, strain: Dictionary) -> void:
 	var active: Dictionary = mob.get("disease", {})
 	if active.is_empty() or float(strain.fraction) >= float(active.fraction):
 		var next: Dictionary = strain.duplicate()
-		next.time = maxi(int(active.get("time", 0)), int(strain.duration))
+		next.time = maxi(int(active.get("time", 0)), _boss_debuff_ticks(mob, int(strain.duration)))
 		mob.disease = next
 
 static func disease_rate(mob: Dictionary) -> float:
@@ -172,7 +172,7 @@ static func ignite(mob: Dictionary, fraction: float, hit: float, time: int, spre
 	var active: Dictionary = mob.dots.get("searing_burn", {})
 	if dps >= float(active.get("dps", 0.0)) and time > 0:
 		mob.dots.searing_burn = {"dps": dps, "stacks": 1, "owners": [source], "fraction": fraction,
-			"hit": hit, "spread": spread, "time": maxi(time, int(active.get("time", 0)))}
+			"hit": hit, "spread": spread, "time": maxi(_boss_debuff_ticks(mob, time), int(active.get("time", 0)))}
 
 static func add_dot(mob: Dictionary, type: String, dps: float, cap: int, count: int, duration: int, spread: float, sources: Array = []) -> void:
 	if mob.kind == "bonus":
@@ -187,7 +187,7 @@ static func add_dot(mob: Dictionary, type: String, dps: float, cap: int, count: 
 	for index: int in range(int(dot.stacks) - previous):
 		owners.append(-1 if index >= sources.size() else int(sources[index]))
 	dot.owners = owners
-	dot.time = maxi(int(dot.time), duration)
+	dot.time = maxi(int(dot.time), _boss_debuff_ticks(mob, duration))
 	dot.dps = maxf(float(dot.dps), dps)
 	dot.spread = maxf(float(dot.spread), spread)
 	mob.dots[type] = dot
@@ -205,6 +205,9 @@ static func inherit_sources(mobs: Array, first: int, second: int, replacement: i
 
 static func ticks(seconds: float, hz: float) -> int:
 	return ceili(seconds * hz)
+
+static func _boss_debuff_ticks(mob: Dictionary, base_ticks: int) -> int:
+	return ceili(base_ticks * (1.0 - EnemyRules.effective_tenacity(mob))) if mob.kind == "boss" else base_ticks
 
 static func duration(seconds: float, potency: float) -> float:
 	return seconds * (1.0 + maxf(0.0, potency - 1.0) * .6)

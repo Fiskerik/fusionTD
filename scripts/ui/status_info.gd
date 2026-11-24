@@ -18,10 +18,11 @@ const TRAITS: Dictionary = {
 	"warlock": ["Hex", "Marks a tower, then temporarily stuns it.", "dark"],
 	"ram": ["Corner charge", "Rushes along straights, bounces at each bend, then spends %s seconds pivoting.", "speed"],
 	"necromancer": ["Raise husks", "Summons two husks every 10 seconds, up to four alive at once.", "dark"],
+	"rebirth": ["Rebirth", "Once at 25% HP, stops for one second, then returns to full health if it survives.", "light"],
 	"prismheart": ["Shapeshifter", "Cycles through your unlocked elements every %s seconds. Each form resists its own element and the element it counters.", "light"],
 	"tempest": ["Airborne", "Flies over roots and ice puddles. Slows and freezes still work.", "water"],
 	"ironwood": ["Elemental plating", "", "armor"],
-	"heal_aura": ["Mending aura", "Periodically heals the Necromancer and nearby enemies.", "nature"],
+	"heal_aura": ["Mending aura", "Heals nearby regular enemies by 2.5%. The Necromancer heals 1% per pulse, up to 4% total. The aura cannot heal other bosses.", "nature"],
 	"boss_guard": ["Damage reduction", "Reduces damage from all sources, including damage over time.", "armor"],
 	"reflect": ["Reflect shield", "", "phasing"],
 	"resistance": ["Tenacity", "Weakens slows and shortens roots and freezes. The enemy can move briefly before it can be stopped again.", "normal"],
@@ -105,6 +106,8 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 			boss_trait = "armored"
 		if not EnemyRules.is_first_boss(enemy):
 			result.append(boss_trait)
+		if EnemyRules.has_rebirth(enemy):
+			result.append("rebirth")
 		result.append("reflect")
 		result.append("boss_guard")
 	elif enemy.kind == "bonus":
@@ -115,12 +118,15 @@ static func enemy_traits(enemy: Dictionary) -> PackedStringArray:
 
 static func trait_title(id: String, enemy: Dictionary) -> String:
 	if id == "resistance":
-		return "%s tenacity" % TowerInspector.percent(EnemyRules.effective_tenacity(enemy))
+		var label: String = "status resistance" if enemy.kind == "boss" else "tenacity"
+		return "%s %s" % [TowerInspector.percent(EnemyRules.effective_tenacity(enemy)), label]
 	if id == "boss_guard":
 		return "%s damage reduction" % TowerInspector.percent(float(DataDB.read("bosses").damage_reduction))
 	return TRAITS[id][0]
 
 static func trait_description(id: String, enemy: Dictionary = {}) -> String:
+	if id == "resistance" and enemy.get("kind", "") == "boss":
+		return "Weakens slows and paralysis. Shortens burns, poison, roots, freezes, and other debuffs. Bosses recover briefly between stops."
 	if id == "ram":
 		return String(TRAITS[id][1]) % TowerInspector.number(DataDB.read("bosses").ram.turn_seconds)
 	if id == "prismheart":

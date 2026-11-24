@@ -30,7 +30,6 @@
   "stone_blocks": 3,
   "stone_seconds": 5,
   "stone_cooldown_seconds": 60,
-  "swap_tokens": 5,
   "infusion": {
     "min_levels": [
       2,
