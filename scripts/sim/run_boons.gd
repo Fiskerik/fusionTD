@@ -97,10 +97,13 @@ static func tags(boon: Dictionary) -> PackedStringArray:
 static func describe(boon: Dictionary, potency: float) -> String:
 	var lines := PackedStringArray()
 	for mod: Dictionary in boon.mods:
-		var label: String = tag_name(mod.scope)
-		var prefix: String = label + " " if not label.is_empty() else ""
-		lines.append("%s%s %s" % [prefix, signed_value(mod.stat, amount(mod, potency)), LABELS[mod.stat]])
+		lines.append(describe_modifier(mod, potency))
 	return "\n".join(lines)
+
+static func describe_modifier(mod: Dictionary, potency: float) -> String:
+	var scope: String = tag_name(mod.scope)
+	var value: String = signed_value(mod.stat, amount(mod, potency))
+	return "%s %s %s" % [scope, value, LABELS[mod.stat]] if not scope.is_empty() else "%s %s" % [value, LABELS[mod.stat]]
 
 static func signed_value(stat: String, value: float) -> String:
 	var percentage: float = snappedf(absf(value) * 100.0, .01)

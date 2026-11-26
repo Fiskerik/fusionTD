@@ -238,9 +238,10 @@ static func spirit_group(element: String, tier: int, wave: int) -> Dictionary:
 	var data: Dictionary = DataDB.read("spirits")
 	var stats: Dictionary = data.tiers[tier - 1]
 	var growth_waves: int = maxi(0, mini(wave, int(stats.get("until", wave))) - int(stats.get("from", wave)))
+	var base_hp: float = float(stats.hp) * pow(float(stats.get("growth", 1.0)), growth_waves)
 	return {
 		"kind": "spirit", "element": element, "tier": tier, "props": [], "count": 1, "interval": 0,
-		"hp": float(stats.hp) * pow(float(stats.get("growth", 1.0)), growth_waves),
+		"hp": base_hp + float(data.hp_per_wave) * wave,
 		"armor": float(stats.armor), "speed": float(data.speed), "gold": Economy.scaled(data.gold, wave),
 		"leak": int(DataDB.read("balance").leak.spirit), "slow_cap": float(data.slow_cap),
 		"spawn": int(data.spawn_tick),

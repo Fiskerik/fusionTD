@@ -175,6 +175,7 @@ func _build_layout() -> void:
 		stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		sidebar.add_child(stack)
+		stack.item_rect_changed.connect(_position_forecast_panel)
 	else:
 		margin.add_child(stack)
 	var hud := PanelContainer.new()
@@ -251,14 +252,15 @@ func _build_layout() -> void:
 	var controls: HBoxContainer = UIKit.row(8)
 	header.add_child(controls)
 	speed_button = UIKit.button(DataDB.text("speed_value") % speed, _toggle_speed, false, 54)
-	speed_button.custom_minimum_size.x = 68
+	speed_button.custom_minimum_size.x = 80
 	speed_button.tooltip_text = DataDB.text("speed_tip")
 	controls.add_child(speed_button)
 	var library: Button = UIKit.icon_button("book", "Tower and element legend", _show_legend, 54)
 	library.name = "HudLibrary"
+	library.custom_minimum_size.x = 64
 	controls.add_child(library)
 	var menu_button: Button = UIKit.icon_button("menu", DataDB.text("game_menu"), _show_pause, 54)
-	menu_button.custom_minimum_size.x = 58
+	menu_button.custom_minimum_size.x = 70
 	controls.add_child(menu_button)
 	var ribbon: BoxContainer = UIKit.column(4) if wide else UIKit.row(8)
 	header_stack.add_child(ribbon)
@@ -274,6 +276,8 @@ func _build_layout() -> void:
 
 	preview_row = UIKit.row(4)
 	stack.add_child(preview_row)
+	preview_row.item_rect_changed.connect(_position_forecast_panel)
+	preview_row.sort_children.connect(_position_forecast_panel)
 
 	var play_area: Control
 	var dock_parent: VBoxContainer = stack
@@ -320,7 +324,6 @@ func _build_layout() -> void:
 	inspector_panel.add_theme_stylebox_override("panel", UIKit.style(UIKit.SURFACE, UIKit.BORDER, 19, 10))
 	inspector_panel.custom_minimum_size.y = 256
 	dock.add_child(inspector_panel)
-	inspector_panel.resized.connect(_position_forecast_panel)
 	var panel_layout: VBoxContainer = UIKit.column(4)
 	inspector_panel.add_child(panel_layout)
 	var inspector_heading: HBoxContainer = UIKit.row(8)
@@ -835,6 +838,7 @@ func _render_preview() -> void:
 	if bonus:
 		var chip: Button = UIKit.button(DataDB.text("bonus_chip") % TowerRules.roman(sim.state.trial.tier),
 			_open_forecast.bind(int(sim.state.wave), true), false, 48)
+		chip.name = "SpiritForecast"
 		chip.add_theme_font_size_override("font_size", 16)
 		UIKit.element_button(chip, sim.state.trial.element)
 		chip.tooltip_text = StatusInfo.enemy_name(sim.preview(int(sim.state.wave)).spirit)
@@ -851,6 +855,7 @@ func _render_preview() -> void:
 		if preview.bosses.is_empty() and preview.groups.is_empty():
 			var caption: String = "Spirit trial" if event == "spirit" else "Merchant"
 			var event_card: Button = UIKit.button("W%d · %s" % [wave, caption], _open_forecast.bind(wave), false, 48)
+			event_card.name = "Wave%dForecast" % wave
 			event_card.add_theme_font_size_override("font_size", 16)
 			preview_row.add_child(event_card)
 			continue
@@ -893,6 +898,7 @@ func _render_preview() -> void:
 				names.append("Neutral" if weakness == "normal" else weakness.capitalize())
 			descriptions.append("Weaknesses: " + ", ".join(names))
 		var chip: Button = UIKit.button("", _open_forecast.bind(wave), false, 48)
+		chip.name = "Wave%dForecast" % wave
 		var representative: Dictionary = preview.groups[0] if preview.bosses.is_empty() else preview.bosses[0]
 		UIKit.creature_forecast(chip, representative, wave, total, icons, preview.bosses, "Finale" if event == "finale" else "")
 		var threats: Array = sim.wave_matchups(preview).weak
@@ -1781,19 +1787,21 @@ func _boon_card(boon: Dictionary, potency: float, category: String, callback: Ca
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title.add_child(name_label)
 	title.add_child(UIKit.label(category, 13, UIKit.MUTED))
-	var stats_row: HBoxContainer = UIKit.row(10)
-	stats_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(stats_row)
-	_add_boon_values(stats_row, boon, potency, true)
+	var effects: VBoxContainer = UIKit.column(2)
+	effects.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(effects)
+	for modifier: Dictionary in boon.mods:
+		var line: HBoxContainer = UIKit.stat_value(RunBoons.stat_icon(modifier.stat),
+			RunBoons.describe_modifier(modifier, potency), "", 16, UIKit.INK)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		effects.add_child(line)
 	return button
 
-func _add_boon_values(row: Container, boon: Dictionary, potency: float, passive: bool = false) -> void:
+func _add_boon_values(row: Container, boon: Dictionary, potency: float) -> void:
 	for modifier: Dictionary in boon.mods:
 		var value: String = RunBoons.signed_value(modifier.stat, RunBoons.amount(modifier, potency))
 		var item: HBoxContainer = UIKit.stat_value(RunBoons.stat_icon(modifier.stat), value,
 			RunBoons.tag_name(modifier.scope) + " " + RunBoons.LABELS[modifier.stat], 16, UIKit.UPGRADE)
-		if passive:
-			item.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(item)
 
 func _show_active_boon() -> void:
@@ -2017,14 +2025,14 @@ func _toggle_forecast_matchups() -> void:
 func _position_forecast_panel() -> void:
 	if not is_instance_valid(forecast_panel):
 		return
+	var chip_name: String = "SpiritForecast" if forecast_bonus else "Wave%dForecast" % forecast_wave
+	var chip: Control = preview_row.get_node_or_null(chip_name)
+	var anchor: Rect2 = (chip if chip != null else preview_row).get_global_rect()
 	var width: float = minf(size.x - 22.0, 395.0 if forecast_expanded else 263.0)
-	var bottom: float = size.y - 12.0
-	if not wide and is_instance_valid(inspector_panel):
-		bottom = inspector_panel.global_position.y - global_position.y - 25.0
 	forecast_panel.reset_size()
 	forecast_panel.size.x = width
-	forecast_panel.position = Vector2(size.x - forecast_panel.size.x - 11.0,
-		maxf(8.0, bottom - forecast_panel.size.y))
+	var left: float = clampf(anchor.position.x - global_position.x, 10.0, size.x - forecast_panel.size.x - 10.0)
+	forecast_panel.position = Vector2(left, anchor.end.y - global_position.y + 4.0)
 
 func _close_forecast() -> void:
 	if is_instance_valid(forecast_panel):

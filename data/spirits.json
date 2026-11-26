@@ -22,6 +22,7 @@
       "recommended": 60
     }
   ],
+  "hp_per_wave": 20,
   "speed": 0.55,
   "slow_cap": 0.25,
   "spawn_tick": 30,

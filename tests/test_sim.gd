@@ -630,13 +630,13 @@ func test_the_first_tier_two_trial_is_optional_and_risky() -> void:
 			_finish(sim)
 	equal(sim.state.tiers.fire, 2)
 
-func test_spirits_have_fixed_tier_one_health_and_capped_higher_tier_growth() -> void:
+func test_spirits_gain_twenty_health_per_wave_on_top_of_tier_growth() -> void:
 	for element: String in DataDB.ELEMENTS:
-		for wave: int in [5, 30, 70, 150]:
-			near(Waves.spirit_group(element, 1, wave).hp, 440.0)
-		for wave: int in [5, 20, 25, 30, 40, 50, 60, 150]:
-			near(Waves.spirit_group(element, 2, wave).hp, 8800.0 * pow(1.012, clampi(wave - 20, 0, 10)))
-			near(Waves.spirit_group(element, 3, wave).hp, 66000.0 * pow(1.01, clampi(wave - 40, 0, 20)))
+		for wave: int in [1, 5, 20, 25, 30, 40, 50, 60, 150]:
+			var wave_hp: float = 20.0 * wave
+			near(Waves.spirit_group(element, 1, wave).hp, 440.0 + wave_hp)
+			near(Waves.spirit_group(element, 2, wave).hp, 8800.0 * pow(1.012, clampi(wave - 20, 0, 10)) + wave_hp)
+			near(Waves.spirit_group(element, 3, wave).hp, 66000.0 * pow(1.01, clampi(wave - 40, 0, 20)) + wave_hp)
 
 func test_concentrated_counter_damage_can_defeat_higher_tier_spirits() -> void:
 	for scenario: Array in [[25, 2, 10, 4], [30, 2, 8, 5], [60, 3, 28, 6]]:
@@ -670,8 +670,8 @@ func test_saved_tier_one_spirit_health_is_retuned_without_losing_damage_progress
 	sim.state.tiers.erase("earth")
 	var restored: Sim = SaveStore.decode(SaveStore.encode(sim).duplicate(true))
 	equal(restored.state.tiers.earth, 0)
-	near(restored.state.mobs[0].max_hp, 440.0)
-	near(restored.state.mobs[0].hp, 220.0)
+	near(restored.state.mobs[0].max_hp, 1840.0)
+	near(restored.state.mobs[0].hp, 920.0)
 
 func test_wave_70_two_bosses_have_reduced_health_and_armor() -> void:
 	var late: Dictionary = DataDB.read("waves").late_game
@@ -698,7 +698,7 @@ func test_earth_unlocks_builds_and_fuses_through_the_normal_actions() -> void:
 	equal(Damage.weakness(spirit), "nature")
 	sim.state.spawn_queue.clear()
 	Combat.spawn(sim, spirit, 0.0)
-	Damage.deal(sim.state.mobs[0], 440.0, {})
+	Damage.deal(sim.state.mobs[0], float(spirit.hp), {})
 	sim.step()
 	equal(sim.state.tiers.earth, 1)
 	sim.state.gold = 6000
@@ -713,6 +713,19 @@ func test_earth_unlocks_builds_and_fuses_through_the_normal_actions() -> void:
 	equal(sim.state.towers.s1.dual, "lavafault")
 	check(sim.apply({"type": "fuse", "slot_a": "s1", "slot_b": "s3"}).ok)
 	equal(sim.state.towers.s1.dual, "steamcrag")
+
+func test_first_elemental_upgrade_costs_more_than_any_new_elemental_tower() -> void:
+	var sim := Sim.new()
+	var max_build_cost: int = 0
+	for element: String in DataDB.ELEMENTS:
+		max_build_cost = maxi(max_build_cost, int(DataDB.read("towers")[element].cost))
+	for element: String in DataDB.ELEMENTS:
+		sim.state.tiers[element] = 1
+		sim.state.gold = 1000
+		var build: Dictionary = sim.apply({"type": "build", "slot": "s1", "kind": element})
+		var upgrade: Dictionary = sim.apply({"type": "upgrade", "slot": "s1"})
+		check(build.ok and upgrade.ok and int(upgrade.cost) > max_build_cost)
+		check(sim.apply({"type": "sell", "slot": "s1"}).ok)
 
 func test_special_encounters_are_seeded_and_respect_wave_types() -> void:
 	var sim := Sim.campaign(5)

@@ -19,6 +19,9 @@ func test_survival_menu_and_hud_library_keep_combat_live() -> void:
 	var library: Button = game.find_child("HudLibrary", true, false)
 	equal(library.text, "")
 	equal(library.get_index(), game.speed_button.get_index() + 1)
+	check(game.speed_button.custom_minimum_size.x > 68 and library.custom_minimum_size.x > 50)
+	var menu_button: Button = library.get_parent().get_child(library.get_index() + 1)
+	check(menu_button.custom_minimum_size.x > 58)
 	library.pressed.emit()
 	equal(game.overlay_type, "legend")
 	check(not game.paused)
@@ -100,6 +103,8 @@ func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() ->
 	equal(first.size(), 3)
 	for index: int in range(first.size()):
 		equal(first[index].name, "BoonOffer%d" % (index + 1))
+		for effect: String in first[index].tooltip_text.split("\n").slice(1):
+			check(first[index].find_children("*", "Label", true, false).any(func(label: Label) -> bool: return label.text == effect))
 	var choose: Button = first[0]
 	choose.pressed.emit()
 	var active: Dictionary = game.sim.state.active_boon.duplicate()
@@ -120,9 +125,38 @@ func test_boon_hud_shows_the_active_effect_and_boss_rewards_let_you_keep_it() ->
 	var keep: Button = next[0]
 	equal(keep.name, "KeepBoon")
 	check(keep.tooltip_text.begins_with(boon.name))
+	for effect: String in description.split("\n"):
+		check(keep.find_children("*", "Label", true, false).any(func(label: Label) -> bool: return label.text == effect))
 	keep.pressed.emit()
 	equal(game.sim.state.active_boon, active)
 	equal(game.overlay_type, "")
+	game.queue_free()
+	await runner.process_frame
+
+func test_upcoming_wave_forecast_opens_under_its_chip() -> void:
+	var game: GameScreen = load("res://scenes/game.tscn").instantiate()
+	game.persistence_enabled = false
+	runner.root.add_child(game)
+	game.set_process(false)
+	game.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	game.size = Vector2(720, 1000)
+	await runner.process_frame
+	await runner.process_frame
+	var chip: Button = game.preview_row.get_node("Wave2Forecast")
+	chip.pressed.emit()
+	equal(game.forecast_wave, 2)
+	near(game.forecast_panel.global_position.x, chip.global_position.x)
+	near(game.forecast_panel.global_position.y, chip.get_global_rect().end.y + 4.0)
+	game.size = Vector2(1280, 720)
+	await runner.process_frame
+	await runner.process_frame
+	chip = game.preview_row.get_node("Wave2Forecast")
+	near(game.forecast_panel.global_position.y, chip.get_global_rect().end.y + 4.0)
+	chip = game.preview_row.get_node("Wave3Forecast")
+	chip.pressed.emit()
+	equal(game.forecast_wave, 3)
+	near(game.forecast_panel.global_position.y, chip.get_global_rect().end.y + 4.0)
+	check(game.forecast_panel.get_global_rect().end.x <= game.get_global_rect().end.x)
 	game.queue_free()
 	await runner.process_frame
 
